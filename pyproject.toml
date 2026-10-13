@@ -1,0 +1,19 @@
+[project]
+name = "renoise-media-kit"
+dynamic = ["version"]
+description = "rn: frame-exact probing, contact sheets, EDL assembly, finishing and QA for the Renoise media sandbox"
+requires-python = ">=3.11"
+dependencies = ["pillow>=10.1"]
+
+[project.scripts]
+rn = "rn.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["rn"]
+
+[tool.setuptools.dynamic]
+version = { attr = "rn.__version__" }
