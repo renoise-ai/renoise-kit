@@ -62,7 +62,11 @@ def frame_command(path: str, *, index: int | None, time: float | None, last: boo
 
 
 def pick_indices(frames: int, fps: Fraction, *, every: int | None, rate: float | None, indices: list[int] | None,
-                 seconds: list[float] | None, count: int | None) -> list[int]:
+                 seconds: list[float] | None, count: int | None, around: list[float] | None = None, span: int = 3) -> list[int]:
+    if around:
+        # Dense frames on both sides of each time (a cut, a transition, a beat): span frames before and after.
+        centres = [math.floor(t * float(fps) + 1e-6) for t in around if t >= 0]
+        return sorted({i for c in centres for i in range(c - span, c + span + 1) if 0 <= i < frames})
     if indices:
         return [i for i in indices if 0 <= i < frames]
     if seconds:
@@ -83,10 +87,20 @@ def _timecode(index: int, fps: Fraction) -> str:
     return f'{int(seconds // 60):02d}:{seconds % 60:05.2f}'
 
 
-def _compose(tiles: list[tuple[int, Path]], fps: Fraction, columns: int, title: str):
+def _difference(current: Path, previous: Path | None):
+    """|frame - previous frame| as a heat image: motion, flicker and repeated (dead) frames stand out; x4 gain."""
+    from PIL import Image, ImageChops
+
+    image = Image.open(current).convert('RGB')
+    if previous is None:
+        return Image.new('RGB', image.size)
+    return ImageChops.difference(image, Image.open(previous).convert('RGB')).point(lambda v: min(255, v * 4))
+
+
+def _compose(tiles: list[tuple[int, Path]], fps: Fraction, columns: int, title: str, images=None):
     from PIL import Image, ImageDraw, ImageFont
 
-    images = [Image.open(path).convert('RGB') for _, path in tiles]
+    images = images or [Image.open(path).convert('RGB') for _, path in tiles]
     tile_w, tile_h = images[0].size
     label_h = max(14, tile_w // 14)
     font = ImageFont.load_default(size=label_h - 3)
@@ -121,7 +135,8 @@ def _save_under(sheet, path: Path, max_kb: int) -> int:
 
 
 def sheet_command(paths: list[str], *, out: str | None, every: int | None, rate: float | None, indices: list[int] | None,
-                  seconds: list[float] | None, count: int | None, width: int, columns: int, max_kb: int) -> dict:
+                  seconds: list[float] | None, count: int | None, width: int, columns: int, max_kb: int,
+                  around: list[float] | None = None, span: int = 3, diff: bool = False) -> dict:
     pages = []
     for path in paths:
         info = probe(path)
@@ -129,7 +144,7 @@ def sheet_command(paths: list[str], *, out: str | None, every: int | None, rate:
             raise RnError(f'{path}: not a video')
         fps = source_fps(info)
         frames = info['video']['frames']
-        chosen = pick_indices(frames, fps, every=every, rate=rate, indices=indices, seconds=seconds, count=count)
+        chosen = pick_indices(frames, fps, every=every, rate=rate, indices=indices, seconds=seconds, count=count, around=around, span=span)
         if not chosen:
             raise RnError(f'{path}: no frames in range (the clip has {frames} frames)')
         stem = Path(path).stem
@@ -138,12 +153,15 @@ def sheet_command(paths: list[str], *, out: str | None, every: int | None, rate:
             base = Path(out).with_name(f'{Path(out).stem}-{stem}{Path(out).suffix or ".jpg"}')
         base.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory() as tmp:
-            tiles = extract(path, chosen, Path(tmp), width=width)
+            wanted = sorted({j for i in chosen for j in ((i - 1, i) if diff else (i,)) if j >= 0})
+            extracted = dict(extract(path, wanted, Path(tmp), width=width))
+            tiles = [(i, extracted[i]) for i in chosen if i in extracted]
             page_count = math.ceil(len(tiles) / MAX_PER_PAGE)
             for page in range(page_count):
                 part = tiles[page * MAX_PER_PAGE:(page + 1) * MAX_PER_PAGE]
                 target = base if page_count == 1 else base.with_name(f'{base.stem}-p{page + 1}{base.suffix or ".jpg"}')
-                title = f'{Path(path).name}  {fps}fps  {frames}f  frames {part[0][0]}-{part[-1][0]}'
-                size = _save_under(_compose(part, fps, columns, title), target, max_kb)
+                title = f'{Path(path).name}  {fps}fps  {frames}f  frames {part[0][0]}-{part[-1][0]}' + ('  |difference to previous| x4' if diff else '')
+                images = [_difference(p, extracted.get(i - 1)) for i, p in part] if diff else None
+                size = _save_under(_compose(part, fps, columns, title, images), target, max_kb)
                 pages.append({'path': str(target), 'source': path, 'indices': [index for index, _ in part], 'bytes': size})
     return {'pages': pages}

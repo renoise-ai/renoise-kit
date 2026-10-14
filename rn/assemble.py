@@ -46,18 +46,62 @@ def _timing(clip: Clip, fps: Fraction) -> str:
     return chain
 
 
+_EASE = {
+    'linear': 'U', 'hold': '0', 'in': 'U*U', 'out': '(1-(1-U)*(1-U))', 'in3': 'U*U*U', 'out3': '(1-pow(1-U,3))',
+    'inout': 'if(lt(U,0.5),2*U*U,1-2*(1-U)*(1-U))', 'inout3': 'if(lt(U,0.5),4*U*U*U,1-4*pow(1-U,3))',
+}
+
+
+def _curve(points: list[tuple[float, float, str]] | None, var: str, default: float) -> str:
+    """Keyframes -> an ffmpeg expression in `var` (seconds): held before the first key and after the last."""
+    if not points:
+        return repr(float(default))
+    expr = repr(float(points[-1][1]))
+    for (t0, v0, _), (t1, v1, ease) in reversed(list(zip(points, points[1:]))):
+        u = f'clip(({var}-{t0})/{t1 - t0},0,1)'
+        segment = f'({v0}+({v1 - v0})*({_EASE[ease].replace("U", u)}))'
+        expr = f'if(lt({var},{t1}),{segment},{expr})'
+    return f'if(lt({var},{points[0][0]}),{points[0][1]},{expr})'
+
+
+def _perspective(keys: dict, fps: Fraction, *, centre: tuple[str, str], scale_default: float = 1.0) -> str:
+    """Scale (about `centre`), rotate (degrees) and move via perspective's source corners: smooth, sub-pixel, alpha kept.
+    `centre` are expressions in t for where the layer's centre lands; the layer's own centre is (W/2, H/2) of its input
+    for the main track, (cx0, cy0) passed in through the same centre pair for overlays."""
+    # perspective's `on` counts output frames from 1 (measured on ffmpeg 9), so frame 0 is on-1 = 0.
+    t = f'((on-1)/{float(fps)})'
+    scale = _curve(keys.get('scale'), t, scale_default)
+    angle = f'(({_curve(keys.get("rotate"), t, 0)})*PI/180)'
+    cx, cy = centre
+    corners = []
+    for k, (ox, oy) in enumerate((('0', '0'), ('W', '0'), ('0', 'H'), ('W', 'H'))):
+        dx, dy = f'(({ox})-({cx}))/({scale})', f'(({oy})-({cy}))/({scale})'
+        corners.append(f"x{k}='{{px}}+{dx}*cos({angle})+{dy}*sin({angle})':y{k}='{{py}}-{dx}*sin({angle})+{dy}*cos({angle})'")
+    return ':'.join(corners)
+
+
 def _video_input(clip: Clip, fps: Fraction, size: tuple[int, int]) -> list[str]:
     if clip.kind == 'color':
         # Generated as RGB so the BT.709 conversion downstream gets the colour right.
         return ['-f', 'lavfi', '-i', f'color=c={ff_color(clip.color or "black")}:s={size[0]}x{size[1]}:r={fps},format=rgb24']
     if clip.kind == 'image':
         return ['-loop', '1', '-framerate', str(fps), '-i', str(clip.source)]
+    if clip.kind == 'sequence':
+        return ['-framerate', str(clip.src_fps), '-start_number', str(clip.seq_start), '-i', str(clip.source)]
     return [*(['-c:v', clip.decoder] if clip.decoder else []), '-i', str(clip.source)]
 
 
 def _render_slot(clip: Clip, edit: Edit, out: Path) -> None:
-    chain = _timing(clip, edit.fps) + ',' if clip.kind == 'video' else ''
-    chain += _fit(clip, edit.width, edit.height, edit.background) + f',setsar=1,format=yuv420p,{audio_mod.BT709}'
+    chain = _timing(clip, edit.fps) + ',' if clip.kind in ('video', 'sequence') else ''
+    chain += _fit(clip, edit.width, edit.height, edit.background)
+    if clip.keys:
+        # Main-track move: the plate scales/rotates about the frame centre and shifts by x/y (fractions of the frame).
+        t = f'((on-1)/{float(edit.fps)})'
+        cx = f'(W/2+({_curve(clip.keys.get("x"), t, 0)})*W)'
+        cy = f'(H/2+({_curve(clip.keys.get("y"), t, 0)})*H)'
+        chain += ',perspective=' + _perspective(clip.keys, edit.fps, centre=(cx, cy)).replace('{px}', 'W/2').replace('{py}', 'H/2') \
+            + ':eval=frame:interpolation=cubic'
+    chain += f',setsar=1,format=yuv420p,{audio_mod.BT709}'
     # Hold the last frame if the source runs short, then cut to the exact frame count.
     chain += f',tpad=stop_mode=clone:stop={clip.frames},trim=end_frame={clip.frames},setpts=N/({edit.fps}*TB)'
     run(['ffmpeg', *_video_input(clip, edit.fps, (edit.width, edit.height)), '-filter_complex', f'[0:v]{chain}[v]', '-map', '[v]',
@@ -116,9 +160,30 @@ def _join(edit: Edit, slots: list[Path]) -> tuple[list[str], list[str], str]:
     return inputs, lines, current
 
 
+def _overlay_size(clip: Clip, edit: Edit) -> tuple[int, int]:
+    """Pixel size an overlay is drawn at (its scale before keys)."""
+    if clip.kind == 'color':
+        return clip.w or edit.width, clip.h or edit.height
+    src_w, src_h = clip.src_size or (edit.width, edit.height)
+    if clip.w and clip.h:
+        return clip.w, clip.h
+    if clip.w:
+        return clip.w, round(src_h * clip.w / src_w / 2) * 2
+    if clip.h:
+        return round(src_w * clip.h / src_h / 2) * 2, clip.h
+    return src_w, src_h
+
+
+MARGIN = 4  # transparent px around a moving overlay's canvas
+
+
+def _moves(clip: Clip) -> bool:
+    return bool(clip.keys) and any(k in clip.keys for k in ('scale', 'rotate', 'x', 'y'))
+
+
 def _overlay_chain(clip: Clip, edit: Edit, index: int) -> str:
     parts = []
-    if clip.kind == 'video':
+    if clip.kind in ('video', 'sequence'):
         parts.append(_timing(clip, edit.fps))
     size = f'{clip.w or -2}:{clip.h or -2}' if (clip.w or clip.h) and clip.kind != 'color' else 'iw:ih'
     parts.append(f'scale={size}:flags=lanczos:{to_bt709(clip.matrix)}')
@@ -133,6 +198,21 @@ def _overlay_chain(clip: Clip, edit: Edit, index: int) -> str:
         parts.append(f'fade=t=in:st=0:d={clip.fade_in:.4f}:alpha=1')
     if clip.fade_out:
         parts.append(f'fade=t=out:st={max(0.0, float(seconds) - clip.fade_out):.4f}:d={clip.fade_out:.4f}:alpha=1')
+    if clip.keys and 'opacity' in clip.keys:
+        # T is seconds from the overlay's first frame here (pts = frame number, timebase 1/fps).
+        parts.append(f"geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*({_curve(clip.keys['opacity'], 'T', 1)})'")
+    if _moves(clip):
+        # Put the layer on a transparent canvas the size of the frame, then move it there. perspective repeats the
+        # canvas edge for anything it samples outside, so the canvas keeps a transparent margin on every side and is
+        # overlaid at (-MARGIN, -MARGIN).
+        ow, oh = _overlay_size(clip, edit)
+        cw, ch = max(edit.width, ow) + 2 * MARGIN, max(edit.height, oh) + 2 * MARGIN
+        t = f'((on-1)/{float(edit.fps)})'
+        cx = f'({_curve(clip.keys.get("x"), t, clip.x)}+{ow / 2 + MARGIN})'
+        cy = f'({_curve(clip.keys.get("y"), t, clip.y)}+{oh / 2 + MARGIN})'
+        parts.append(f'pad={cw}:{ch}:{MARGIN}:{MARGIN}:color=black@0')
+        parts.append('perspective=' + _perspective(clip.keys, edit.fps, centre=(cx, cy))
+                     .replace('{px}', str(ow / 2 + MARGIN)).replace('{py}', str(oh / 2 + MARGIN)) + ':eval=frame:interpolation=cubic')
     parts.append(f'setpts=PTS+{clip.timeline_start}')
     return f'[{index}:v]' + ','.join(parts) + f'[o{index}]'
 
@@ -145,7 +225,8 @@ def _render_video(edit: Edit, slots: list[Path], work: Path, out: Path) -> None:
         size = (clip.w or edit.width, clip.h or edit.height)
         inputs += _video_input(clip, edit.fps, size)
         lines.append(_overlay_chain(clip, edit, index))
-        lines.append(f'[{current}][o{index}]overlay=x={clip.x}:y={clip.y}:eof_action=pass:format=auto[ov{index}]')
+        x, y = (-MARGIN, -MARGIN) if _moves(clip) else (clip.x, clip.y)
+        lines.append(f'[{current}][o{index}]overlay=x={x}:y={y}:eof_action=pass:format=auto[ov{index}]')
         current = f'ov{index}'
     tail = f'[{current}]'
     if edit.subtitles:

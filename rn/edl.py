@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
@@ -19,13 +20,17 @@ XFADE = {
     'revealleft', 'revealright', 'revealup', 'revealdown',
 }
 FITS = {'cover', 'contain', 'stretch'}
+EASES = {'linear', 'in', 'out', 'inout', 'in3', 'out3', 'inout3', 'hold'}
+KEYS_MAIN = {'scale', 'x', 'y', 'rotate'}
+KEYS_OVERLAY = {'scale', 'x', 'y', 'rotate', 'opacity'}
+_SEQ = re.compile(r'%0?(\d*)d')
 ROLES = {'music', 'voice', 'sfx'}
 
 
 @dataclass
 class Clip:
     where: str
-    kind: str  # video | image | color
+    kind: str  # video | sequence | image | color
     source: Path | None
     color: str | None
     start_s: float  # position inside the source, seconds from its first frame
@@ -50,6 +55,10 @@ class Clip:
     opacity: float = 1.0
     fade_in: float = 0.0
     fade_out: float = 0.0
+    # keyframed transform, {prop: [(t, value, ease)]}, t in seconds from the clip's first frame
+    keys: dict | None = None
+    seq_start: int = 0  # sequences: first file number
+    src_size: tuple[int, int] | None = None  # sequences and images: pixel size
 
 
 @dataclass
@@ -111,9 +120,19 @@ def _num(value, where: str, *, minimum: float | None = None, positive: bool = Fa
     return float(value)
 
 
-def _position(value, where: str, source_fps: Fraction | None) -> float:
-    """Seconds, or {"frame": n} / {"time": s} inside a source."""
+def _position(value, where: str, source_fps: Fraction | None, source: Path | None = None, *, end: bool = False) -> float:
+    """Seconds, or {"frame": n} / {"time": s} / {"shot": n, "offset": s} inside a source. A shot is one found by
+    `rn cuts` with its defaults; as "in" it means the shot's first frame, as "out" its end."""
     if isinstance(value, dict):
+        if 'shot' in value:
+            if source is None or source_fps is None:
+                raise RnError(f'{where}: shot positions need a video source')
+            shot = value['shot']
+            if not isinstance(shot, int) or shot < 0:
+                raise RnError(f'{where}.shot: expected a non-negative integer (shot numbers from rn cuts)')
+            from .cuts import shot_span
+            start, stop = shot_span(source, shot)
+            return max(0.0, (stop if end else start) + _num(value.get('offset', 0), f'{where}.offset'))
         if 'frame' in value:
             if source_fps is None:
                 raise RnError(f'{where}: frame positions need a video source')
@@ -140,12 +159,150 @@ def _resolve(edit_dir: Path, value, where: str) -> Path:
     return path
 
 
-def _clip(raw: dict, where: str, edit_dir: Path, fps: Fraction, *, overlay: bool, warnings: list[str]) -> Clip:
+@dataclass
+class Timeline:
+    """What output-timeline anchors resolve against: the laid-out main track, named markers and listen results."""
+    fps: Fraction
+    edit_dir: Path
+    base: list[Clip]
+    markers: dict[str, float]
+    _listen: dict[str, dict] = field(default_factory=dict)
+
+    def listen(self, value, where: str) -> dict:
+        path = _resolve(self.edit_dir, value, where)
+        if str(path) not in self._listen:
+            try:
+                self._listen[str(path)] = json.loads(path.read_text())
+            except json.JSONDecodeError as error:
+                raise RnError(f'{where}: {path.name} is not JSON ({error}); write it with rn listen --json') from None
+        return self._listen[str(path)]
+
+
+def _anchor(value, where: str, timeline: Timeline) -> float:
+    """Seconds on the output timeline: a number, or an anchor plus "offset" seconds:
+    {"clip": i} / {"clip_end": i} (main-track clip i as laid out, transitions included), {"marker": "name"},
+    {"frame": n}, {"beat": n, "listen": "music.json"}, {"word": n, "listen": "vo.json", "edge": "start"|"end"}.
+    Beat and word times are relative to the analysed file: add "offset" when that audio is placed later."""
+    if not isinstance(value, dict):
+        return _num(value, where, minimum=0)
+    offset = _num(value.get('offset', 0), f'{where}.offset')
+    kinds = [k for k in ('clip', 'clip_end', 'marker', 'frame', 'time', 'beat', 'word') if k in value]
+    if len(kinds) != 1:
+        raise RnError(f'{where}: one of clip, clip_end, marker, frame, beat, word (plus optional offset)')
+    kind = kinds[0]
+    index = value[kind]
+    if kind in ('clip', 'clip_end'):
+        if not isinstance(index, int) or not 0 <= index < len(timeline.base):
+            raise RnError(f'{where}.{kind}: main-track clip index 0..{len(timeline.base) - 1}')
+        clip = timeline.base[index]
+        frame = clip.timeline_start + (clip.frames if kind == 'clip_end' else 0)
+        seconds = float(frame / timeline.fps)
+    elif kind == 'marker':
+        if index not in timeline.markers:
+            raise RnError(f'{where}.marker: "{index}" is not in the top-level "markers" ({sorted(timeline.markers) or "none defined"})')
+        seconds = timeline.markers[index]
+    elif kind == 'frame':
+        if not isinstance(index, int) or index < 0:
+            raise RnError(f'{where}.frame: a non-negative integer')
+        seconds = float(index / timeline.fps)
+    elif kind == 'time':
+        seconds = _num(index, f'{where}.time', minimum=0)
+    else:
+        data = timeline.listen(value.get('listen'), f'{where}.listen')
+        items = (data.get('beats') or {}).get('times') if kind == 'beat' else data.get('words')
+        if not items:
+            raise RnError(f'{where}: {value.get("listen")} has no {kind}s (run rn listen{" --transcribe" if kind == "word" else ""} --json)')
+        if not isinstance(index, int) or not 0 <= index < len(items):
+            raise RnError(f'{where}.{kind}: index 0..{len(items) - 1}')
+        if kind == 'beat':
+            seconds = float(items[index])
+        else:
+            edge = value.get('edge', 'start')
+            if edge not in ('start', 'end'):
+                raise RnError(f'{where}.edge: "start" or "end"')
+            seconds = float(items[index][edge])
+    return max(0.0, seconds + offset)
+
+
+def _keys(raw, where: str, allowed: set[str]) -> dict | None:
+    """{"scale": [[t, v], [t, v, "out"], ...], ...}: t seconds from the clip's first frame, values held before the
+    first and after the last key; the ease names the curve into that key (linear, in, out, inout, in3, out3, inout3, hold)."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict) or not raw:
+        raise RnError(f'{where}: {{"scale": [[0, 1], [0.5, 1.1, "out"]], ...}}')
+    keys = {}
+    for prop, points in raw.items():
+        if prop not in allowed:
+            raise RnError(f'{where}.{prop}: keyable here: {sorted(allowed)}')
+        if not isinstance(points, list) or not points:
+            raise RnError(f'{where}.{prop}: a list of [t, value] or [t, value, ease]')
+        parsed, last = [], -1.0
+        for k, point in enumerate(points):
+            if not isinstance(point, list) or len(point) not in (2, 3):
+                raise RnError(f'{where}.{prop}[{k}]: [t, value] or [t, value, ease]')
+            t = _num(point[0], f'{where}.{prop}[{k}] time', minimum=0)
+            if t <= last:
+                raise RnError(f'{where}.{prop}[{k}]: times must increase')
+            value = _num(point[1], f'{where}.{prop}[{k}] value')
+            ease = point[2] if len(point) == 3 else 'linear'
+            if ease not in EASES:
+                raise RnError(f'{where}.{prop}[{k}]: ease one of {sorted(EASES)}')
+            if prop == 'scale' and value <= 0:
+                raise RnError(f'{where}.scale: must be > 0')
+            if prop == 'opacity' and not 0 <= value <= 1:
+                raise RnError(f'{where}.opacity: between 0 and 1')
+            parsed.append((t, value, ease))
+            last = t
+        keys[prop] = parsed
+    return keys
+
+
+def _sequence(edit_dir: Path, pattern, where: str) -> tuple[Path, int, int, tuple[int, int]]:
+    """A numbered image sequence (printf pattern like "title/%05d.png") -> (pattern path, first number, count, size)."""
+    if not isinstance(pattern, str) or not _SEQ.search(pattern):
+        raise RnError(f'{where}: a numbered pattern like "title/%05d.png"')
+    path = (edit_dir / pattern).expanduser()
+    width = _SEQ.search(path.name)
+    if not width:
+        raise RnError(f'{where}: the frame number goes in the file name, e.g. "title/%05d.png"')
+    digits = width.group(1)
+    head, tail = path.name[:width.start()], path.name[width.end():]
+    number = re.compile(re.escape(head) + (r'(\d{%s})' % int(digits) if digits else r'(\d+)') + re.escape(tail) + '$')
+    numbers = sorted(int(m.group(1)) for f in (path.parent.iterdir() if path.parent.is_dir() else []) if (m := number.match(f.name)))
+    if not numbers:
+        raise RnError(f'{where}: no files match {path}')
+    start = numbers[0]
+    count = next((k for k, n in enumerate(numbers) if n != start + k), len(numbers))
+    if count < len(numbers):
+        raise RnError(f'{where}: numbering has a gap after {head}{start + count - 1}{tail}; a sequence must be contiguous')
+    from PIL import Image
+    first = path.parent / f'{head}{start:0{int(digits) if digits else 1}d}{tail}'
+    with Image.open(first) as image:
+        size = image.size
+    return path, start, count, size
+
+
+def _clip(raw: dict, where: str, edit_dir: Path, fps: Fraction, *, overlay: bool, warnings: list[str],
+          timeline: Timeline | None = None) -> Clip:
     if not isinstance(raw, dict):
         raise RnError(f'{where}: expected an object')
-    kinds = [k for k in ('src', 'image', 'color') if k in raw]
+    kinds = [k for k in ('src', 'frames', 'image', 'color') if k in raw]
     if len(kinds) != 1:
-        raise RnError(f'{where}: give exactly one of "src" (video), "image" or "color"')
+        raise RnError(f'{where}: give exactly one of "src" (video), "frames" (image sequence), "image" or "color"')
+    at_s = 0.0
+    if overlay:
+        assert timeline is not None
+        at_s = _anchor(raw.get('at', 0), f'{where}.at', timeline)
+        if 'until' in raw:
+            if 'duration' in raw or 'out' in raw:
+                raise RnError(f'{where}: give "until" or "duration"/"out", not both')
+            until = _anchor(raw['until'], f'{where}.until', timeline)
+            if until <= at_s:
+                raise RnError(f'{where}.until: {until:.3f}s is not after "at" ({at_s:.3f}s)')
+            raw = {**raw, 'duration': until - at_s}
+    elif 'until' in raw:
+        raise RnError(f'{where}.until: main-track clips play back to back; "until" is for overlays')
     fit = raw.get('fit', 'cover')
     if fit not in FITS:
         raise RnError(f'{where}.fit: one of {sorted(FITS)}')
@@ -156,19 +313,34 @@ def _clip(raw: dict, where: str, edit_dir: Path, fps: Fraction, *, overlay: bool
     clip = Clip(where=where, kind='video', source=None, color=None, start_s=0.0, speed=speed, frames=0, fit=fit,
                 audio=bool(raw.get('audio', not overlay)), gain_db=gain)
 
-    if 'src' in raw:
-        clip.source = _resolve(edit_dir, raw['src'], f'{where}.src')
-        info = probe(clip.source)
-        video = info['video']
-        if not video or video['still']:
-            raise RnError(f'{where}.src: {clip.source.name} has no video; use "image" for stills')
-        src_fps = Fraction(video['fps'])
+    if 'src' in raw or 'frames' in raw:
+        if 'src' in raw:
+            clip.source = _resolve(edit_dir, raw['src'], f'{where}.src')
+            info = probe(clip.source)
+            video = info['video']
+            if not video or video['still']:
+                raise RnError(f'{where}.src: {clip.source.name} has no video; use "image" for stills, "frames" for a numbered sequence')
+            src_fps = Fraction(video['fps'])
+            clip.matrix = source_matrix(video)
+            clip.decoder = video.get('alpha_decoder')
+            clip.src_size = (video['width'], video['height'])
+            src_len = float(video['frames'] / src_fps) if video['frames'] else (video['duration'] or info['duration'] or 0)
+            clip.has_audio = info['audio'] is not None
+        else:
+            clip.kind = 'sequence'
+            clip.source, clip.seq_start, count, clip.src_size = _sequence(edit_dir, raw['frames'], f'{where}.frames')
+            try:
+                src_fps = Fraction(str(raw.get('fps', fps)))
+            except (ValueError, ZeroDivisionError):
+                raise RnError(f'{where}.fps: a number or "30000/1001"') from None
+            if src_fps <= 0:
+                raise RnError(f'{where}.fps: must be > 0')
+            src_len = float(count / src_fps)
+            clip.audio = False
+            if 'audio' in raw or 'gain_db' in raw:
+                raise RnError(f'{where}: image sequences are silent; add their sound to "audio"')
         clip.src_fps = src_fps
-        clip.matrix = source_matrix(video)
-        clip.decoder = video.get('alpha_decoder')
-        src_len = float(video['frames'] / src_fps) if video['frames'] else (video['duration'] or info['duration'] or 0)
-        clip.has_audio = info['audio'] is not None
-        clip.start_s = _position(raw.get('in', 0), f'{where}.in', src_fps)
+        clip.start_s = _position(raw.get('in', 0), f'{where}.in', src_fps, clip.source if clip.kind == 'video' else None)
         if clip.start_s >= src_len:
             raise RnError(f'{where}.in: {clip.start_s:.3f}s is past the end of {clip.source.name} ({src_len:.3f}s)')
         if 'duration' in raw and 'out' in raw:
@@ -176,7 +348,7 @@ def _clip(raw: dict, where: str, edit_dir: Path, fps: Fraction, *, overlay: bool
         if 'duration' in raw:
             clip.frames = _frames(_num(raw['duration'], f'{where}.duration', positive=True), fps)
         else:
-            end = _position(raw['out'], f'{where}.out', src_fps) if 'out' in raw else src_len
+            end = _position(raw['out'], f'{where}.out', src_fps, clip.source if clip.kind == 'video' else None, end=True) if 'out' in raw else src_len
             if end <= clip.start_s:
                 raise RnError(f'{where}.out: must be after "in"')
             clip.frames = _frames((min(end, src_len) - clip.start_s) / speed, fps)
@@ -194,6 +366,7 @@ def _clip(raw: dict, where: str, edit_dir: Path, fps: Fraction, *, overlay: bool
             if not image:
                 raise RnError(f'{where}.image: {clip.source.name} is not an image')
             clip.matrix = source_matrix(image)
+            clip.src_size = (image['width'], image['height'])
         else:
             clip.kind = 'color'
             clip.color = raw['color']
@@ -205,7 +378,7 @@ def _clip(raw: dict, where: str, edit_dir: Path, fps: Fraction, *, overlay: bool
         raise RnError(f'{where}: shorter than one frame at {fps} fps')
 
     if overlay:
-        clip.timeline_start = _frames(_num(raw.get('at', 0), f'{where}.at', minimum=0), fps)
+        clip.timeline_start = _frames(at_s, fps)
         clip.x = int(_num(raw.get('x', 0), f'{where}.x'))
         clip.y = int(_num(raw.get('y', 0), f'{where}.y'))
         clip.w = int(_num(raw['w'], f'{where}.w', positive=True)) if 'w' in raw else None
@@ -229,14 +402,17 @@ def _clip(raw: dict, where: str, edit_dir: Path, fps: Fraction, *, overlay: bool
                 raise RnError(f'{where}.transition: {{"type": one of xfade names (fade, dissolve, wipeleft, slideup, ...), "duration": s}}')
             clip.transition = transition['type']
             clip.transition_frames = _frames(_num(transition.get('duration', 0.5), f'{where}.transition.duration', positive=True), fps)
-    unknown = set(raw) - {'src', 'image', 'color', 'in', 'out', 'duration', 'speed', 'fit', 'audio', 'gain_db', 'at', 'x', 'y',
-                          'w', 'h', 'opacity', 'fade_in', 'fade_out', 'transition', 'note'}
+    clip.keys = _keys(raw.get('keys'), f'{where}.keys', KEYS_OVERLAY if overlay else KEYS_MAIN)
+    if clip.keys and overlay and ('scale' in clip.keys or 'rotate' in clip.keys) and clip.kind == 'color' and not (clip.w and clip.h):
+        raise RnError(f'{where}.keys: give a colour overlay "w" and "h" to scale or rotate it')
+    unknown = set(raw) - {'src', 'frames', 'fps', 'image', 'color', 'in', 'out', 'duration', 'until', 'speed', 'fit', 'audio', 'gain_db',
+                          'at', 'x', 'y', 'w', 'h', 'opacity', 'fade_in', 'fade_out', 'transition', 'keys', 'note'}
     if unknown:
         raise RnError(f'{where}: unknown field(s) {sorted(unknown)}')
     return clip
 
 
-def _audio(raw: dict, where: str, edit_dir: Path) -> AudioItem:
+def _audio(raw: dict, where: str, edit_dir: Path, timeline: Timeline) -> AudioItem:
     if not isinstance(raw, dict):
         raise RnError(f'{where}: expected an object')
     source = _resolve(edit_dir, raw.get('src'), f'{where}.src')
@@ -259,7 +435,7 @@ def _audio(raw: dict, where: str, edit_dir: Path) -> AudioItem:
     unknown = set(raw) - {'src', 'role', 'at', 'in', 'out', 'duration', 'gain_db', 'fade_in', 'fade_out', 'note'}
     if unknown:
         raise RnError(f'{where}: unknown field(s) {sorted(unknown)}')
-    return AudioItem(where=where, source=source, role=role, at=_num(raw.get('at', 0), f'{where}.at', minimum=0), start_s=start,
+    return AudioItem(where=where, source=source, role=role, at=_anchor(raw.get('at', 0), f'{where}.at', timeline), start_s=start,
                      duration=duration, gain_db=_num(raw.get('gain_db', 0), f'{where}.gain_db'),
                      fade_in=_num(raw.get('fade_in', 0), f'{where}.fade_in', minimum=0),
                      fade_out=_num(raw.get('fade_out', 0), f'{where}.fade_out', minimum=0))
@@ -306,19 +482,26 @@ def load(path: str | Path) -> Edit:
         clip.timeline_start = position
         position += clip.frames
     total = position
+    markers_raw = raw.get('markers') or {}
+    if not isinstance(markers_raw, dict):
+        raise RnError('markers: {"name": seconds, ...} on the output timeline')
+    markers = {}
+    for name, value in markers_raw.items():
+        markers[name] = _position(value, f'markers.{name}', fps)
+    timeline = Timeline(fps=fps, edit_dir=edit_dir, base=base, markers=markers)
     overlays = []
     for t, track in enumerate(tracks[1:], start=1):
         if not isinstance(track, dict) or not isinstance(track.get('clips'), list):
             raise RnError(f'tracks[{t}]: expected {{"clips": [...]}}')
         for i, c in enumerate(track['clips']):
-            clip = _clip(c, f'tracks[{t}].clips[{i}]', edit_dir, fps, overlay=True, warnings=warnings)
+            clip = _clip(c, f'tracks[{t}].clips[{i}]', edit_dir, fps, overlay=True, warnings=warnings, timeline=timeline)
             if clip.timeline_start >= total:
                 raise RnError(f'{clip.where}.at: starts after the main track ends ({float(total / fps):.3f}s)')
             if clip.timeline_start + clip.frames > total:
                 warnings.append(f'{clip.where}: runs past the end of the main track; cut at {float(total / fps):.3f}s')
                 clip.frames = total - clip.timeline_start
             overlays.append(clip)
-    audio = [_audio(a, f'audio[{i}]', edit_dir) for i, a in enumerate(raw.get('audio') or [])]
+    audio = [_audio(a, f'audio[{i}]', edit_dir, timeline) for i, a in enumerate(raw.get('audio') or [])]
 
     subtitles = style = None
     if raw.get('subtitles'):
@@ -343,7 +526,7 @@ def load(path: str | Path) -> Edit:
     duck = _num(mix.get('duck_db', 0), 'mix.duck_db', minimum=0)
     crf = int(_num(output.get('crf', 18), 'output.crf', minimum=0))
     preset = output.get('preset', 'medium')
-    unknown = set(raw) - {'output', 'tracks', 'audio', 'subtitles', 'mix', 'note', 'version'}
+    unknown = set(raw) - {'output', 'tracks', 'audio', 'subtitles', 'mix', 'markers', 'note', 'version'}
     if unknown:
         raise RnError(f'unknown top-level field(s) {sorted(unknown)}')
     return Edit(path=path, width=width, height=height, fps=fps, background=background, crf=crf, preset=preset, base=base,
