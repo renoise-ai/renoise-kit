@@ -67,3 +67,17 @@ def test_page_errors_are_reported(tmp_path):
     broken.write_text('<!doctype html><script>window.renderFrame = (i) => { if (i === 1) throw new Error("boom"); };</script>')
     with pytest.raises(RnError, match='boom'):
         capture_command(str(broken), out=str(tmp_path / 'b'), frames=3, width=64, height=64, fps=30, shards=1)
+
+
+def test_grain_keeps_an_overlay_transparent(tmp_path):
+    # The rn capture --help example: grain over a cleared canvas with a title. Grain textures the title only; the
+    # empty overlay stays transparent instead of turning into a grey noise layer (staging2 F5).
+    _chromium_or_skip(tmp_path)
+    page = tmp_path / 'grain.html'
+    page.write_text(PAGE.replace("throw new Error('RNFX missing'); };", "throw new Error('RNFX missing'); RNFX.grain(ctx, i, {}); };"))
+    capture_command(str(page), out=str(tmp_path / 'grain'), frames=2, width=160, height=60, fps=30, shards=1)
+    image = Image.open(tmp_path / 'grain' / '00001.png')
+    assert image.getpixel((150, 5))[3] == 0, 'empty overlay pixels stay transparent'
+    assert image.getpixel((10, 30))[3] == 255, 'the drawn title keeps its alpha'
+    alphas = image.getchannel('A').getdata()
+    assert sum(1 for a in alphas if a == 0) / len(alphas) > 0.9

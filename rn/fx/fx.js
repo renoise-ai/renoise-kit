@@ -56,11 +56,17 @@
       });
     }
     const tile = tiles[key][Math.floor(hash(seed, i, 1) * 4)];
+    // Grain only textures what is already drawn: on a transparent overlay, soft-light over empty pixels would paint
+    // the noise itself and grey out the whole layer. Keep the frame's own alpha by masking with a copy of it.
+    const before = document.createElement('canvas'); before.width = ctx.canvas.width; before.height = ctx.canvas.height;
+    before.getContext('2d').drawImage(ctx.canvas, 0, 0);
     ctx.save();
     ctx.globalCompositeOperation = op; ctx.globalAlpha = amount;
     ctx.translate(Math.floor(hash(seed, i, 2) * T), Math.floor(hash(seed, i, 3) * T));
     ctx.fillStyle = ctx.createPattern(tile, 'repeat');
     ctx.fillRect(-T, -T, w + T, h + T);
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'destination-in';
+    ctx.drawImage(before, 0, 0);
     ctx.restore();
   }
 
