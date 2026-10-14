@@ -83,3 +83,28 @@ def test_ref_writes_a_breakdown(media, tmp_path):
     assert saved['coverage']['sampled'] == 30 and saved['coverage']['frames'] == 60
     assert result['listen']['duration'] == pytest.approx(2.5, abs=0.05)
     assert all((tmp_path / 'ref' / p.split('/')[-1]).exists() for p in saved['coverage']['pages'])
+    assert saved['coverage']['page_frames'][0][0] == 0 and saved['coverage']['page_frames'][-1][1] == 58
+    assert (tmp_path / 'ref' / 'GUIDE.md').read_text().startswith('# Reading a reference edit')
+
+
+def test_cut_sync_measures_offsets_to_the_nearest_onset():
+    from fractions import Fraction
+    from rn.ref import cut_sync
+    cuts = [{'time': 1.0}, {'time': 2.0}, {'time': 3.0}]
+    sync = cut_sync(cuts, [0.95, 2.5, 3.04], Fraction(25))
+    assert sync['offsets_frames'] == [1, -12, -1] and sync['share'] == 0.67
+    assert cut_sync(cuts, [], Fraction(25)) is None
+
+
+def test_a_one_frame_insert_merged_into_a_cut_stays_a_suspect(tmp_path):
+    # Red, a 1-2 frame white insert, red: two strong changes closer than min_gap, so one is merged away.
+    import subprocess
+    from rn.cuts import detect
+    clip = tmp_path / 'insert.mp4'
+    subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'color=red:s=64x64:r=24:d=0.5', '-f', 'lavfi',
+                    '-i', 'color=white:s=64x64:r=24:d=0.0417', '-f', 'lavfi', '-i', 'color=red:s=64x64:r=24:d=0.5',
+                    '-filter_complex', '[0][1][2]concat=n=3:v=1', '-c:v', 'libx264', '-qp', '0', '-pix_fmt', 'yuv420p',
+                    str(clip)], check=True)
+    result = detect(str(clip), 0.3, 0.3)
+    (cut,) = result['cuts']
+    assert any(0 < abs(s['frame'] - cut['frame']) <= 2 for s in result['suspects'])

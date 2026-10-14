@@ -42,14 +42,17 @@ def detect(path: str, threshold: float = DEFAULT_THRESHOLD, min_gap: float = 0.3
             continue
         entry = {'frame': index, 'time': round(float(index / fps), 4), 'score': round(score, 3)}
         if score >= threshold:
-            # A flash or a two-frame dissolve scores twice in a row; keep the stronger of close neighbours.
+            # A flash or a two-frame dissolve scores twice in a row; keep the stronger of close neighbours. The weaker
+            # stays a suspect: it may be a real 1-2 frame insert or a burst of micro-cuts.
             if cuts and index - cuts[-1]['frame'] < gap:
                 if score > cuts[-1]['score']:
-                    cuts[-1] = entry
+                    cuts[-1], entry = entry, cuts[-1]
+                suspects.append(entry)
                 continue
             cuts.append(entry)
         elif score >= threshold / 2:
             suspects.append(entry)
+    suspects.sort(key=lambda s: s['frame'])
     edges = [0, *(c['frame'] for c in cuts), len(scores)]
     shots = [{'shot': i, 'start_frame': a, 'end_frame': b, 'start': round(float(a / fps), 4), 'end': round(float(b / fps), 4),
               'duration': round(float((b - a) / fps), 4)} for i, (a, b) in enumerate(zip(edges, edges[1:]))]
