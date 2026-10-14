@@ -478,6 +478,9 @@ def load(path: str | Path) -> Edit:
             limit = min(base[i - 1].frames, clip.frames) - 1
             if clip.transition_frames > limit:
                 raise RnError(f'{clip.where}.transition.duration: {clip.transition_frames} frames is longer than the clips it joins allow ({limit})')
+            if clip.transition_frames + base[i - 1].transition_frames > base[i - 1].frames:
+                raise RnError(f'{clip.where}.transition.duration: overlaps the transition into the previous clip ({base[i - 1].where}); '
+                              'shorten one of them or lengthen that clip')
             position -= clip.transition_frames
         clip.timeline_start = position
         position += clip.frames

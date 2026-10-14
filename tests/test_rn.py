@@ -157,6 +157,8 @@ def test_assemble_holds_short_source_and_warns(media, tmp_path, capsys):
     ([{'src': 'ramp.mp4', 'duration': 0.5}, {'src': 'ramp.mp4', 'duration': 0.5, 'transition': {'type': 'fade', 'duration': 1}}],
      'longer than the clips'),
     ([{'src': 'ramp.mp4', 'transition': {'type': 'spin', 'duration': 0.2}}], 'xfade names'),
+    ([{'src': 'ramp.mp4', 'duration': 1}, {'src': 'ramp.mp4', 'duration': 0.5, 'transition': {'type': 'fade', 'duration': 0.4}},
+      {'src': 'ramp.mp4', 'duration': 1, 'transition': {'type': 'fade', 'duration': 0.4}}], 'overlaps the transition'),
     ([{'src': 'ramp.mp4', 'at': 1}], 'main-track clips play back to back'),
     ([{'src': 'ramp.mp4', 'in': 9}], 'past the end'),
 ])
@@ -164,6 +166,21 @@ def test_assemble_rejects_bad_edls(media, tmp_path, capsys, clips, message):
     edl = write_edl(media, {'output': {'width': 320, 'height': 240, 'fps': 24}, 'tracks': [{'clips': clips}]}, 'bad.json')
     assert rn('assemble', edl, '-o', tmp_path / 'bad.mp4') == 1
     assert message in capsys.readouterr().err
+
+
+def test_transition_pieces_stay_frame_exact(media, tmp_path):
+    # The main track is joined from slot bodies and pre-rendered transitions (bounded memory for long timelines):
+    # 24 + 24 + 24 frames with two 6-frame dissolves = 60 frames, and untouched frames keep their source index.
+    edl = write_edl(media, {'output': {'width': 320, 'height': 240, 'fps': 24}, 'tracks': [{'clips': [
+        {'src': 'ramp.mp4', 'duration': 1},
+        {'src': 'ramp.mp4', 'duration': 1, 'transition': {'type': 'dissolve', 'duration': 0.25}},
+        {'src': 'ramp.mp4', 'in': 1, 'duration': 1, 'transition': {'type': 'dissolve', 'duration': 0.25}}]}]}, 'pieces.json')
+    out = tmp_path / 'pieces.mp4'
+    assert rn('assemble', edl, '-o', out) == 0
+    assert probe(out, exact=True)['video']['frames'] == 60
+    assert ramp_index(frame_at(out, 10, tmp_path)) == 10, 'first body'
+    assert ramp_index(frame_at(out, 24, tmp_path)) == 6, 'middle body starts after its incoming dissolve'
+    assert ramp_index(frame_at(out, 59, tmp_path)) == 47, 'last clip runs to its own last frame'
 
 
 def test_dry_run_prints_timeline(media, capsys):

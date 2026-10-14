@@ -3,7 +3,9 @@
 Pipeline (spec/mcp/03-media-kit.md §4-5):
 1. every main-track clip -> its own intermediate at the output size/fps with exactly `frames` frames, plus a WAV
    of exactly the same length (a slot engine: each piece is checkable on its own);
-2. one ffmpeg graph joins the slots (concat or xfade), stacks overlay tracks, burns subtitles, encodes video only;
+2. each transition is rendered from the two slot ends it joins, then the pieces are read back in order through the concat
+   demuxer (one decoder at a time, so memory does not grow with the clip count), overlay tracks are stacked, subtitles
+   burned and the video encoded;
 3. audio is mixed separately (clip audio with matching crossfades + audio items + optional ducking), gained to the
    LUFS target and limited until the ENCODED true peak fits; then both streams are copied into the MP4.
 """
@@ -138,26 +140,43 @@ def _render_slot_audio(clip: Clip, edit: Edit, out: Path) -> None:
              '-c:a', 'pcm_f32le', '-y', str(out)])
 
 
-def _join(edit: Edit, slots: list[Path]) -> tuple[list[str], list[str], str]:
-    """Inputs and graph lines that join the main-track slots into [base]."""
-    inputs, lines = [], []
-    # xfade and concat need one shared timebase: 1/fps everywhere, pts = frame number.
-    grid = f'settb={edit.fps.denominator}/{edit.fps.numerator},setpts=N,fps={edit.fps}'
-    for i, slot in enumerate(slots):
-        inputs += ['-i', str(slot)]
-        # Slots already hold exactly `frames` frames; renumber them instead of resampling (fps would drop one on ms timestamps).
-        lines.append(f'[{i}:v]{grid}[s{i}]')
-    current = 's0'
-    for i, clip in enumerate(edit.base[1:], start=1):
-        label = f'j{i}'
-        if clip.transition_frames:
-            offset = clip.timeline_start / edit.fps
-            duration = clip.transition_frames / edit.fps
-            lines.append(f'[{current}][s{i}]xfade=transition={clip.transition}:duration={float(duration):.6f}:offset={float(offset):.6f},{grid}[{label}]')
-        else:
-            lines.append(f'[{current}][s{i}]concat=n=2:v=1:a=0,{grid}[{label}]')
-        current = label
-    return inputs, lines, current
+def _join(edit: Edit, slots: list[Path], work: Path) -> Path:
+    """The main track as a concat-demuxer list: slot bodies and pre-rendered transitions, in timeline order.
+
+    Opening every slot in one graph keeps a decoder and its frame queues alive per clip: 61 1080p clips ran an 8 GB
+    sandbox out of memory. A transition only needs the last frames of one slot and the first of the next."""
+    grid = _grid(edit)
+    pieces: list[Path] = []
+    for i, (clip, slot) in enumerate(zip(edit.base, slots)):
+        head = clip.transition_frames
+        tail = edit.base[i + 1].transition_frames if i + 1 < len(edit.base) else 0
+        if head:
+            previous = edit.base[i - 1]
+            piece = work / f'trans{i:03d}.mkv'
+            duration = head / edit.fps
+            run(['ffmpeg', '-i', str(slots[i - 1]), '-i', str(slot), '-filter_complex',
+                 f'[0:v]trim=start_frame={previous.frames - head},{grid}[a];[1:v]trim=end_frame={head},{grid}[b];'
+                 f'[a][b]xfade=transition={clip.transition}:duration={float(duration):.6f}:offset=0,{grid}[v]',
+                 '-map', '[v]', *INTERMEDIATE, '-r', str(edit.fps), '-y', str(piece)])
+            pieces.append(piece)
+        if clip.frames - head - tail <= 0:
+            continue
+        if not head and not tail:
+            pieces.append(slot)
+            continue
+        piece = work / f'body{i:03d}.mkv'
+        run(['ffmpeg', '-i', str(slot), '-filter_complex', f'[0:v]trim=start_frame={head}:end_frame={clip.frames - tail},{grid}[v]',
+             '-map', '[v]', *INTERMEDIATE, '-r', str(edit.fps), '-y', str(piece)])
+        pieces.append(piece)
+    listing = work / 'main.txt'
+    listing.write_text(''.join(f"file '{piece.resolve()}'\n" for piece in pieces))
+    return listing
+
+
+def _grid(edit: Edit) -> str:
+    # xfade and concat need one shared timebase: 1/fps everywhere, pts = frame number. Slots already hold exactly
+    # `frames` frames; renumber them instead of resampling (fps would drop one on ms timestamps).
+    return f'settb={edit.fps.denominator}/{edit.fps.numerator},setpts=N,fps={edit.fps}'
 
 
 def _overlay_size(clip: Clip, edit: Edit) -> tuple[int, int]:
@@ -218,7 +237,8 @@ def _overlay_chain(clip: Clip, edit: Edit, index: int) -> str:
 
 
 def _render_video(edit: Edit, slots: list[Path], work: Path, out: Path) -> None:
-    inputs, lines, current = _join(edit, slots)
+    inputs = ['-f', 'concat', '-safe', '0', '-i', str(_join(edit, slots, work))]
+    lines, current = [f'[0:v]{_grid(edit)}[base]'], 'base'
     for clip in edit.overlays:
         index = sum(1 for arg in inputs if arg == '-i')
         # A solid has no size of its own: missing dimensions fill the frame.
