@@ -35,11 +35,12 @@ def measure(path: str | Path, *, stream: str = 'a:0') -> dict:
     return {'lufs': pick('I'), 'lra': pick('LRA'), 'true_peak': pick('Peak')}
 
 
-def finish_audio(mix_wav: Path, out_m4a: Path, *, lufs: float | None, true_peak: float) -> dict:
-    """mix_wav -> AAC whose encoded true peak is at or below `true_peak` dBTP."""
+def finish_audio(mix_wav: Path, out_m4a: Path, *, lufs: float | None, true_peak: float, reference: Path | None = None) -> dict:
+    """mix_wav -> AAC whose encoded true peak is at or below `true_peak` dBTP. The LUFS gain is measured on `reference`
+    (default mix_wav): an excerpt keeps the level of the whole mix."""
     gain_db = 0.0
     if lufs is not None:
-        measured = measure(mix_wav)['lufs']
+        measured = measure(reference or mix_wav)['lufs']
         if measured is not None and measured != float('-inf'):
             gain_db = max(-30.0, min(30.0, lufs - measured))
     ceiling = true_peak - 0.5  # headroom for encoder overshoot; tightened below if still too hot

@@ -1,9 +1,9 @@
-"""rn: Renoise media kit. Measure (probe, frame, sheet, cuts, listen, faces, ref), render (capture, fx, fonts,
-assets, captions), assemble an EDL frame-exactly, compare, finish and QA. It measures and guarantees the mechanics; every
-creative decision stays yours.
+"""rn: Renoise media kit. Measure (probe, frame, sheet, cuts, listen, faces, ref, signal, align, text, matte), render
+(capture, fx, fonts, assets, captions), edit and assemble an EDL frame-exactly, compare, finish, QA and export. It measures
+and guarantees the mechanics; every creative decision stays yours.
 
 Every command prints a short summary; --json FILE writes the full result. Failures exit non-zero with
-`rn: error: <reason>` on the last line. Contract: spec/mcp/03-media-kit.md.
+`rn: error: <reason>` on the last line. Contract: SPEC.md in the renoise-kit repository.
 """
 from __future__ import annotations
 
@@ -135,6 +135,45 @@ def _parser() -> argparse.ArgumentParser:
     capture.add_argument('--shards', type=int, default=4, help='parallel Chromium instances (each boots in 1-3 s)')
     capture.add_argument('--start', type=int, default=0, help='first frame index (render a part)')
 
+    signal = add('signal', 'frame-by-frame numbers: luma, motion, saturation, loudness, bands, onsets, clicks',
+                 'One series per quantity on the video\'s frame clock (30/s for audio alone): luma, frame difference and\n'
+                 'saturation (0..1); rms, low/mid/high band levels (dB) and onset (dB of spectral rise); plus flash frames\n'
+                 'and click times. Flashes, freezes, pacing, beats and music-driven motion all read from it. -o draws them.')
+    signal.add_argument('file')
+    signal.add_argument('-o', '--out', metavar='PNG', help='plot the series on one time axis (needs matplotlib: extra listen)')
+
+    align = add('align', 'where recording B sits inside A, by sound (offset + how sure)',
+                'Cross-correlates onset envelopes, then refines on the waveform: a song inside a reference edit, camera\n'
+                'angles, a separately recorded voice. "match" is the waveform correlation at that offset (near 1: the same\n'
+                'sound); "distinct" how far ahead of other offsets it is (low for repetitive music).')
+    align.add_argument('a')
+    align.add_argument('b')
+    align.add_argument('--max-offset', type=float, metavar='S', help='only consider offsets within +-S seconds')
+
+    matte = add('matte', 'subject alpha per frame (rembg) as a grey PNG sequence for EDL masks',
+                'White = subject. Use it as an overlay "mask" ("invert": true keeps graphics off the subject, e.g. text\n'
+                'behind a person) or --cutout for RGBA cut-outs to place as an overlay. Check edges on a sheet.')
+    matte.add_argument('file')
+    matte.add_argument('-o', '--out', required=True, help='output folder (its PNGs are replaced)')
+    matte.add_argument('--model', default='isnet-general-use', help='rembg model: isnet-general-use (any subject), u2net_human_seg (people), ...')
+    matte.add_argument('--every', type=int, default=1, help='compute every Nth frame and hold in between (faster, less exact)')
+    matte.add_argument('--cutout', action='store_true', help='write the subject as RGBA instead of the grey matte')
+
+    text = add('text', 'words on screen and when they are there (tesseract OCR)',
+               'Reads every --every-th frame (default two per second); lines with boxes per frame, and spans: the same\n'
+               'line read in consecutive samples. OCR misreads stylised type: boxes are where to look, strings a draft.')
+    text.add_argument('file')
+    text.add_argument('--every', type=int, metavar='N')
+    text.add_argument('--lang', help='tesseract languages, e.g. eng+chi_sim (default: those installed of eng, chi_sim, chi_tra, jpn, kor)')
+    text.add_argument('--min-conf', type=float, default=50, help='drop words below this confidence (0-100)')
+
+    export = add('export', 'the EDL as an editable project: .otio, .fcpxml (Final Cut), .xml (Premiere, Resolve)',
+                 'Cuts, trims, speed, transitions, nested edits, overlay and audio timing carry over, media by absolute path.\n'
+                 'Position/size, keys, blend, masks, raw filters and gain curves are kept as "rn" metadata and listed.')
+    export.add_argument('edl')
+    export.add_argument('-o', '--out', required=True, help='.otio, .fcpxml or .xml')
+    export.add_argument('--srt', metavar='FILE', help='also write the subtitles as SRT')
+
     fx = add('fx', 'list the effects library (grain, leak, flash, glitch, ...)',
              'Readable, editable source: RNFX.<name> in pages for rn capture (fx.js), rn.fx.<name> for numpy frames in\n'
              'Python. Call it, copy and change it, or ignore it; defaults are engine defaults, not a style.')
@@ -198,18 +237,66 @@ def _parser() -> argparse.ArgumentParser:
                    '  "mix": {"lufs": -14, "true_peak": -1.0, "duck_db": 10}            # duck music under voice\n'
                    '}\n'
                    'Positions: in/out take seconds, {"frame": n} or {"shot": n, "offset": s} (shots from rn cuts).\n'
-                   'Overlay "at"/"until" and audio "at" take seconds or an anchor + "offset": {"clip": i}, {"clip_end": i}\n'
-                   '(main-track clip i as laid out), {"marker": name}, {"frame": n}, {"beat": n, "listen": f.json},\n'
-                   '{"word": n, "listen": f.json, "edge": "start"|"end"}.\n'
+                   'Overlay "at"/"until" and audio "at" take seconds or an anchor + "offset": {"clip": i or "id"},\n'
+                   '{"clip_end": i or "id"} (main-track clip as laid out, or an earlier overlay by id), {"marker": name},\n'
+                   '{"frame": n}, {"beat": n, "listen": f.json}, {"word": n, "listen": f.json, "edge": "start"|"end"}.\n'
                    'Keys [t, value, ease?] (t from the clip start; eases linear in out inout in3 out3 inout3 hold):\n'
-                   'main track scale/x/y/rotate (x, y as fractions of the frame); overlays scale/x/y/rotate/opacity\n'
-                   '(x, y in px, scale and rotate about the layer centre). Keep main-track scale >= 1: edges smear.')
+                   'main track scale/x/y/rotate (x, y as fractions of the frame), speed (a ramp; drops the clip\'s sound),\n'
+                   'gain_db; overlays scale/x/y/rotate/opacity/speed (x, y in px, about the layer centre); audio gain_db.\n'
+                   'Keep main-track scale >= 1: edges smear.\n'
+                   'Any clip or audio item: "id" (anchors, rn edit), "meta" (anything, kept as is), "vf" / "af" (one raw\n'
+                   'ffmpeg filter chain, e.g. "eq=saturation=1.2,unsharp"; af on main-track clips and audio).\n'
+                   'Main track: "ranges": [[in, out], ...] plays spans of one source back to back; "src": "part.json"\n'
+                   'plays another EDL. Overlays: "blend": screen|multiply|add|overlay|... ; "mask": {"frames"|"image"|"src":\n'
+                   '..., "mode": "luma"|"alpha", "invert": bool} (full frame, e.g. from rn matte). Overlays and audio:\n'
+                   '"pivot": s puts that point of the source (a hit, a downbeat) on "at". "mix": {"cut_fade": 0.01} fades\n'
+                   'every hard cut\'s own sound. "accept": [{"check", "at", "note"}] waives qa warnings judged intended.')
     assemble.add_argument('edl')
     assemble.add_argument('-o', '--out', default='out.mp4')
     assemble.add_argument('--dry-run', action='store_true', help='validate and print the timeline without rendering')
     assemble.add_argument('--keep', action='store_true', help='keep per-clip slots and the mix next to the output (<out>.parts/)')
     assemble.add_argument('--preview', action='store_true',
                           help='half-size draft with a fast encode: check timing and layout before the full render (not for delivery)')
+    assemble.add_argument('--placeholders', action='store_true',
+                          help='a missing source becomes a card (id, meta.label or meta.prompt) for its time span instead of an error')
+    assemble.add_argument('--range', metavar='A-B', help='render only seconds A to B of the timeline (laid out in full, so anchors hold)')
+    assemble.add_argument('--no-cache', action='store_true',
+                          help='render every slot afresh (default: reuse slots and nested edits from .rn-cache next to the EDL, or RN_CACHE)')
+
+    edit = add('edit', 'change an EDL by operations on clip ids (checked before writing)',
+               'Each operation lays the whole edit out again and writes the file only if it is valid. Clips are addressed\n'
+               'by "id" (rn edit e.json ids gives every clip one) or by position "track:index" / "audio:index".\n'
+               'The main track plays back to back: deleting or trimming there ripples what follows; overlays and audio\n'
+               'anchored with {"clip": "<id>"} follow, ones at fixed seconds stay. Examples:\n'
+               '  rn edit e.json ids\n'
+               '  rn edit e.json split c3 --at 4.2\n'
+               '  rn edit e.json set c3 out=5.5 meta.take=2 --unset speed\n'
+               '  rn edit e.json delete c4 --lift\n'
+               '  rn edit e.json insert --after c2 --clip \'{"id": "c9", "src": "s9.mp4", "out": 2}\'\n'
+               '  rn edit e.json move t1 --track 2')
+    edit.add_argument('edl')
+    ops = edit.add_subparsers(dest='op', required=True, metavar='op')
+    ops.add_parser('ids', help='give every clip and audio item without an id one (c1.. main, o1.. overlays, a1.. audio)')
+    op_set = ops.add_parser('set', help='set fields: key=value (JSON when it parses), dotted keys reach into objects')
+    op_set.add_argument('ref')
+    op_set.add_argument('assignments', nargs='*', metavar='key=value')
+    op_set.add_argument('--unset', action='append', default=[], metavar='KEY')
+    op_split = ops.add_parser('split', help='cut a clip in two at a timeline time; both halves play as the one did')
+    op_split.add_argument('ref')
+    op_split.add_argument('--at', type=float, required=True, help='timeline seconds')
+    op_split.add_argument('--id', help='id for the second half (default <id>-2)')
+    op_delete = ops.add_parser('delete', help='remove a clip (main track ripples; --lift keeps a gap)')
+    op_delete.add_argument('ref')
+    op_delete.add_argument('--lift', action='store_true')
+    for name, text in (('insert', 'add a clip given as JSON or @file.json'), ('move', 'move a clip next to another or onto a track')):
+        op = ops.add_parser(name, help=text)
+        if name == 'insert':
+            op.add_argument('--clip', required=True, help='clip JSON or @file.json')
+        else:
+            op.add_argument('ref')
+        op.add_argument('--before', metavar='ID')
+        op.add_argument('--after', metavar='ID')
+        op.add_argument('--track', metavar='N|audio', help='append to track N (one past the last adds a track) or to audio')
 
     compare = add('compare', 'two videos side by side at the same times (+ cut timing)',
                   'A cut against its reference, or two versions of a cut: frames at the same times, A on the top row and B\n'
@@ -237,10 +324,12 @@ def _parser() -> argparse.ArgumentParser:
     finish.add_argument('--crf', type=int, default=18)
     finish.add_argument('--preset', default='medium')
     finish.add_argument('--copy-video', action='store_true', help='keep the video stream when it is already H.264 yuv420p')
+    finish.add_argument('--height', type=int, metavar='N', help='scale to N px high, aspect kept (e.g. a 1080p copy of a 4K master)')
 
     qa = add('qa', 'delivery checks on an encoded file (exit 1 on FAIL)',
              'Frame count, fps, size, codec, pix_fmt, SAR, color tags, faststart, audio/video duration, container\n'
-             'duration, true peak, loudness, black frames, frozen frames, black bars. With --edl the expected frames,\n'
+             'duration, true peak, loudness, dead air, level jumps, clicks, black frames, frozen frames, black bars,\n'
+             'fixed frame rate. With --edl the expected frames,\n'
              'size, fps and loudness come from the edit, and its color/still clips are not flagged. FAIL blocks\n'
              'delivery; WARN means look at it (it may be intended). Check fixes on the new render, not the old one.')
     qa.add_argument('file')
@@ -252,6 +341,8 @@ def _parser() -> argparse.ArgumentParser:
     qa.add_argument('--lufs-tolerance', type=float, default=2.0)
     qa.add_argument('--true-peak', type=float, help='limit in dBTP (default -1.0)')
     qa.add_argument('--require-audio', action='store_true')
+    qa.add_argument('--accept', action='append', default=[], metavar='CHECK[@T]',
+                    help='a WARN judged intended: the whole check, or the finding at T seconds (EDL: "accept": [{"check", "at", "note"}])')
     return parser
 
 
@@ -268,7 +359,8 @@ def _print_summary(command: str, result: dict) -> None:
         out = result['output']
         if 'path' in result:
             print(f'{result["path"]}  {out["width"]}x{out["height"]} {out["fps"]}fps  {out["frames"]} frames  {out["duration"]}s'
-                  + ('  (preview: draft size and encode, not for delivery)' if result.get('preview') else ''))
+                  + ('  (preview: draft size and encode, not for delivery)' if result.get('preview') else '')
+                  + (f'  (range: timeline frames {result["range"]["start_frame"]}..{result["range"]["end_frame"] - 1})' if result.get('range') else ''))
             if result.get('audio'):
                 audio = result['audio']
                 print(f'audio {audio["lufs"]} LUFS, true peak {audio["true_peak"]} dBTP, gain {audio["gain_db"]} dB')
@@ -276,9 +368,9 @@ def _print_summary(command: str, result: dict) -> None:
             print(f'timeline {out["width"]}x{out["height"]} {out["fps"]}fps  {out["frames"]} frames  {out["duration"]}s')
             for clip in result['base']:
                 fade = f'  (xfade {clip["transition_frames"]}f)' if clip['transition_frames'] else ''
-                print(f'  {clip["where"]}: frames {clip["start_frame"]}..{clip["start_frame"] + clip["frames"] - 1}{fade}')
+                print(f'  {clip["id"] or clip["where"]}: frames {clip["start_frame"]}..{clip["start_frame"] + clip["frames"] - 1}{fade}')
             for clip in result['overlays']:
-                print(f'  {clip["where"]}: overlay frames {clip["start_frame"]}..{clip["start_frame"] + clip["frames"] - 1}')
+                print(f'  {clip["id"] or clip["where"]}: overlay frames {clip["start_frame"]}..{clip["start_frame"] + clip["frames"] - 1}')
         for warning in result.get('warnings', []):
             print(f'warning: {warning}')
     elif command == 'finish':
@@ -295,10 +387,11 @@ def _print_summary(command: str, result: dict) -> None:
               f'{len(result["checks"]) - result["failed"] - result["warnings"]} passed  ({result["path"]})')
 
 
-SUMMARIZED = {'cuts', 'listen', 'faces', 'ref', 'capture', 'fx', 'fonts', 'assets', 'captions', 'compare'}
+SUMMARIZED = {'cuts', 'listen', 'faces', 'ref', 'capture', 'fx', 'fonts', 'assets', 'captions', 'compare', 'edit', 'signal', 'align',
+              'matte', 'text', 'export'}
 # The pip extra that brings a command's optional Python modules (the media sandbox has them all).
 EXTRAS = {'listen': 'listen', 'ref': 'listen', 'faces': 'faces', 'capture': 'capture', 'captions': 'captions', 'fonts': 'fonts',
-          'fx': 'fx'}
+          'signal': 'listen', 'matte': 'matte', 'export': 'export'}
 
 
 def _size(text: str) -> tuple[int, int]:
@@ -341,6 +434,37 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
         lines = [f'{e["name"]:10} {e["js"]:16} {e["py"]:18} {e["what"]}' for e in result['effects']]
         return result, lines + ([f'source: {result["js"]}', f'        {result["py"]}'] if args.source else
                                 ['rn fx --source prints the files to read or copy'])
+    elif command == 'edit':
+        from . import editops
+        path = Path(args.edl)
+        if args.op == 'ids':
+            result = editops.ids_op(path)
+        elif args.op == 'set':
+            result = editops.set_op(path, args.ref, args.assignments, args.unset)
+        elif args.op == 'split':
+            result = editops.split_op(path, args.ref, args.at, args.id)
+        elif args.op == 'delete':
+            result = editops.delete_op(path, args.ref, args.lift)
+        elif args.op == 'insert':
+            result = editops.insert_op(path, args.clip, args.before, args.after, args.track)
+        else:
+            result = editops.move_op(path, args.ref, args.before, args.after, args.track)
+        return result, editops.summary_lines(result)
+    elif command == 'signal':
+        from .signal import signal_command, summary_lines
+        result = signal_command(args.file, out=args.out)
+    elif command == 'align':
+        from .align import align_command, summary_lines
+        result = align_command(args.a, args.b, max_offset=args.max_offset)
+    elif command == 'matte':
+        from .matte import matte_command, summary_lines
+        result = matte_command(args.file, out=args.out, model=args.model, every=args.every, cutout=args.cutout)
+    elif command == 'text':
+        from .text import summary_lines, text_command
+        result = text_command(args.file, every=args.every, lang=args.lang, min_conf=args.min_conf)
+    elif command == 'export':
+        from .export import export_command, summary_lines
+        result = export_command(args.edl, args.out, srt=args.srt)
     elif command == 'compare':
         from .compare import compare_command, summary_lines
         result = compare_command(args.a, args.b, out=args.out, count=args.count, seconds=args.seconds, width=args.width,
@@ -387,17 +511,18 @@ def main(argv: list[str] | None = None) -> int:
             result, lines = _run_summarized(args)
         elif args.command == 'assemble':
             from .assemble import assemble_command
-            result = assemble_command(args.edl, args.out, dry_run=args.dry_run, keep=args.keep, preview=args.preview)
+            result = assemble_command(args.edl, args.out, dry_run=args.dry_run, keep=args.keep, preview=args.preview,
+                                      cache=not args.no_cache, placeholders=args.placeholders, time_range=args.range)
         elif args.command == 'finish':
             from .assemble import finish_command
             lufs = None if args.lufs == 'keep' else float(args.lufs)
             result = finish_command(args.file, args.out, lufs=lufs, true_peak=args.true_peak, crf=args.crf,
-                                    preset=args.preset, copy_video=args.copy_video)
+                                    preset=args.preset, copy_video=args.copy_video, height=args.height)
         else:
-            from .qa import qa_command
+            from .qa import parse_accept, qa_command
             result = qa_command(args.file, edl=args.edl, frames=args.expect_frames, size=args.expect_size, fps=args.expect_fps,
                                 lufs=args.lufs, lufs_tolerance=args.lufs_tolerance, true_peak=args.true_peak,
-                                require_audio=args.require_audio)
+                                require_audio=args.require_audio, accept=parse_accept(args.accept))
     except RnError as error:
         print(f'rn: error: {error}', file=sys.stderr)
         return 1

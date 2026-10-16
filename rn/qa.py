@@ -75,13 +75,35 @@ def _covered(interval: tuple[float, float | None], ranges: list[tuple[float, flo
     return any(a - 0.05 <= start and stop <= b + 0.05 for a, b in ranges)
 
 
+def parse_accept(values: list[str]) -> list[dict]:
+    """--accept CHECK or CHECK@SECONDS."""
+    accepted = []
+    for value in values:
+        name, _, at = value.partition('@')
+        try:
+            accepted.append({'check': name, **({'at': float(at)} if at else {}), 'note': 'command line'})
+        except ValueError:
+            raise RnError(f'--accept {value}: CHECK or CHECK@SECONDS, e.g. dead_air@12.5') from None
+    return accepted
+
+
 def qa_command(path: str, *, edl: str | None, frames: int | None, size: str | None, fps: str | None, lufs: float | None,
-               lufs_tolerance: float, true_peak: float | None, require_audio: bool) -> dict:
+               lufs_tolerance: float, true_peak: float | None, require_audio: bool, accept: list[dict] | None = None) -> dict:
     edit = load(edl) if edl else None
     checks: list[dict] = []
+    accepts = (edit.accept if edit else []) + (accept or [])
 
     def check(name: str, status: str, detail: str):
         checks.append({'check': name, 'status': status, 'detail': detail})
+
+    def keep(name: str, found: list, span) -> tuple[list, int]:
+        """Findings of an interval check minus those accepted (an accept "at" inside the interval, or without "at")."""
+        kept = [f for f in found if not any(a['check'] == name and ('at' not in a or span(f)[0] - 0.05 <= a['at'] <= span(f)[1] + 0.05)
+                                            for a in accepts)]
+        return kept, len(found) - len(kept)
+
+    def note(text: str, dropped: int) -> str:
+        return text + (f' ({dropped} accepted)' if dropped else '')
 
     info = probe(path, exact=True)
     video, audio = info['video'], info['audio']
@@ -145,13 +167,19 @@ def qa_command(path: str, *, edl: str | None, frames: int | None, size: str | No
             else:
                 check('loudness', 'PASS', f'{integrated:.1f} LUFS, LRA {loud["lra"]}')
             sound = _sound(path, video_seconds)
-            check('dead_air', 'WARN' if sound['silence'] else 'PASS',
-                  ', '.join(f'{a:.2f}-{b:.2f}s' for a, b in sound['silence']) + ' below -70 dBFS (fill with a tail, room tone or bed)'
-                  if sound['silence'] else 'no digital silence inside the mix')
-            jumps = sound['jumps']
-            check('level_jumps', 'WARN' if jumps else 'PASS',
-                  ', '.join(f'{t:.1f}s {a:.0f}->{b:.0f} dB' for t, a, b in jumps[:8]) + (f' (+{len(jumps) - 8} more)' if len(jumps) > 8 else '')
-                  if jumps else f'no jump >= {JUMP_DB} dB between 100 ms windows')
+            silence, dropped = keep('dead_air', sound['silence'], lambda f: f)
+            check('dead_air', 'WARN' if silence else 'PASS', note(
+                ', '.join(f'{a:.2f}-{b:.2f}s' for a, b in silence) + ' below -70 dBFS (fill with a tail, room tone or bed)'
+                if silence else 'no digital silence inside the mix', dropped))
+            jumps, dropped = keep('level_jumps', sound['jumps'], lambda f: (f[0] - 0.1, f[0]))
+            check('level_jumps', 'WARN' if jumps else 'PASS', note(
+                ', '.join(f'{t:.1f}s {a:.0f}->{b:.0f} dB' for t, a, b in jumps[:8]) + (f' (+{len(jumps) - 8} more)' if len(jumps) > 8 else '')
+                if jumps else f'no jump >= {JUMP_DB} dB between 100 ms windows', dropped))
+            from .signal import clicks, pcm
+            pops, dropped = keep('clicks', clicks(pcm(path)), lambda f: (f, f))
+            check('clicks', 'WARN' if pops else 'PASS', note(
+                ', '.join(f'{t:.3f}s' for t in pops[:8]) + ' (a lone sample step: an edit without a fade, or a glitch)'
+                if pops else 'no lone sample steps', dropped))
         else:
             check('loudness', 'WARN', 'audio track is silent')
     else:
@@ -162,16 +190,23 @@ def qa_command(path: str, *, edl: str | None, frames: int | None, size: str | No
 
     scan = _scan(path)
     black = [b for b in scan['black'] if not _covered(b, _intended(edit, 'black'), video_seconds)]
+    black, dropped = keep('black_frames', black, lambda f: f)
     check('black_frames', 'WARN' if black else 'PASS',
-          ', '.join(f'{a:.2f}-{b:.2f}s' for a, b in black) if black else 'none outside intended color clips')
+          note(', '.join(f'{a:.2f}-{b:.2f}s' for a, b in black) if black else 'none outside intended color clips', dropped))
     freezes = [f for f in scan['freeze'] if not _covered(f, _intended(edit, 'freeze'), video_seconds)]
-    check('frozen_frames', 'WARN' if freezes else 'PASS',
-          ', '.join(f'{a:.2f}-{(b if b is not None else video_seconds):.2f}s' for a, b in freezes) if freezes else 'none outside stills')
+    freezes, dropped = keep('frozen_frames', freezes, lambda f: (f[0], f[1] if f[1] is not None else video_seconds))
+    check('frozen_frames', 'WARN' if freezes else 'PASS', note(
+        ', '.join(f'{a:.2f}-{(b if b is not None else video_seconds):.2f}s' for a, b in freezes) if freezes else 'none outside stills', dropped))
     if scan['crop']:
         w, h, x, y = scan['crop']
         bars = w < video['width'] - 8 or h < video['height'] - 8
         check('black_bars', 'WARN' if bars else 'PASS', f'picture area {w}x{h}+{x}+{y} of {dims}' if bars else 'full frame used')
 
+    for item in checks:  # a whole-check accept (no "at") turns a WARN into an accepted PASS; a FAIL is never waived
+        waiver = next((a for a in accepts if a['check'] == item['check'] and 'at' not in a), None)
+        if item['status'] == 'WARN' and waiver:
+            item['status'], item['accepted'] = 'PASS', waiver.get('note', '')
+            item['detail'] += f' (accepted: {waiver.get("note") or "intended"})'
     failed = [c for c in checks if c['status'] == 'FAIL']
     warned = [c for c in checks if c['status'] == 'WARN']
     return {'path': path, 'status': 'FAIL' if failed else 'PASS', 'failed': len(failed), 'warnings': len(warned), 'checks': checks}

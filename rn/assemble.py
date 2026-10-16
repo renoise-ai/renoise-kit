@@ -11,14 +11,19 @@ Pipeline (spec/mcp/03-media-kit.md §4-5):
 """
 from __future__ import annotations
 
+import dataclasses
+import hashlib
+import json
 import math
+import os
 import shutil
 import tempfile
 from fractions import Fraction
 from pathlib import Path
 
+from . import __version__
 from . import audio as audio_mod
-from .edl import Clip, Edit, load
+from .edl import Clip, Edit, cache_dir, load, source_offsets
 from .ff import RnError, ff_color, has_filter, probe, run, source_matrix, to_bt709
 
 SR = audio_mod.SAMPLE_RATE
@@ -37,14 +42,35 @@ def _fit(clip: Clip, width: int, height: int, background: str) -> str:
     return f'{scale}:flags=lanczos'
 
 
+REMAP_SEGMENTS = 64  # a speed ramp's time map as at most this many straight pieces (well under a frame of error)
+
+
+def _remap(points: list, frames: int, fps: Fraction) -> str:
+    """setpts expression in T (source seconds from the clip's in) -> output seconds: the inverse of the ramp's integral,
+    piecewise linear through its value at every few output frames."""
+    offsets = source_offsets(points, frames, fps)
+    step = max(1, math.ceil(frames / REMAP_SEGMENTS))
+    marks = [(offsets[n], n / float(fps)) for n in [*range(0, frames, step), frames]]
+    tau_end, t_end = marks[-1]
+    expr = f'({t_end:.6f}+(T-{tau_end:.6f})/{points[-1][1]:.6f})'  # past the last mark: the final speed
+    for (tau0, t0), (tau1, t1) in reversed(list(zip(marks, marks[1:]))):
+        if tau1 > tau0:
+            expr = f'if(lt(T,{tau1:.6f}),{t0:.6f}+(T-{tau0:.6f})*{(t1 - t0) / (tau1 - tau0):.6f},{expr})'
+    return expr
+
+
 def _timing(clip: Clip, fps: Fraction) -> str:
     """Source range -> output frame grid. Starts half a source frame early so float rounding never drops the first frame."""
     start = max(0.0, clip.start_s - 0.5 / float(clip.src_fps)) if clip.src_fps else clip.start_s
     chain = f'setpts=PTS-STARTPTS,trim=start={start:.6f},setpts=PTS-STARTPTS'
-    if clip.speed != 1:
+    ramp = (clip.keys or {}).get('speed')
+    if ramp:
+        chain += f",setpts='{_remap(ramp, clip.frames, fps)}'/TB"
+    elif clip.speed != 1:
         chain += f',setpts=PTS/{clip.speed:.6f}'
     # Slow motion blends neighbouring frames instead of repeating them (a visible stutter at 0.3-1x).
-    chain += f',framerate=fps={fps}' if clip.speed < 1 else f',fps={fps}'
+    slow = min(v for _, v, _ in ramp) < 1 if ramp else clip.speed < 1
+    chain += f',framerate=fps={fps}' if slow else f',fps={fps}'
     return chain
 
 
@@ -103,6 +129,8 @@ def _render_slot(clip: Clip, edit: Edit, out: Path) -> None:
         cy = f'(H/2+({_curve(clip.keys.get("y"), t, 0)})*H)'
         chain += ',perspective=' + _perspective(clip.keys, edit.fps, centre=(cx, cy)).replace('{px}', 'W/2').replace('{py}', 'H/2') \
             + ':eval=frame:interpolation=cubic'
+    if clip.vf:
+        chain += f',{clip.vf}'
     chain += f',setsar=1,format=yuv420p,{audio_mod.BT709}'
     # Hold the last frame if the source runs short, then cut to the exact frame count.
     chain += f',tpad=stop_mode=clone:stop={clip.frames},trim=end_frame={clip.frames},setpts=N/({edit.fps}*TB)'
@@ -125,7 +153,16 @@ def _atempo(speed: float) -> str:
     return ','.join(f'atempo={f:.6f}' for f in factors if abs(f - 1) > 1e-9)
 
 
-def _render_slot_audio(clip: Clip, edit: Edit, out: Path) -> None:
+def _gain(keys: dict | None, af: str | None) -> str:
+    """keys.gain_db (dB over t, the stream's own seconds) and a raw "af" chain, as filters to append."""
+    chain = ''
+    if keys and 'gain_db' in keys:
+        chain += f",volume=volume='pow(10,({_curve(keys['gain_db'], 't', 0)})/20)':eval=frame"
+    return chain + (f',{af}' if af else '')
+
+
+def _render_slot_audio(clip: Clip, edit: Edit, out: Path, fades: tuple[float, float] = (0.0, 0.0)) -> None:
+    """The clip's own sound, exactly as long as its slot; `fades` (in, out) soften hard cuts (mix.cut_fade)."""
     samples = round(clip.frames / edit.fps * SR)
     if clip.audio and clip.has_audio:
         chain = f'asetpts=PTS-STARTPTS,atrim=start={clip.start_s:.6f},asetpts=PTS-STARTPTS'
@@ -133,7 +170,12 @@ def _render_slot_audio(clip: Clip, edit: Edit, out: Path) -> None:
         chain += (',' + tempo if tempo else '') + f',aresample={SR},aformat=sample_fmts=flt:channel_layouts=stereo'
         if clip.gain_db:
             chain += f',volume={clip.gain_db}dB'
+        chain += _gain(clip.keys, clip.af)
         chain += f',apad,atrim=end_sample={samples}'
+        if fades[0]:
+            chain += f',afade=t=in:d={fades[0]:.4f}'
+        if fades[1]:
+            chain += f',afade=t=out:st={max(0.0, samples / SR - fades[1]):.6f}:d={fades[1]:.4f}'
         run(['ffmpeg', '-i', str(clip.source), '-filter_complex', f'[0:a]{chain}[a]', '-map', '[a]', '-c:a', 'pcm_f32le', '-y', str(out)])
     else:
         run(['ffmpeg', '-f', 'lavfi', '-i', f'anullsrc=r={SR}:cl=stereo', '-af', f'atrim=end_sample={samples}',
@@ -206,6 +248,8 @@ def _overlay_chain(clip: Clip, edit: Edit, index: int) -> str:
         parts.append(_timing(clip, edit.fps))
     size = f'{clip.w or -2}:{clip.h or -2}' if (clip.w or clip.h) and clip.kind != 'color' else 'iw:ih'
     parts.append(f'scale={size}:flags=lanczos:{to_bt709(clip.matrix)}')
+    if clip.vf:
+        parts.append(clip.vf)
     parts.append(f'format=yuva420p,{audio_mod.BT709}')
     # Integer frame pts on the output grid (as _join): a float seconds offset truncates one frame early.
     parts.append(f'tpad=stop_mode=clone:stop={clip.frames},trim=end_frame={clip.frames},'
@@ -236,17 +280,53 @@ def _overlay_chain(clip: Clip, edit: Edit, index: int) -> str:
     return f'[{index}:v]' + ','.join(parts) + f'[o{index}]'
 
 
-def _render_video(edit: Edit, slots: list[Path], work: Path, out: Path) -> None:
+def _render_video(edit: Edit, slots: list[Path], work: Path, out: Path, span: tuple[int, int]) -> None:
     inputs = ['-f', 'concat', '-safe', '0', '-i', str(_join(edit, slots, work))]
     lines, current = [f'[0:v]{_grid(edit)}[base]'], 'base'
-    for clip in edit.overlays:
+    def add(clip: Clip) -> int:
         index = sum(1 for arg in inputs if arg == '-i')
         # A solid has no size of its own: missing dimensions fill the frame.
-        size = (clip.w or edit.width, clip.h or edit.height)
-        inputs += _video_input(clip, edit.fps, size)
+        inputs.extend(_video_input(clip, edit.fps, (clip.w or edit.width, clip.h or edit.height)))
         lines.append(_overlay_chain(clip, edit, index))
+        return index
+
+    def canvas(color: str, fmt: str) -> str:
+        """A full-frame stream lasting the whole timeline, to lay a layer or a matte on."""
+        index = sum(1 for arg in inputs if arg == '-i')
+        inputs.extend(['-f', 'lavfi', '-i', f'color=c={color}:s={edit.width}x{edit.height}:r={edit.fps}:'
+                                             f'd={float(edit.total_frames / edit.fps):.6f},format={fmt}'])
+        return f'{index}:v'
+
+    for clip in edit.overlays:
+        index = add(clip)
         x, y = (-MARGIN, -MARGIN) if _moves(clip) else (clip.x, clip.y)
-        lines.append(f'[{current}][o{index}]overlay=x={x}:y={y}:eof_action=pass:format=auto[ov{index}]')
+        if not (clip.mask or clip.blend):
+            lines.append(f'[{current}][o{index}]overlay=x={x}:y={y}:eof_action=pass:format=auto[ov{index}]')
+            current = f'ov{index}'
+            continue
+        # Masks and blend modes work on the layer spread over the whole frame and timeline (alpha kept).
+        lines.append(f'[{canvas("black@0", "yuva420p")}][o{index}]overlay=x={x}:y={y}:eof_action=pass:format=auto[layer{index}]')
+        layer = f'layer{index}'
+        if clip.mask:
+            matte = add(clip.mask)
+            pick = 'alphaextract' if clip.mask_mode == 'alpha' else 'format=gray'
+            # Inverted before it is laid on white: where the matte has no frames the layer stays unmasked.
+            lines.append(f'[o{matte}]{pick}{",negate" if clip.mask_invert else ""}[mg{index}]')
+            lines.append(f'[{canvas("white", "gray")}][mg{index}]overlay=eof_action=pass:format=auto,format=gray[mk{index}]')
+            lines.append(f'[{layer}]split[lc{index}][la{index}];[la{index}]alphaextract[a{index}];'
+                         f'[a{index}][mk{index}]blend=all_mode=multiply[am{index}];[lc{index}][am{index}]alphamerge[lm{index}]')
+            layer = f'lm{index}'
+        if clip.blend and clip.blend != 'normal':
+            # Blend modes are RGB arithmetic: convert explicitly (BT.709 limited) both ways, never by swscale defaults.
+            rgb = 'scale=in_color_matrix=bt709:in_range=tv'
+            lines.append(f'[{current}]{rgb},format=gbrp,split[b1_{index}][b2_{index}]')
+            lines.append(f'[{layer}]{rgb},format=gbrap,split[l1_{index}][l2_{index}];[l1_{index}]format=gbrp[lr{index}];'
+                         f'[l2_{index}]alphaextract[lx{index}]')
+            lines.append(f'[b1_{index}][lr{index}]blend=all_mode={clip.blend}[bl{index}];[bl{index}][lx{index}]alphamerge[bx{index}]')
+            lines.append(f'[b2_{index}][bx{index}]overlay=format=gbrp,scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,'
+                         f'{audio_mod.BT709}[ov{index}]')
+        else:
+            lines.append(f'[{current}][{layer}]overlay=format=auto[ov{index}]')
         current = f'ov{index}'
     tail = f'[{current}]'
     if edit.subtitles:
@@ -254,7 +334,7 @@ def _render_video(edit: Edit, slots: list[Path], work: Path, out: Path) -> None:
         style = f":force_style='{edit.subtitle_style}'" if edit.subtitle_style else ''
         lines.append(f"{tail}subtitles=filename=subs{edit.subtitles.suffix.lower()}{style}[sub]")
         tail = '[sub]'
-    lines.append(f'{tail}format=yuv420p,{audio_mod.BT709},trim=end_frame={edit.total_frames},setpts=N/({edit.fps}*TB)[out]')
+    lines.append(f'{tail}format=yuv420p,{audio_mod.BT709},trim=start_frame={span[0]}:end_frame={span[1]},setpts=N/({edit.fps}*TB)[out]')
     run(['ffmpeg', *inputs, '-filter_complex', ';'.join(lines), '-map', '[out]', *audio_mod.VIDEO_ENCODE, *audio_mod.CFR_VUI,
          '-crf', str(edit.crf), '-preset', edit.preset, '-r', str(edit.fps), '-an', '-y', str(out.resolve())],
         cwd=work)
@@ -287,6 +367,7 @@ def _render_audio(edit: Edit, slot_audio: list[Path], work: Path) -> Path | None
         chain += f',asetpts=PTS-STARTPTS,aresample={SR},aformat=sample_fmts=flt:channel_layouts=stereo'
         if item.gain_db:
             chain += f',volume={item.gain_db}dB'
+        chain += _gain(item.keys, item.af)
         if item.fade_in:
             chain += f',afade=t=in:st=0:d={item.fade_in:.4f}'
         if item.fade_out:
@@ -347,10 +428,85 @@ def _preview(edit: Edit, scale: float) -> None:
         for prop in ('x', 'y'):
             if clip.keys and prop in clip.keys:
                 clip.keys[prop] = [(t, v * scale, ease) for t, v, ease in clip.keys[prop]]
+        if clip.mask:
+            clip.mask.w, clip.mask.h = edit.width, edit.height
 
 
-def assemble_command(edl_path: str, out: str, *, dry_run: bool, keep: bool, preview: bool = False) -> dict:
-    edit = load(edl_path)
+def _files(source: Path | None, sequence: bool = False) -> list:
+    """What a render depends on besides its parameters: the source files' size and mtime (a sequence: its folder's)."""
+    if source is None:
+        return []
+    files = sorted(f for f in source.parent.iterdir() if f.is_file()) if sequence else [source]
+    return [(f.name, f.stat().st_size, f.stat().st_mtime_ns) for f in files]
+
+
+def _slot_key(clip: Clip, edit: Edit, part: str) -> str:
+    # Where a clip sits and how it is named do not change its slot; moving or renaming a clip reuses the render.
+    params = {k: v for k, v in dataclasses.asdict(clip).items()
+              if k not in ('where', 'timeline_start', 'id', 'meta', 'transition', 'transition_frames')}
+    material = [__version__, part, edit.width, edit.height, str(edit.fps), edit.background, params,
+                _files(clip.source, clip.kind == 'sequence')]
+    return hashlib.sha256(json.dumps(material, default=str, sort_keys=True).encode()).hexdigest()[:24]
+
+
+def _cached(cache: Path | None, key: str, suffix: str, work: Path, render) -> Path:
+    """render(path) once per key. ponytail: the cache only grows; delete .rn-cache (or RN_CACHE) to reclaim space."""
+    if cache is None:
+        target = work / f'{key}{suffix}'
+        render(target)
+        return target
+    target = cache / f'{key}{suffix}'
+    if not target.exists():
+        cache.mkdir(parents=True, exist_ok=True)
+        partial = cache / f'{key}.{os.getpid()}.part{suffix}'
+        render(partial)
+        partial.replace(target)
+    return target
+
+
+def _fingerprint(path: Path, placeholders: bool) -> str:
+    """A nested edit's render depends on its text and, recursively, on every file it reads."""
+    edit = load(path, placeholders=placeholders)
+    parts = [__version__, path.read_text(), placeholders]
+    for clip in edit.base + edit.overlays:
+        parts.append(_fingerprint(clip.source, placeholders) if clip.kind == 'edit' else _files(clip.source, clip.kind == 'sequence'))
+    parts += [_files(item.source) for item in edit.audio] + [_files(edit.subtitles)]
+    return hashlib.sha256(json.dumps(parts, default=str).encode()).hexdigest()[:24]
+
+
+def _render_nested(edit: Edit, cache: Path | None, work: Path, placeholders: bool) -> None:
+    """Nested edits render first (to the cache when on) and then play as ordinary video sources."""
+    for clip in edit.base + edit.overlays:
+        if clip.kind == 'edit':
+            key = 'edit-' + _fingerprint(clip.source, placeholders)
+            clip.source = _cached(cache, key, '.mp4', work, lambda target, source=clip.source: assemble_command(
+                str(source), str(target), dry_run=False, keep=False, cache=cache is not None, placeholders=placeholders))
+            clip.kind = 'video'
+
+
+def _span(edit: Edit, time_range: str | None) -> tuple[int, int]:
+    """--range A-B (seconds) -> output frames [a, b). Clips wholly outside it render as cheap background slots and
+    overlays there are dropped; everything is still laid out on the full timeline, so anchors and transitions hold."""
+    if not time_range:
+        return 0, edit.total_frames
+    try:
+        a, b = (float(part) for part in time_range.split('-'))
+    except ValueError:
+        raise RnError(f'--range "{time_range}": seconds as A-B, e.g. 3.5-6') from None
+    span = (max(0, round(a * edit.fps)), min(edit.total_frames, round(b * edit.fps)))
+    if span[0] >= span[1]:
+        raise RnError(f'--range {time_range}: empty inside the timeline (0-{edit.duration:.3f}s)')
+    for i, clip in enumerate(edit.base):
+        if clip.timeline_start + clip.frames <= span[0] or clip.timeline_start >= span[1]:
+            edit.base[i] = dataclasses.replace(clip, kind='color', color=edit.background, source=None, keys=None, audio=False,
+                                               has_audio=False, src_fps=None, matrix='bt709', decoder=None)
+    edit.overlays = [c for c in edit.overlays if c.timeline_start < span[1] and c.timeline_start + c.frames > span[0]]
+    return span
+
+
+def assemble_command(edl_path: str, out: str, *, dry_run: bool, keep: bool, preview: bool = False, cache: bool = True,
+                     placeholders: bool = False, time_range: str | None = None) -> dict:
+    edit = load(edl_path, placeholders=placeholders)
     if edit.subtitles and not has_filter('subtitles'):
         raise RnError('this ffmpeg has no libass, so it cannot burn subtitles; on macOS: brew install ffmpeg-full, then put '
                       '"$(brew --prefix ffmpeg-full)/bin" first on PATH')
@@ -359,28 +515,37 @@ def assemble_command(edl_path: str, out: str, *, dry_run: bool, keep: bool, prev
     if dry_run:
         return edit.summary()
     out_path = Path(out)
+    store = cache_dir(edit.path.parent) / 'slots' if cache else None
+    span = _span(edit, time_range)
     with tempfile.TemporaryDirectory(prefix='rn-assemble-') as tmp:
         work = Path(tmp)
+        _render_nested(edit, store, work, placeholders)
         slots, slot_audio = [], []
         for i, clip in enumerate(edit.base):
-            slot = work / f'slot{i:03d}.mkv'
-            _render_slot(clip, edit, slot)
-            slots.append(slot)
-            wav = work / f'slot{i:03d}.wav'
-            _render_slot_audio(clip, edit, wav)
-            slot_audio.append(wav)
+            slots.append(_cached(store, _slot_key(clip, edit, 'video'), '.mkv', work, lambda target, c=clip: _render_slot(c, edit, target)))
+            # A hard cut's own sound fades on both sides; a transition already crossfades it.
+            fades = (edit.cut_fade if i and not clip.transition_frames else 0.0,
+                     edit.cut_fade if i + 1 < len(edit.base) and not edit.base[i + 1].transition_frames else 0.0)
+            slot_audio.append(_cached(store, _slot_key(clip, edit, f'audio{fades}'), '.wav', work,
+                                      lambda target, c=clip, f=fades: _render_slot_audio(c, edit, target, f)))
         video = work / 'video.mp4'
-        _render_video(edit, slots, work, video)
+        _render_video(edit, slots, work, video, span)
         frames = probe(video, exact=True)['video']['frames']
-        if frames != edit.total_frames:
-            raise RnError(f'rendered {frames} frames, expected {edit.total_frames}')
+        if frames != span[1] - span[0]:
+            raise RnError(f'rendered {frames} frames, expected {span[1] - span[0]}')
         mix = _render_audio(edit, slot_audio, work)
         loudness = None
         m4a = None
         if mix:
             m4a = work / 'audio.m4a'
-            loudness = audio_mod.finish_audio(mix, m4a, lufs=edit.lufs, true_peak=edit.true_peak)
-        audio_mod.mux(video, m4a, out_path, frames=edit.total_frames)
+            excerpt = mix
+            if span != (0, edit.total_frames):
+                # A range keeps the full mix's level: the gain is measured on the whole mix, applied to the excerpt.
+                excerpt = work / 'excerpt.wav'
+                run(['ffmpeg', '-i', str(mix), '-af', f'atrim=start_sample={round(span[0] / edit.fps * SR)}:'
+                     f'end_sample={round(span[1] / edit.fps * SR)},asetpts=PTS-STARTPTS', '-c:a', 'pcm_f32le', '-y', str(excerpt)])
+            loudness = audio_mod.finish_audio(excerpt, m4a, lufs=edit.lufs, true_peak=edit.true_peak, reference=mix)
+        audio_mod.mux(video, m4a, out_path, frames=span[1] - span[0])
         if keep:
             kept = out_path.with_suffix('.parts')
             shutil.copytree(work, kept, dirs_exist_ok=True)
@@ -388,10 +553,14 @@ def assemble_command(edl_path: str, out: str, *, dry_run: bool, keep: bool, prev
     summary['path'] = str(out_path)
     summary['audio'] = loudness
     summary['preview'] = preview
+    if span != (0, edit.total_frames):
+        summary['range'] = {'start_frame': span[0], 'end_frame': span[1]}
+        summary['output'].update(frames=span[1] - span[0], duration=round(float((span[1] - span[0]) / edit.fps), 4))
     return summary
 
 
-def finish_command(source: str, out: str, *, lufs: float | None, true_peak: float, crf: int, preset: str, copy_video: bool) -> dict:
+def finish_command(source: str, out: str, *, lufs: float | None, true_peak: float, crf: int, preset: str, copy_video: bool,
+                   height: int | None = None) -> dict:
     """Any video -> the delivery standard: H.264 High yuv420p bt709, moov first, LUFS target, encoded TP <= limit."""
     info = probe(source, exact=True)
     video = info['video']
@@ -403,10 +572,13 @@ def finish_command(source: str, out: str, *, lufs: float | None, true_peak: floa
         work = Path(tmp)
         encoded = work / 'video.mp4'
         compliant = video['codec'] == 'h264' and video['pix_fmt'] == 'yuv420p' and video['sar'] == '1:1'
+        if height and copy_video:
+            raise RnError('--height re-encodes the picture; drop --copy-video')
         if copy_video and compliant:
             run(['ffmpeg', '-i', source, '-map', '0:v:0', '-c:v', 'copy', '-an', '-y', str(encoded)])
         else:
-            even = f'scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=lanczos:{to_bt709(source_matrix(video))},setsar=1,format=yuv420p,{audio_mod.BT709}'
+            size = f'-2:{height // 2 * 2}' if height else 'trunc(iw/2)*2:trunc(ih/2)*2'  # --height keeps the aspect, even width
+            even = f'scale={size}:flags=lanczos:{to_bt709(source_matrix(video))},setsar=1,format=yuv420p,{audio_mod.BT709}'
             run(['ffmpeg', *(['-c:v', video['alpha_decoder']] if video.get('alpha_decoder') else []), '-i', source, '-map', '0:v:0', '-vf', even, *audio_mod.VIDEO_ENCODE,
                  *(audio_mod.CFR_VUI if video['cfr'] else []), '-crf', str(crf), '-preset', preset,
                  '-fps_mode', 'passthrough', '-an', '-y', str(encoded)])

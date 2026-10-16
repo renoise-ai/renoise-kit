@@ -6,22 +6,24 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
-dependencies = ["pillow>=10.1"]
+dependencies = ["pillow>=10.1", "numpy"]
 
 # The media sandbox installs everything; locally pick what you use. ffmpeg/ffprobe (with libass) come from the system.
 [project.optional-dependencies]
-listen = ["numpy", "librosa", "matplotlib"]
-transcribe = ["numpy", "faster-whisper"]
+listen = ["librosa", "matplotlib"]
+transcribe = ["faster-whisper"]
 faces = ["opencv-python-headless>=4.8"]
 capture = ["playwright"]
 captions = ["pysubs2"]
 fonts = ["fonttools"]
-fx = ["numpy"]
-all = ["renoise-kit[listen,transcribe,faces,capture,captions,fonts,fx]"]
+matte = ["rembg[cpu]"]
+export = ["opentimelineio", "otio-fcpx-xml-adapter", "otio-fcp-adapter", "pysubs2"]
+all = ["renoise-kit[listen,transcribe,faces,capture,captions,fonts,matte,export]"]
 
-# uv run pytest. faster-whisper is left out (large); its test skips.
+# uv run pytest. faster-whisper and rembg are left out (large models); their tests skip, as OCR does without tesseract.
 [dependency-groups]
-dev = ["pytest", "numpy", "librosa", "matplotlib", "opencv-python-headless>=4.8", "pysubs2", "playwright", "fonttools"]
+dev = ["pytest", "librosa", "matplotlib", "opencv-python-headless>=4.8", "pysubs2", "playwright", "fonttools", "opentimelineio",
+       "otio-fcpx-xml-adapter", "otio-fcp-adapter"]
 
 [project.urls]
 Homepage = "https://renoise.ai"

@@ -1,6 +1,8 @@
 # renoise-kit：剪辑底层 CLI `rn`
 
-> 状态：v0.4.0（2026-10-16）。v0.2.0–v0.3.4 在 Renoise 主仓库 `packages/media-sandbox/kit` 随沙箱模板发布；v0.4.0 起拆为独立仓库与 PyPI 包 `renoise-kit`（命令仍为 `rn`），沙箱模板固定一个版本安装，集成见主仓库 `spec/mcp/03-media-kit.md`。v0.4.0 新增：`rn compare`、`rn assemble --preview`、`rn qa` 的 dead_air / level_jumps / fixed_frame_rate 检查、成片写 `fixed_frame_rate_flag=1`、本地安装（按功能的 extras、人脸模型首次使用时下载并校验、缺 libass 时提前报错）。
+> 状态：v0.5.0（2026-10-16）：§3.1 的通用原语全部实现。v0.2.0–v0.3.4 在 Renoise 主仓库 `packages/media-sandbox/kit` 随沙箱模板发布；v0.4.0 起拆为独立仓库与 PyPI 包 `renoise-kit`（命令仍为 `rn`），沙箱模板固定一个版本安装，集成见主仓库 `spec/mcp/03-media-kit.md`。v0.4.0 新增：`rn compare`、`rn assemble --preview`、`rn qa` 的 dead_air / level_jumps / fixed_frame_rate 检查、成片写 `fixed_frame_rate_flag=1`、本地安装（按功能的 extras、人脸模型首次使用时下载并校验、缺 libass 时提前报错）。
+>
+> v0.5.0：`id` / `meta`、`rn edit`、slot 增量缓存、嵌套 EDL、缺失素材占位（批 1）；`ranges`、变速曲线、`pivot`、`--range`、`mix.cut_fade`（批 2）；`blend`、`mask`、`vf` / `af`、`keys.gain_db`（批 3）；`rn signal`、`rn align`、`rn matte`、`rn text`、`rn export`、qa 的 `clicks` 与 `accept`、`finish --height`（批 4）。numpy 成为核心依赖。
 
 ## 1. 为什么
 
@@ -50,6 +52,14 @@ EDL 是可选捷径：创意部分（HTML / canvas、Manim、Blender、ffmpeg �
 | `rn finish FILE -o out.mp4 [--lufs N\|keep] [--copy-video]` | 不用 EDL 的成片收尾：与 `assemble` 同一套编码规格、响度和编码后 true peak |
 | `rn qa FILE [--edl edit.json] [--expect-*]` | 成片检查：帧数、帧率、尺寸、编码、色彩、faststart、音视频时长、LUFS / true peak、黑场、冻帧、黑边；v0.4.0 加片中数字静音（< -70 dBFS 且 ≥ 60 ms，片头片尾除外）、相邻 100 ms 电平跳变 ≥ 15 dB、H.264 `fixed_frame_rate_flag`（均为 WARN） |
 | `rn assemble ... --preview` | v0.4.0：半尺寸草稿（叠加层像素位置与尺寸同比缩放，主轨 keys 与 ASS 字幕本就按比例），ultrafast / CRF 30。不做区间渲染：锚点、转场、字幕都要平移，见 §3.1 |
+| `rn edit EDL ids\|set\|split\|delete\|insert\|move ...` | v0.5.0：按 `id`（或 `track:index`）改 EDL；每步重新排布整条时间线校验，通过才写回。主轨天然波纹，`delete --lift` 留背景色空隙 |
+| `rn assemble ... --placeholders / --range A-B / --no-cache` | v0.5.0：缺失素材渲染成卡片（id、`meta.label` / `meta.prompt`、缺的文件，中日文可读）；只渲时间线的一段（整条照常排布，锚点与转场不变，响度按整段混音计算）；slot 与嵌套 EDL 默认按内容缓存在 EDL 旁的 `.rn-cache/`（`RN_CACHE` 可改） |
+| `rn signal FILE [-o png]` | v0.5.0：逐帧数值：亮度、帧差、饱和度（0..1），RMS、低 / 中 / 高频段（dB）、onset（32 个对数频带的谱通量，dB），闪帧帧号、爆音时间。纯音读数 ≈ 0，鼓点每拍一个峰 |
+| `rn align A B [--max-offset S]` | v0.5.0：B 在 A 时钟上的偏移（onset 包络互相关 + 8 kHz 波形细化，精度约 0.1 ms）；`match` 为该偏移处波形相关（1 = 同一段声音），`distinct` 为与 0.25 s 外次优偏移的差距（重复性音乐偏低） |
+| `rn matte FILE -o DIR [--model] [--every N] [--cutout]` | v0.5.0：rembg 逐帧主体 alpha，灰度 PNG 序列（白 = 主体），直接作 EDL `mask`；`--cutout` 输出 RGBA 抠像。extra `matte` |
+| `rn text FILE [--every N] [--lang]` | v0.5.0：tesseract OCR，默认每秒读两帧；逐帧行与框，以及同一行在连续采样中出现的时间段。CJK 字间不加空格。系统需装 tesseract（macOS 的 ffmpeg-full 自带；Debian `tesseract-ocr` + `-chi-sim`） |
+| `rn export EDL -o x.otio\|.fcpxml\|.xml [--srt]` | v0.5.0：OpenTimelineIO / Final Cut X / FCP7 XML（Premiere、Resolve）。剪切、裁切、变速、转场（剪点两侧各半）、嵌套（Stack）、叠加层与音频的时间位置都带过去；纯色导出为 Gap；位置尺寸、keys、blend、mask、滤镜、增益曲线写在 `rn` metadata 并在结果里列出。extra `export` |
+| `rn finish ... --height N` | v0.5.0：按高度缩放交付（宽度保持比例取偶数），如 4K 母版另出 1080p |
 | `rn compare A B [--count N \| --seconds ..] [--cuts] [--video sbs.mp4]` | v0.4.0：同一时间点 A 在上 B 在下的接触表，各自按自己的帧率标帧号；`--cuts` 两边跑 `rn cuts` 并按 0.25 s 配对剪点、给出偏移；`--video` 输出左右并排视频（A 的声音） |
 | `rn sheet ... --around T,.. [--span N] [--diff]` | v0.3.0：剪点 / 转场 / 拍点前后高密度取帧；`--diff` 显示与前一帧的差（×4），看运动、闪烁和重复帧 |
 | `rn cuts FILE [--threshold] [--sheet JPG]` | v0.3.0：按解码帧号的镜头边界（ffmpeg scene score），弱变化列为 suspects；结果即 EDL `{"shot": n}` 的含义 |
@@ -91,6 +101,10 @@ Katana（参考片复刻）、ChatCut（口播 / 按文稿剪）、promo-video�
 | | `rn export` | OTIO / FCPXML + SRT，交给任何 NLE |
 | | qa 豁免 | 每条发现带 id，可写进 EDL `accept`；有意为之的不再反复报 |
 | | `finish --size` | 缩放交付（如 4K 另出 1080p） |
+
+以上全部在 v0.5.0 实现。与上表的差异：`finish --size` 实现为 `--height`；OCR 用系统 tesseract 而不是 pip 包（rapidocr 强依赖非
+headless 的 opencv-python，会和 faces 的 headless 版冲突，Linux 上还要 libGL）；qa 豁免以 check 名加可选时间点表达（`{"check", "at", "note"}`），
+不另造 id；遮罩是叠加层的属性（全画幅、默认与叠加层同时），不是独立轨道；导出时纯色片段成为 Gap（FCP X 没有生成器引用）。
 
 不归 kit：生成与计费（Renoise MCP / renoise-cli 的 plan → run）、实时编辑器界面、模板 / 风格 / 曲库等内容。
 
@@ -150,6 +164,26 @@ v0.3.0 新增：
   画面外采样会复制边缘像素，所以主轨 `scale` 保持 ≥ 1。叠加层：`scale`、`rotate`（绕图层中心）、`x`、`y`（像素，图层左上角，覆盖静态 x/y）、
   `opacity`（与静态 opacity、淡入淡出相乘）；移动的图层先放到带透明边距的画布上再变换，避免边缘复制。
 
+v0.5.0 新增：
+
+- **`id` / `meta`**：任何 clip、track、音频项可写 `id`（字母数字与 `_ - .`，全 EDL 唯一）与任意 `meta`（原样保留）。锚点 `{"clip": "id"}` /
+  `{"clip_end": "id"}` 可指主轨片段或**之前出现的**叠加层。
+- **嵌套**：主轨或叠加层 `{"src": "part.json"}` 把另一个 EDL 当视频素材（先渲染并缓存），`in` / `out` / `speed` 照常；循环引用报错。
+- **`ranges`**（主轨）：`[[in, out], ...]`，同一源的多段依次播放，展开为每段一个片段；`id` 归第一段（其后 `<id>.1`、`<id>.2`…），
+  `{"clip_end": id}` 指最后一段的结束；按序号的锚点按展开后计数。与 `in` / `out` / `duration` / `keys` 互斥。
+- **变速曲线** `keys.speed`：输出时间为横轴，值 0.1–8；源时间为其积分，渲染时用反函数的分段线性（≤ 64 段）映射；`out` 给定时帧数由
+  积分求得。去掉片段自带声音（atempo 不能随时间变）并给 warning。
+- **`pivot`**（叠加层、音频项）：源内某一秒落在 `at` 上（静帧 / 纯色为片段内秒数）；落到 0 之前的部分被裁掉。不与 `until` 或变速曲线同用。
+- **`blend`**（叠加层）：ffmpeg blend 模式（`add` = addition），在 RGB 里计算，进出都显式按 BT.709 limited 转换；`normal` 与普通叠加逐像素一致。
+- **`mask`**（叠加层）：任意片段源作全画幅遮罩（拉伸到画面），`mode` luma（白 = 保留）或 alpha，`invert` 可选；时间默认与叠加层相同，
+  也可写自己的 `at` / `in` / `duration`；遮罩没有帧的时间里叠加层不被遮。
+- **`vf` / `af`**：一条原始 ffmpeg 滤镜链（不允许 `;` `[` `]`，接不到图的其他部分）。主轨在适配尺寸后、帧数定格前；叠加层在缩放后；
+  `af` 用于主轨片段自带声音与音频项。
+- **`keys.gain_db`**：主轨片段自带声音与音频项的音量曲线（-60..24 dB），t 为该声音在时间线上的第一个样本起算。
+- **`mix.cut_fade`**：主轨硬切处，两侧片段自带声音各淡出 / 淡入这么多秒（≤ 0.25；有转场的剪点已有交叉淡化，不再加）。
+- **`accept`**（顶层）：`[{"check": "dead_air", "at": 12.5, "note": "..."}]`，`at` 落在某条发现的区间内即豁免该条，无 `at` 豁免整项 WARN；
+  FAIL 不能豁免。`rn qa --accept CHECK[@T]` 同义。
+
 ## 5. 输出与混音标准（`assemble` 保证，`qa` 检查）
 
 - 视频：H.264 High、yuv420p、CRF 18、bt709、`+faststart`、SAR 1:1、帧数等于时间线帧数；SPS `fixed_frame_rate_flag=1`（x264 `force-cfr`，`finish` 只对恒定帧率源加）：为 0 时部分播放器 / 平台按 VUI tick 计时，30 fps 成片显示成一半时长（promo-video 2026-09-29 事故）。
@@ -165,7 +199,8 @@ v0.3.0 新增：
 - 独立仓库，PyPI 包 `renoise-kit`，入口 `rn`。版本 = `rn/__init__.py` 的 `__version__`（`rn --version` 同值），与沙箱模板版本无关。
 - 发布：打 tag `v<version>`，`.github/workflows/release.yml` 校验 tag 与 `__version__` 一致后经 PyPI trusted publishing 上传。
 - 本地：ffmpeg 7+（带 libass；macOS 用 `ffmpeg-full`，keg-only，需放到 PATH 前面）+ `uv tool install 'renoise-kit[all]'`；
-  `rn capture` 另需 `playwright install chromium`。可选依赖按功能分 extras（listen、transcribe、faces、capture、captions、fonts、fx），
+  `rn capture` 另需 `playwright install chromium`，`rn text` 需系统 tesseract。核心依赖 Pillow、numpy；可选依赖按功能分 extras
+  （listen、transcribe、faces、capture、captions、fonts、matte、export），
   缺哪个就在 `rn: error:` 行里点名。人脸模型首次使用时下载到 `~/.cache/rn` 并校验 sha256（沙箱里已预置）。
 - 沙箱：模板不带 extras 安装固定版本（依赖已由沙箱自己的 install.sh 装好，faces extra 的 opencv 会和 contrib 版冲突）；
   升级流程见主仓库 `spec/mcp/03-media-kit.md`。
@@ -174,6 +209,9 @@ v0.3.0 新增：
 
 `uv run pytest`（dev 依赖组带 numpy、librosa、matplotlib、OpenCV、pysubs2、Playwright、fontTools；缺 Chromium、faster-whisper 或
 libass 的用例会跳过）：用 ffmpeg 现场生成测试片，覆盖帧数精确、变速、转场交叠、叠加层、字幕烧录、混音峰值收敛、`finish`、qa 的
-PASS / WARN / FAIL、preview、compare、打包元数据。帧号校验用一段无损「双位数」灰度片：左半亮度编码 `N // 8`、右半编码 `N % 8`，
+PASS / WARN / FAIL、preview、compare、打包元数据；v0.5.0 起加 `rn edit` 各操作、缓存命中、嵌套与循环、占位卡、ranges、变速曲线的帧映射、
+pivot、`--range` 的帧与响度、cut_fade、`normal` 混合与普通叠加逐像素一致、screen / multiply 数值、遮罩与反相、增益曲线、signal 的
+闪帧 / 爆音 / onset、align 的偏移与 match、qa 豁免、finish --height、OTIO 往返与 FCP X / FCP7 写出。rembg 与 tesseract 不在 dev 组里：
+缺时 matte / text 用例跳过（CI 的 Debian 与 macOS 都装了 tesseract）。帧号校验用一段无损「双位数」灰度片：左半亮度编码 `N // 8`、右半编码 `N % 8`，
 相差 25 级，不受各平台 yuv→rgb 取整差异影响。CI（`.github/workflows/ci.yml`）在 Debian trixie（ffmpeg 7.1，同沙箱）与 macOS
 （ffmpeg-full）上都跑。
