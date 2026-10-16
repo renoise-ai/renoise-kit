@@ -25,11 +25,55 @@ XFADE = {
 }
 FITS = {'cover', 'contain', 'stretch'}
 EASES = {'linear', 'in', 'out', 'inout', 'in3', 'out3', 'inout3', 'hold'}
-KEYS_MAIN = {'scale', 'x', 'y', 'rotate'}
-KEYS_OVERLAY = {'scale', 'x', 'y', 'rotate', 'opacity'}
+KEYS_MAIN = {'scale', 'x', 'y', 'rotate', 'speed'}
+KEYS_OVERLAY = {'scale', 'x', 'y', 'rotate', 'opacity', 'speed'}
+# The same curves as assemble's ffmpeg expressions (assemble._EASE), for what rn computes itself (speed ramps).
+EASE_FN = {
+    'linear': lambda u: u, 'hold': lambda u: 0.0, 'in': lambda u: u * u, 'out': lambda u: 1 - (1 - u) ** 2,
+    'in3': lambda u: u ** 3, 'out3': lambda u: 1 - (1 - u) ** 3,
+    'inout': lambda u: 2 * u * u if u < 0.5 else 1 - 2 * (1 - u) ** 2,
+    'inout3': lambda u: 4 * u ** 3 if u < 0.5 else 1 - 4 * (1 - u) ** 3,
+}
+SPEED_STEPS = 8  # integration sub-steps per output frame
 _SEQ = re.compile(r'%0?(\d*)d')
 ROLES = {'music', 'voice', 'sfx'}
 ID = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]*$')
+
+
+def curve_value(points: list[tuple[float, float, str]], t: float) -> float:
+    """Keyframes at time t: held before the first and after the last, eased into each key."""
+    if t <= points[0][0]:
+        return points[0][1]
+    for (t0, v0, _), (t1, v1, ease) in zip(points, points[1:]):
+        if t < t1:
+            return v0 + (v1 - v0) * EASE_FN[ease]((t - t0) / (t1 - t0))
+    return points[-1][1]
+
+
+def source_offsets(points: list[tuple[float, float, str]], frames: int, fps: Fraction) -> list[float]:
+    """Seconds of source consumed before each output frame n = 0..frames of a speed curve (output time on its x axis)."""
+    dt = 1 / (float(fps) * SPEED_STEPS)
+    offsets, tau, t = [0.0], 0.0, 0.0
+    for _ in range(frames):
+        for _ in range(SPEED_STEPS):
+            tau += curve_value(points, t + dt / 2) * dt
+            t += dt
+        offsets.append(tau)
+    return offsets
+
+
+def frames_for_span(points: list[tuple[float, float, str]], span: float, fps: Fraction) -> int:
+    """Output frames a speed curve needs to consume `span` seconds of source (the nearest whole frame)."""
+    dt = 1 / (float(fps) * SPEED_STEPS)
+    previous = tau = t = 0.0
+    frames = 0
+    while tau < span and frames < 1_000_000:
+        previous = tau
+        for _ in range(SPEED_STEPS):
+            tau += curve_value(points, t + dt / 2) * dt
+            t += dt
+        frames += 1
+    return frames - 1 if span - previous < tau - span else frames
 
 
 @dataclass
@@ -101,6 +145,7 @@ class Edit:
     true_peak: float
     duck_db: float
     total_frames: int = 0
+    cut_fade: float = 0.0  # seconds of fade on each side of a hard cut in the main track's own sound
     warnings: list[str] = field(default_factory=list)
 
     @property
@@ -176,6 +221,7 @@ class Timeline:
     base: list[Clip]
     markers: dict[str, float]
     by_id: dict[str, Clip] = field(default_factory=dict)  # main-track clips and the overlays parsed so far
+    ends: dict[str, Clip] = field(default_factory=dict)  # a "ranges" clip's id -> its last piece (for clip_end)
     _listen: dict[str, dict] = field(default_factory=dict)
 
     def listen(self, value, where: str) -> dict:
@@ -211,6 +257,8 @@ def _anchor(value, where: str, timeline: Timeline) -> float:
             raise RnError(f'{where}.{kind}: main-track clip index 0..{len(timeline.base) - 1}, or a clip id')
         else:
             clip = timeline.base[index]
+        if kind == 'clip_end' and isinstance(index, str):
+            clip = timeline.ends.get(index, clip)
         frame = clip.timeline_start + (clip.frames if kind == 'clip_end' else 0)
         seconds = float(frame / timeline.fps)
     elif kind == 'marker':
@@ -268,6 +316,8 @@ def _keys(raw, where: str, allowed: set[str]) -> dict | None:
                 raise RnError(f'{where}.scale: must be > 0')
             if prop == 'opacity' and not 0 <= value <= 1:
                 raise RnError(f'{where}.opacity: between 0 and 1')
+            if prop == 'speed' and not 0.1 <= value <= 8:
+                raise RnError(f'{where}.speed: between 0.1 and 8')
             parsed.append((t, value, ease))
             last = t
         keys[prop] = parsed
@@ -427,6 +477,14 @@ def _clip(raw: dict, where: str, edit_dir: Path, fps: Fraction, *, overlay: bool
     clip = Clip(where=where, kind='video', source=None, color=None, start_s=0.0, speed=speed, frames=0, fit=fit,
                 audio=bool(raw.get('audio', not overlay)), gain_db=gain)
     clip.id, clip.meta = _ident(raw, where)
+    clip.keys = _keys(raw.get('keys'), f'{where}.keys', KEYS_OVERLAY if overlay else KEYS_MAIN)
+    ramp = (clip.keys or {}).get('speed')
+    if ramp and 'speed' in raw:
+        raise RnError(f'{where}: give "speed" or keys.speed, not both')
+    if ramp and not ('src' in raw or 'frames' in raw):
+        raise RnError(f'{where}.keys.speed: only video, sequences and nested edits play at a speed')
+    if 'pivot' in raw and 'until' in raw:
+        raise RnError(f'{where}: "pivot" places the clip by a point inside it; it cannot also end "until" an anchor')
 
     if 'src' in raw or 'frames' in raw:
         if 'src' in raw and str(raw['src']).lower().endswith('.json'):
@@ -477,10 +535,18 @@ def _clip(raw: dict, where: str, edit_dir: Path, fps: Fraction, *, overlay: bool
             end = _position(raw['out'], f'{where}.out', src_fps, clip.source if clip.kind == 'video' else None, end=True) if 'out' in raw else src_len
             if end <= clip.start_s:
                 raise RnError(f'{where}.out: must be after "in"')
-            clip.frames = _frames((min(end, src_len) - clip.start_s) / speed, fps)
+            span = min(end, src_len) - clip.start_s
+            clip.frames = frames_for_span(ramp, span, fps) if ramp else _frames(span / speed, fps)
             if end > src_len + 0.5 / float(src_fps):
                 warnings.append(f'{where}: out {end:.3f}s is past the end of {clip.source.name} ({src_len:.3f}s); clamped')
-        covered = _frames((src_len - clip.start_s) / speed, fps)
+        if ramp:
+            available = src_len - clip.start_s
+            covered = sum(1 for tau in source_offsets(ramp, clip.frames, fps)[:-1] if tau < available)
+            if clip.audio and clip.has_audio:
+                warnings.append(f'{where}: a speed ramp drops the clip\'s own sound; place audio in "audio"')
+            clip.audio = False
+        else:
+            covered = _frames((src_len - clip.start_s) / speed, fps)
         if covered < clip.frames:
             clip.short_by = clip.frames - covered
             warnings.append(f'{where}: {clip.source.name} covers {covered} of {clip.frames} frames; holding its last frame')
@@ -503,6 +569,23 @@ def _clip(raw: dict, where: str, edit_dir: Path, fps: Fraction, *, overlay: bool
     if clip.frames < 1:
         raise RnError(f'{where}: shorter than one frame at {fps} fps')
 
+    if 'pivot' in raw:
+        # The pivot (source seconds; for stills and colours, seconds into the clip) lands on "at".
+        if not overlay:
+            raise RnError(f'{where}.pivot: main-track clips play back to back; pivot positions overlays and audio')
+        if ramp:
+            raise RnError(f'{where}.pivot: not with a speed ramp')
+        inside = _num(raw['pivot'], f'{where}.pivot', minimum=0) - (clip.start_s if clip.kind in ('video', 'sequence', 'edit') else 0)
+        if inside < 0:
+            raise RnError(f'{where}.pivot: before the clip\'s "in"')
+        at_s -= inside / speed
+        if at_s < 0:  # the part before the timeline start is dropped
+            dropped = _frames(-at_s, fps)
+            if dropped >= clip.frames:
+                raise RnError(f'{where}.pivot: puts the whole clip before 0 s')
+            clip.start_s += dropped / float(fps) * speed if clip.kind in ('video', 'sequence', 'edit') else 0
+            clip.frames -= dropped
+            at_s = 0.0
     if overlay:
         clip.timeline_start = _frames(at_s, fps)
         clip.x = int(_num(raw.get('x', 0), f'{where}.x'))
@@ -528,11 +611,11 @@ def _clip(raw: dict, where: str, edit_dir: Path, fps: Fraction, *, overlay: bool
                 raise RnError(f'{where}.transition: {{"type": one of xfade names (fade, dissolve, wipeleft, slideup, ...), "duration": s}}')
             clip.transition = transition['type']
             clip.transition_frames = _frames(_num(transition.get('duration', 0.5), f'{where}.transition.duration', positive=True), fps)
-    clip.keys = _keys(raw.get('keys'), f'{where}.keys', KEYS_OVERLAY if overlay else KEYS_MAIN)
     if clip.keys and overlay and ('scale' in clip.keys or 'rotate' in clip.keys) and clip.kind == 'color' and not (clip.w and clip.h):
         raise RnError(f'{where}.keys: give a colour overlay "w" and "h" to scale or rotate it')
     unknown = set(raw) - {'src', 'frames', 'fps', 'image', 'color', 'in', 'out', 'duration', 'until', 'speed', 'fit', 'audio', 'gain_db',
-                          'at', 'x', 'y', 'w', 'h', 'opacity', 'fade_in', 'fade_out', 'transition', 'keys', 'note', 'id', 'meta'}
+                          'at', 'x', 'y', 'w', 'h', 'opacity', 'fade_in', 'fade_out', 'transition', 'keys', 'note', 'id', 'meta',
+                          'pivot'}
     if unknown:
         raise RnError(f'{where}: unknown field(s) {sorted(unknown)}')
     return clip
@@ -558,14 +641,58 @@ def _audio(raw: dict, where: str, edit_dir: Path, timeline: Timeline) -> AudioIt
         duration = _num(raw['out'], f'{where}.out', positive=True) - start
         if duration <= 0:
             raise RnError(f'{where}.out: must be after "in"')
-    unknown = set(raw) - {'src', 'role', 'at', 'in', 'out', 'duration', 'gain_db', 'fade_in', 'fade_out', 'note', 'id', 'meta'}
+    unknown = set(raw) - {'src', 'role', 'at', 'in', 'out', 'duration', 'gain_db', 'fade_in', 'fade_out', 'note', 'id', 'meta', 'pivot'}
     if unknown:
         raise RnError(f'{where}: unknown field(s) {sorted(unknown)}')
     ident, meta = _ident(raw, where)
-    return AudioItem(where=where, source=source, role=role, at=_anchor(raw.get('at', 0), f'{where}.at', timeline), start_s=start,
+    at = _anchor(raw.get('at', 0), f'{where}.at', timeline)
+    if 'pivot' in raw:
+        # The pivot (seconds in the source: a hit, a downbeat, the drop) lands on "at"; what falls before 0 s is cut.
+        inside = _num(raw['pivot'], f'{where}.pivot', minimum=0) - start
+        if inside < 0:
+            raise RnError(f'{where}.pivot: before "in"')
+        at -= inside
+        if at < 0:
+            start -= at
+            if duration is not None:
+                duration += at
+                if duration <= 0:
+                    raise RnError(f'{where}.pivot: puts the whole item before 0 s')
+            at = 0.0
+    return AudioItem(where=where, source=source, role=role, at=at, start_s=start,
                      duration=duration, gain_db=_num(raw.get('gain_db', 0), f'{where}.gain_db'),
                      fade_in=_num(raw.get('fade_in', 0), f'{where}.fade_in', minimum=0),
                      fade_out=_num(raw.get('fade_out', 0), f'{where}.fade_out', minimum=0), id=ident, meta=meta)
+
+
+def _expand_ranges(clips: list) -> tuple[list[tuple[str, dict]], dict[str, tuple[int, int]]]:
+    """A main-track clip with "ranges": [[in, out], ...] plays those spans of one source back to back: one clip per span.
+    Its id names the first span (later ones get <id>.1, <id>.2...); {"clip_end": id} is the end of the last span.
+    Index anchors count the spans."""
+    pieces, groups = [], {}
+    for i, raw in enumerate(clips):
+        where = f'tracks[0].clips[{i}]'
+        if not (isinstance(raw, dict) and 'ranges' in raw):
+            pieces.append((where, raw))
+            continue
+        spans = raw['ranges']
+        if not isinstance(spans, list) or not spans or not all(isinstance(x, list) and len(x) == 2 for x in spans):
+            raise RnError(f'{where}.ranges: [[in, out], ...] with at least one span')
+        clash = {'in', 'out', 'duration', 'keys'} & set(raw)
+        if clash:
+            raise RnError(f'{where}: "ranges" replaces {sorted(clash)}')
+        first = len(pieces)
+        for k, (start, end) in enumerate(spans):
+            piece = {key: value for key, value in raw.items() if key not in ('ranges', 'transition', 'id')}
+            piece.update({'in': start, 'out': end})
+            if k == 0 and 'transition' in raw:
+                piece['transition'] = raw['transition']
+            if raw.get('id'):
+                piece['id'] = raw['id'] if k == 0 else f'{raw["id"]}.{k}'
+            pieces.append((f'{where}.ranges[{k}]', piece))
+        if raw.get('id'):
+            groups[raw['id']] = (first, len(pieces) - 1)
+    return pieces, groups
 
 
 def load(path: str | Path, *, placeholders: bool = False, _stack: tuple[Path, ...] = ()) -> Edit:
@@ -599,8 +726,8 @@ def load(path: str | Path, *, placeholders: bool = False, _stack: tuple[Path, ..
         raise RnError('tracks: need at least one track whose "clips" list is the main track')
     warnings: list[str] = []
     context = {'size': (width, height), 'placeholders': placeholders, 'stack': stack}
-    base = [_clip(c, f'tracks[0].clips[{i}]', edit_dir, fps, overlay=False, warnings=warnings, **context)
-            for i, c in enumerate(tracks[0]['clips'])]
+    pieces, groups = _expand_ranges(tracks[0]['clips'])
+    base = [_clip(c, where, edit_dir, fps, overlay=False, warnings=warnings, **context) for where, c in pieces]
     if base[0].transition:
         raise RnError('tracks[0].clips[0].transition: the first clip has nothing to transition from')
     position = 0
@@ -636,6 +763,8 @@ def load(path: str | Path, *, placeholders: bool = False, _stack: tuple[Path, ..
 
     for clip in base:
         register(clip, clip)
+    for ident, (first, last) in groups.items():
+        timeline.ends[ident] = base[last]
     overlays = []
     for t, track in enumerate(tracks[1:], start=1):
         if not isinstance(track, dict) or not isinstance(track.get('clips'), list):
@@ -677,6 +806,9 @@ def load(path: str | Path, *, placeholders: bool = False, _stack: tuple[Path, ..
     if not -9 <= true_peak <= 0:
         raise RnError('mix.true_peak: between -9 and 0 dBTP')
     duck = _num(mix.get('duck_db', 0), 'mix.duck_db', minimum=0)
+    cut_fade = _num(mix.get('cut_fade', 0), 'mix.cut_fade', minimum=0)
+    if cut_fade > 0.25:
+        raise RnError('mix.cut_fade: up to 0.25 s (it removes clicks at hard cuts; longer fades are audio items)')
     crf = int(_num(output.get('crf', 18), 'output.crf', minimum=0))
     preset = output.get('preset', 'medium')
     unknown = set(raw) - {'output', 'tracks', 'audio', 'subtitles', 'mix', 'markers', 'note', 'version'}
@@ -684,7 +816,7 @@ def load(path: str | Path, *, placeholders: bool = False, _stack: tuple[Path, ..
         raise RnError(f'unknown top-level field(s) {sorted(unknown)}')
     return Edit(path=path, width=width, height=height, fps=fps, background=background, crf=crf, preset=preset, base=base,
                 overlays=overlays, audio=audio, subtitles=subtitles, subtitle_style=style, lufs=lufs, true_peak=true_peak,
-                duck_db=duck, total_frames=total, warnings=warnings)
+                duck_db=duck, total_frames=total, warnings=warnings, cut_fade=cut_fade)
 
 
 def seconds(frames: int, fps: Fraction) -> float:

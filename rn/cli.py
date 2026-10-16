@@ -212,6 +212,7 @@ def _parser() -> argparse.ArgumentParser:
                           help='half-size draft with a fast encode: check timing and layout before the full render (not for delivery)')
     assemble.add_argument('--placeholders', action='store_true',
                           help='a missing source becomes a card (id, meta.label or meta.prompt) for its time span instead of an error')
+    assemble.add_argument('--range', metavar='A-B', help='render only seconds A to B of the timeline (laid out in full, so anchors hold)')
     assemble.add_argument('--no-cache', action='store_true',
                           help='render every slot afresh (default: reuse slots and nested edits from .rn-cache next to the EDL, or RN_CACHE)')
 
@@ -307,7 +308,8 @@ def _print_summary(command: str, result: dict) -> None:
         out = result['output']
         if 'path' in result:
             print(f'{result["path"]}  {out["width"]}x{out["height"]} {out["fps"]}fps  {out["frames"]} frames  {out["duration"]}s'
-                  + ('  (preview: draft size and encode, not for delivery)' if result.get('preview') else ''))
+                  + ('  (preview: draft size and encode, not for delivery)' if result.get('preview') else '')
+                  + (f'  (range: timeline frames {result["range"]["start_frame"]}..{result["range"]["end_frame"] - 1})' if result.get('range') else ''))
             if result.get('audio'):
                 audio = result['audio']
                 print(f'audio {audio["lufs"]} LUFS, true peak {audio["true_peak"]} dBTP, gain {audio["gain_db"]} dB')
@@ -442,7 +444,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == 'assemble':
             from .assemble import assemble_command
             result = assemble_command(args.edl, args.out, dry_run=args.dry_run, keep=args.keep, preview=args.preview,
-                                      cache=not args.no_cache, placeholders=args.placeholders)
+                                      cache=not args.no_cache, placeholders=args.placeholders, time_range=args.range)
         elif args.command == 'finish':
             from .assemble import finish_command
             lufs = None if args.lufs == 'keep' else float(args.lufs)

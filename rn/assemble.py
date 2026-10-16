@@ -23,7 +23,7 @@ from pathlib import Path
 
 from . import __version__
 from . import audio as audio_mod
-from .edl import Clip, Edit, cache_dir, load
+from .edl import Clip, Edit, cache_dir, load, source_offsets
 from .ff import RnError, ff_color, has_filter, probe, run, source_matrix, to_bt709
 
 SR = audio_mod.SAMPLE_RATE
@@ -42,14 +42,35 @@ def _fit(clip: Clip, width: int, height: int, background: str) -> str:
     return f'{scale}:flags=lanczos'
 
 
+REMAP_SEGMENTS = 64  # a speed ramp's time map as at most this many straight pieces (well under a frame of error)
+
+
+def _remap(points: list, frames: int, fps: Fraction) -> str:
+    """setpts expression in T (source seconds from the clip's in) -> output seconds: the inverse of the ramp's integral,
+    piecewise linear through its value at every few output frames."""
+    offsets = source_offsets(points, frames, fps)
+    step = max(1, math.ceil(frames / REMAP_SEGMENTS))
+    marks = [(offsets[n], n / float(fps)) for n in [*range(0, frames, step), frames]]
+    tau_end, t_end = marks[-1]
+    expr = f'({t_end:.6f}+(T-{tau_end:.6f})/{points[-1][1]:.6f})'  # past the last mark: the final speed
+    for (tau0, t0), (tau1, t1) in reversed(list(zip(marks, marks[1:]))):
+        if tau1 > tau0:
+            expr = f'if(lt(T,{tau1:.6f}),{t0:.6f}+(T-{tau0:.6f})*{(t1 - t0) / (tau1 - tau0):.6f},{expr})'
+    return expr
+
+
 def _timing(clip: Clip, fps: Fraction) -> str:
     """Source range -> output frame grid. Starts half a source frame early so float rounding never drops the first frame."""
     start = max(0.0, clip.start_s - 0.5 / float(clip.src_fps)) if clip.src_fps else clip.start_s
     chain = f'setpts=PTS-STARTPTS,trim=start={start:.6f},setpts=PTS-STARTPTS'
-    if clip.speed != 1:
+    ramp = (clip.keys or {}).get('speed')
+    if ramp:
+        chain += f",setpts='{_remap(ramp, clip.frames, fps)}'/TB"
+    elif clip.speed != 1:
         chain += f',setpts=PTS/{clip.speed:.6f}'
     # Slow motion blends neighbouring frames instead of repeating them (a visible stutter at 0.3-1x).
-    chain += f',framerate=fps={fps}' if clip.speed < 1 else f',fps={fps}'
+    slow = min(v for _, v, _ in ramp) < 1 if ramp else clip.speed < 1
+    chain += f',framerate=fps={fps}' if slow else f',fps={fps}'
     return chain
 
 
@@ -130,7 +151,8 @@ def _atempo(speed: float) -> str:
     return ','.join(f'atempo={f:.6f}' for f in factors if abs(f - 1) > 1e-9)
 
 
-def _render_slot_audio(clip: Clip, edit: Edit, out: Path) -> None:
+def _render_slot_audio(clip: Clip, edit: Edit, out: Path, fades: tuple[float, float] = (0.0, 0.0)) -> None:
+    """The clip's own sound, exactly as long as its slot; `fades` (in, out) soften hard cuts (mix.cut_fade)."""
     samples = round(clip.frames / edit.fps * SR)
     if clip.audio and clip.has_audio:
         chain = f'asetpts=PTS-STARTPTS,atrim=start={clip.start_s:.6f},asetpts=PTS-STARTPTS'
@@ -139,6 +161,10 @@ def _render_slot_audio(clip: Clip, edit: Edit, out: Path) -> None:
         if clip.gain_db:
             chain += f',volume={clip.gain_db}dB'
         chain += f',apad,atrim=end_sample={samples}'
+        if fades[0]:
+            chain += f',afade=t=in:d={fades[0]:.4f}'
+        if fades[1]:
+            chain += f',afade=t=out:st={max(0.0, samples / SR - fades[1]):.6f}:d={fades[1]:.4f}'
         run(['ffmpeg', '-i', str(clip.source), '-filter_complex', f'[0:a]{chain}[a]', '-map', '[a]', '-c:a', 'pcm_f32le', '-y', str(out)])
     else:
         run(['ffmpeg', '-f', 'lavfi', '-i', f'anullsrc=r={SR}:cl=stereo', '-af', f'atrim=end_sample={samples}',
@@ -241,7 +267,7 @@ def _overlay_chain(clip: Clip, edit: Edit, index: int) -> str:
     return f'[{index}:v]' + ','.join(parts) + f'[o{index}]'
 
 
-def _render_video(edit: Edit, slots: list[Path], work: Path, out: Path) -> None:
+def _render_video(edit: Edit, slots: list[Path], work: Path, out: Path, span: tuple[int, int]) -> None:
     inputs = ['-f', 'concat', '-safe', '0', '-i', str(_join(edit, slots, work))]
     lines, current = [f'[0:v]{_grid(edit)}[base]'], 'base'
     for clip in edit.overlays:
@@ -259,7 +285,7 @@ def _render_video(edit: Edit, slots: list[Path], work: Path, out: Path) -> None:
         style = f":force_style='{edit.subtitle_style}'" if edit.subtitle_style else ''
         lines.append(f"{tail}subtitles=filename=subs{edit.subtitles.suffix.lower()}{style}[sub]")
         tail = '[sub]'
-    lines.append(f'{tail}format=yuv420p,{audio_mod.BT709},trim=end_frame={edit.total_frames},setpts=N/({edit.fps}*TB)[out]')
+    lines.append(f'{tail}format=yuv420p,{audio_mod.BT709},trim=start_frame={span[0]}:end_frame={span[1]},setpts=N/({edit.fps}*TB)[out]')
     run(['ffmpeg', *inputs, '-filter_complex', ';'.join(lines), '-map', '[out]', *audio_mod.VIDEO_ENCODE, *audio_mod.CFR_VUI,
          '-crf', str(edit.crf), '-preset', edit.preset, '-r', str(edit.fps), '-an', '-y', str(out.resolve())],
         cwd=work)
@@ -406,8 +432,28 @@ def _render_nested(edit: Edit, cache: Path | None, work: Path, placeholders: boo
             clip.kind = 'video'
 
 
+def _span(edit: Edit, time_range: str | None) -> tuple[int, int]:
+    """--range A-B (seconds) -> output frames [a, b). Clips wholly outside it render as cheap background slots and
+    overlays there are dropped; everything is still laid out on the full timeline, so anchors and transitions hold."""
+    if not time_range:
+        return 0, edit.total_frames
+    try:
+        a, b = (float(part) for part in time_range.split('-'))
+    except ValueError:
+        raise RnError(f'--range "{time_range}": seconds as A-B, e.g. 3.5-6') from None
+    span = (max(0, round(a * edit.fps)), min(edit.total_frames, round(b * edit.fps)))
+    if span[0] >= span[1]:
+        raise RnError(f'--range {time_range}: empty inside the timeline (0-{edit.duration:.3f}s)')
+    for i, clip in enumerate(edit.base):
+        if clip.timeline_start + clip.frames <= span[0] or clip.timeline_start >= span[1]:
+            edit.base[i] = dataclasses.replace(clip, kind='color', color=edit.background, source=None, keys=None, audio=False,
+                                               has_audio=False, src_fps=None, matrix='bt709', decoder=None)
+    edit.overlays = [c for c in edit.overlays if c.timeline_start < span[1] and c.timeline_start + c.frames > span[0]]
+    return span
+
+
 def assemble_command(edl_path: str, out: str, *, dry_run: bool, keep: bool, preview: bool = False, cache: bool = True,
-                     placeholders: bool = False) -> dict:
+                     placeholders: bool = False, time_range: str | None = None) -> dict:
     edit = load(edl_path, placeholders=placeholders)
     if edit.subtitles and not has_filter('subtitles'):
         raise RnError('this ffmpeg has no libass, so it cannot burn subtitles; on macOS: brew install ffmpeg-full, then put '
@@ -418,26 +464,36 @@ def assemble_command(edl_path: str, out: str, *, dry_run: bool, keep: bool, prev
         return edit.summary()
     out_path = Path(out)
     store = cache_dir(edit.path.parent) / 'slots' if cache else None
+    span = _span(edit, time_range)
     with tempfile.TemporaryDirectory(prefix='rn-assemble-') as tmp:
         work = Path(tmp)
         _render_nested(edit, store, work, placeholders)
         slots, slot_audio = [], []
-        for clip in edit.base:
+        for i, clip in enumerate(edit.base):
             slots.append(_cached(store, _slot_key(clip, edit, 'video'), '.mkv', work, lambda target, c=clip: _render_slot(c, edit, target)))
-            slot_audio.append(_cached(store, _slot_key(clip, edit, 'audio'), '.wav', work,
-                                      lambda target, c=clip: _render_slot_audio(c, edit, target)))
+            # A hard cut's own sound fades on both sides; a transition already crossfades it.
+            fades = (edit.cut_fade if i and not clip.transition_frames else 0.0,
+                     edit.cut_fade if i + 1 < len(edit.base) and not edit.base[i + 1].transition_frames else 0.0)
+            slot_audio.append(_cached(store, _slot_key(clip, edit, f'audio{fades}'), '.wav', work,
+                                      lambda target, c=clip, f=fades: _render_slot_audio(c, edit, target, f)))
         video = work / 'video.mp4'
-        _render_video(edit, slots, work, video)
+        _render_video(edit, slots, work, video, span)
         frames = probe(video, exact=True)['video']['frames']
-        if frames != edit.total_frames:
-            raise RnError(f'rendered {frames} frames, expected {edit.total_frames}')
+        if frames != span[1] - span[0]:
+            raise RnError(f'rendered {frames} frames, expected {span[1] - span[0]}')
         mix = _render_audio(edit, slot_audio, work)
         loudness = None
         m4a = None
         if mix:
             m4a = work / 'audio.m4a'
-            loudness = audio_mod.finish_audio(mix, m4a, lufs=edit.lufs, true_peak=edit.true_peak)
-        audio_mod.mux(video, m4a, out_path, frames=edit.total_frames)
+            excerpt = mix
+            if span != (0, edit.total_frames):
+                # A range keeps the full mix's level: the gain is measured on the whole mix, applied to the excerpt.
+                excerpt = work / 'excerpt.wav'
+                run(['ffmpeg', '-i', str(mix), '-af', f'atrim=start_sample={round(span[0] / edit.fps * SR)}:'
+                     f'end_sample={round(span[1] / edit.fps * SR)},asetpts=PTS-STARTPTS', '-c:a', 'pcm_f32le', '-y', str(excerpt)])
+            loudness = audio_mod.finish_audio(excerpt, m4a, lufs=edit.lufs, true_peak=edit.true_peak, reference=mix)
+        audio_mod.mux(video, m4a, out_path, frames=span[1] - span[0])
         if keep:
             kept = out_path.with_suffix('.parts')
             shutil.copytree(work, kept, dirs_exist_ok=True)
@@ -445,6 +501,9 @@ def assemble_command(edl_path: str, out: str, *, dry_run: bool, keep: bool, prev
     summary['path'] = str(out_path)
     summary['audio'] = loudness
     summary['preview'] = preview
+    if span != (0, edit.total_frames):
+        summary['range'] = {'start_frame': span[0], 'end_frame': span[1]}
+        summary['output'].update(frames=span[1] - span[0], duration=round(float((span[1] - span[0]) / edit.fps), 4))
     return summary
 
 
