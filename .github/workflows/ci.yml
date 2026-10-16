@@ -11,7 +11,7 @@ jobs:
     container: python:3.12
     steps:
       - uses: actions/checkout@v4
-      - run: apt-get update && apt-get install -y --no-install-recommends ffmpeg fontconfig fonts-dejavu-core && pip install uv
+      - run: apt-get update && apt-get install -y --no-install-recommends ffmpeg fontconfig fonts-dejavu-core tesseract-ocr tesseract-ocr-eng && pip install uv
       - run: uv run playwright install --with-deps chromium
       - run: uv run pytest -q
 

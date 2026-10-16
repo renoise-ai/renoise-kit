@@ -1,9 +1,9 @@
-"""rn: Renoise media kit. Measure (probe, frame, sheet, cuts, listen, faces, ref), render (capture, fx, fonts,
-assets, captions), assemble an EDL frame-exactly, compare, finish and QA. It measures and guarantees the mechanics; every
-creative decision stays yours.
+"""rn: Renoise media kit. Measure (probe, frame, sheet, cuts, listen, faces, ref, signal, align, text, matte), render
+(capture, fx, fonts, assets, captions), edit and assemble an EDL frame-exactly, compare, finish, QA and export. It measures
+and guarantees the mechanics; every creative decision stays yours.
 
 Every command prints a short summary; --json FILE writes the full result. Failures exit non-zero with
-`rn: error: <reason>` on the last line. Contract: spec/mcp/03-media-kit.md.
+`rn: error: <reason>` on the last line. Contract: SPEC.md in the renoise-kit repository.
 """
 from __future__ import annotations
 
@@ -135,6 +135,45 @@ def _parser() -> argparse.ArgumentParser:
     capture.add_argument('--shards', type=int, default=4, help='parallel Chromium instances (each boots in 1-3 s)')
     capture.add_argument('--start', type=int, default=0, help='first frame index (render a part)')
 
+    signal = add('signal', 'frame-by-frame numbers: luma, motion, saturation, loudness, bands, onsets, clicks',
+                 'One series per quantity on the video\'s frame clock (30/s for audio alone): luma, frame difference and\n'
+                 'saturation (0..1); rms, low/mid/high band levels (dB) and onset (dB of spectral rise); plus flash frames\n'
+                 'and click times. Flashes, freezes, pacing, beats and music-driven motion all read from it. -o draws them.')
+    signal.add_argument('file')
+    signal.add_argument('-o', '--out', metavar='PNG', help='plot the series on one time axis (needs matplotlib: extra listen)')
+
+    align = add('align', 'where recording B sits inside A, by sound (offset + how sure)',
+                'Cross-correlates onset envelopes, then refines on the waveform: a song inside a reference edit, camera\n'
+                'angles, a separately recorded voice. "match" is the waveform correlation at that offset (near 1: the same\n'
+                'sound); "distinct" how far ahead of other offsets it is (low for repetitive music).')
+    align.add_argument('a')
+    align.add_argument('b')
+    align.add_argument('--max-offset', type=float, metavar='S', help='only consider offsets within +-S seconds')
+
+    matte = add('matte', 'subject alpha per frame (rembg) as a grey PNG sequence for EDL masks',
+                'White = subject. Use it as an overlay "mask" ("invert": true keeps graphics off the subject, e.g. text\n'
+                'behind a person) or --cutout for RGBA cut-outs to place as an overlay. Check edges on a sheet.')
+    matte.add_argument('file')
+    matte.add_argument('-o', '--out', required=True, help='output folder (its PNGs are replaced)')
+    matte.add_argument('--model', default='isnet-general-use', help='rembg model: isnet-general-use (any subject), u2net_human_seg (people), ...')
+    matte.add_argument('--every', type=int, default=1, help='compute every Nth frame and hold in between (faster, less exact)')
+    matte.add_argument('--cutout', action='store_true', help='write the subject as RGBA instead of the grey matte')
+
+    text = add('text', 'words on screen and when they are there (tesseract OCR)',
+               'Reads every --every-th frame (default two per second); lines with boxes per frame, and spans: the same\n'
+               'line read in consecutive samples. OCR misreads stylised type: boxes are where to look, strings a draft.')
+    text.add_argument('file')
+    text.add_argument('--every', type=int, metavar='N')
+    text.add_argument('--lang', help='tesseract languages, e.g. eng+chi_sim (default: those installed of eng, chi_sim, chi_tra, jpn, kor)')
+    text.add_argument('--min-conf', type=float, default=50, help='drop words below this confidence (0-100)')
+
+    export = add('export', 'the EDL as an editable project: .otio, .fcpxml (Final Cut), .xml (Premiere, Resolve)',
+                 'Cuts, trims, speed, transitions, nested edits, overlay and audio timing carry over, media by absolute path.\n'
+                 'Position/size, keys, blend, masks, raw filters and gain curves are kept as "rn" metadata and listed.')
+    export.add_argument('edl')
+    export.add_argument('-o', '--out', required=True, help='.otio, .fcpxml or .xml')
+    export.add_argument('--srt', metavar='FILE', help='also write the subtitles as SRT')
+
     fx = add('fx', 'list the effects library (grain, leak, flash, glitch, ...)',
              'Readable, editable source: RNFX.<name> in pages for rn capture (fx.js), rn.fx.<name> for numpy frames in\n'
              'Python. Call it, copy and change it, or ignore it; defaults are engine defaults, not a style.')
@@ -198,12 +237,20 @@ def _parser() -> argparse.ArgumentParser:
                    '  "mix": {"lufs": -14, "true_peak": -1.0, "duck_db": 10}            # duck music under voice\n'
                    '}\n'
                    'Positions: in/out take seconds, {"frame": n} or {"shot": n, "offset": s} (shots from rn cuts).\n'
-                   'Overlay "at"/"until" and audio "at" take seconds or an anchor + "offset": {"clip": i}, {"clip_end": i}\n'
-                   '(main-track clip i as laid out), {"marker": name}, {"frame": n}, {"beat": n, "listen": f.json},\n'
-                   '{"word": n, "listen": f.json, "edge": "start"|"end"}.\n'
+                   'Overlay "at"/"until" and audio "at" take seconds or an anchor + "offset": {"clip": i or "id"},\n'
+                   '{"clip_end": i or "id"} (main-track clip as laid out, or an earlier overlay by id), {"marker": name},\n'
+                   '{"frame": n}, {"beat": n, "listen": f.json}, {"word": n, "listen": f.json, "edge": "start"|"end"}.\n'
                    'Keys [t, value, ease?] (t from the clip start; eases linear in out inout in3 out3 inout3 hold):\n'
-                   'main track scale/x/y/rotate (x, y as fractions of the frame); overlays scale/x/y/rotate/opacity\n'
-                   '(x, y in px, scale and rotate about the layer centre). Keep main-track scale >= 1: edges smear.')
+                   'main track scale/x/y/rotate (x, y as fractions of the frame), speed (a ramp; drops the clip\'s sound),\n'
+                   'gain_db; overlays scale/x/y/rotate/opacity/speed (x, y in px, about the layer centre); audio gain_db.\n'
+                   'Keep main-track scale >= 1: edges smear.\n'
+                   'Any clip or audio item: "id" (anchors, rn edit), "meta" (anything, kept as is), "vf" / "af" (one raw\n'
+                   'ffmpeg filter chain, e.g. "eq=saturation=1.2,unsharp"; af on main-track clips and audio).\n'
+                   'Main track: "ranges": [[in, out], ...] plays spans of one source back to back; "src": "part.json"\n'
+                   'plays another EDL. Overlays: "blend": screen|multiply|add|overlay|... ; "mask": {"frames"|"image"|"src":\n'
+                   '..., "mode": "luma"|"alpha", "invert": bool} (full frame, e.g. from rn matte). Overlays and audio:\n'
+                   '"pivot": s puts that point of the source (a hit, a downbeat) on "at". "mix": {"cut_fade": 0.01} fades\n'
+                   'every hard cut\'s own sound. "accept": [{"check", "at", "note"}] waives qa warnings judged intended.')
     assemble.add_argument('edl')
     assemble.add_argument('-o', '--out', default='out.mp4')
     assemble.add_argument('--dry-run', action='store_true', help='validate and print the timeline without rendering')
@@ -277,10 +324,12 @@ def _parser() -> argparse.ArgumentParser:
     finish.add_argument('--crf', type=int, default=18)
     finish.add_argument('--preset', default='medium')
     finish.add_argument('--copy-video', action='store_true', help='keep the video stream when it is already H.264 yuv420p')
+    finish.add_argument('--height', type=int, metavar='N', help='scale to N px high, aspect kept (e.g. a 1080p copy of a 4K master)')
 
     qa = add('qa', 'delivery checks on an encoded file (exit 1 on FAIL)',
              'Frame count, fps, size, codec, pix_fmt, SAR, color tags, faststart, audio/video duration, container\n'
-             'duration, true peak, loudness, black frames, frozen frames, black bars. With --edl the expected frames,\n'
+             'duration, true peak, loudness, dead air, level jumps, clicks, black frames, frozen frames, black bars,\n'
+             'fixed frame rate. With --edl the expected frames,\n'
              'size, fps and loudness come from the edit, and its color/still clips are not flagged. FAIL blocks\n'
              'delivery; WARN means look at it (it may be intended). Check fixes on the new render, not the old one.')
     qa.add_argument('file')
@@ -292,6 +341,8 @@ def _parser() -> argparse.ArgumentParser:
     qa.add_argument('--lufs-tolerance', type=float, default=2.0)
     qa.add_argument('--true-peak', type=float, help='limit in dBTP (default -1.0)')
     qa.add_argument('--require-audio', action='store_true')
+    qa.add_argument('--accept', action='append', default=[], metavar='CHECK[@T]',
+                    help='a WARN judged intended: the whole check, or the finding at T seconds (EDL: "accept": [{"check", "at", "note"}])')
     return parser
 
 
@@ -336,9 +387,11 @@ def _print_summary(command: str, result: dict) -> None:
               f'{len(result["checks"]) - result["failed"] - result["warnings"]} passed  ({result["path"]})')
 
 
-SUMMARIZED = {'cuts', 'listen', 'faces', 'ref', 'capture', 'fx', 'fonts', 'assets', 'captions', 'compare', 'edit'}
+SUMMARIZED = {'cuts', 'listen', 'faces', 'ref', 'capture', 'fx', 'fonts', 'assets', 'captions', 'compare', 'edit', 'signal', 'align',
+              'matte', 'text', 'export'}
 # The pip extra that brings a command's optional Python modules (the media sandbox has them all).
-EXTRAS = {'listen': 'listen', 'ref': 'listen', 'faces': 'faces', 'capture': 'capture', 'captions': 'captions', 'fonts': 'fonts'}
+EXTRAS = {'listen': 'listen', 'ref': 'listen', 'faces': 'faces', 'capture': 'capture', 'captions': 'captions', 'fonts': 'fonts',
+          'signal': 'listen', 'matte': 'matte', 'export': 'export'}
 
 
 def _size(text: str) -> tuple[int, int]:
@@ -397,6 +450,21 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
         else:
             result = editops.move_op(path, args.ref, args.before, args.after, args.track)
         return result, editops.summary_lines(result)
+    elif command == 'signal':
+        from .signal import signal_command, summary_lines
+        result = signal_command(args.file, out=args.out)
+    elif command == 'align':
+        from .align import align_command, summary_lines
+        result = align_command(args.a, args.b, max_offset=args.max_offset)
+    elif command == 'matte':
+        from .matte import matte_command, summary_lines
+        result = matte_command(args.file, out=args.out, model=args.model, every=args.every, cutout=args.cutout)
+    elif command == 'text':
+        from .text import summary_lines, text_command
+        result = text_command(args.file, every=args.every, lang=args.lang, min_conf=args.min_conf)
+    elif command == 'export':
+        from .export import export_command, summary_lines
+        result = export_command(args.edl, args.out, srt=args.srt)
     elif command == 'compare':
         from .compare import compare_command, summary_lines
         result = compare_command(args.a, args.b, out=args.out, count=args.count, seconds=args.seconds, width=args.width,
@@ -449,12 +517,12 @@ def main(argv: list[str] | None = None) -> int:
             from .assemble import finish_command
             lufs = None if args.lufs == 'keep' else float(args.lufs)
             result = finish_command(args.file, args.out, lufs=lufs, true_peak=args.true_peak, crf=args.crf,
-                                    preset=args.preset, copy_video=args.copy_video)
+                                    preset=args.preset, copy_video=args.copy_video, height=args.height)
         else:
-            from .qa import qa_command
+            from .qa import parse_accept, qa_command
             result = qa_command(args.file, edl=args.edl, frames=args.expect_frames, size=args.expect_size, fps=args.expect_fps,
                                 lufs=args.lufs, lufs_tolerance=args.lufs_tolerance, true_peak=args.true_peak,
-                                require_audio=args.require_audio)
+                                require_audio=args.require_audio, accept=parse_accept(args.accept))
     except RnError as error:
         print(f'rn: error: {error}', file=sys.stderr)
         return 1

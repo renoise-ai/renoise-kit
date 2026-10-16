@@ -559,7 +559,8 @@ def assemble_command(edl_path: str, out: str, *, dry_run: bool, keep: bool, prev
     return summary
 
 
-def finish_command(source: str, out: str, *, lufs: float | None, true_peak: float, crf: int, preset: str, copy_video: bool) -> dict:
+def finish_command(source: str, out: str, *, lufs: float | None, true_peak: float, crf: int, preset: str, copy_video: bool,
+                   height: int | None = None) -> dict:
     """Any video -> the delivery standard: H.264 High yuv420p bt709, moov first, LUFS target, encoded TP <= limit."""
     info = probe(source, exact=True)
     video = info['video']
@@ -571,10 +572,13 @@ def finish_command(source: str, out: str, *, lufs: float | None, true_peak: floa
         work = Path(tmp)
         encoded = work / 'video.mp4'
         compliant = video['codec'] == 'h264' and video['pix_fmt'] == 'yuv420p' and video['sar'] == '1:1'
+        if height and copy_video:
+            raise RnError('--height re-encodes the picture; drop --copy-video')
         if copy_video and compliant:
             run(['ffmpeg', '-i', source, '-map', '0:v:0', '-c:v', 'copy', '-an', '-y', str(encoded)])
         else:
-            even = f'scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=lanczos:{to_bt709(source_matrix(video))},setsar=1,format=yuv420p,{audio_mod.BT709}'
+            size = f'-2:{height // 2 * 2}' if height else 'trunc(iw/2)*2:trunc(ih/2)*2'  # --height keeps the aspect, even width
+            even = f'scale={size}:flags=lanczos:{to_bt709(source_matrix(video))},setsar=1,format=yuv420p,{audio_mod.BT709}'
             run(['ffmpeg', *(['-c:v', video['alpha_decoder']] if video.get('alpha_decoder') else []), '-i', source, '-map', '0:v:0', '-vf', even, *audio_mod.VIDEO_ENCODE,
                  *(audio_mod.CFR_VUI if video['cfr'] else []), '-crf', str(crf), '-preset', preset,
                  '-fps_mode', 'passthrough', '-an', '-y', str(encoded)])

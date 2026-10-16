@@ -159,6 +159,7 @@ class Edit:
     duck_db: float
     total_frames: int = 0
     cut_fade: float = 0.0  # seconds of fade on each side of a hard cut in the main track's own sound
+    accept: list[dict] = field(default_factory=list)  # qa warnings judged intended: {"check", "at"?, "note"?}
     warnings: list[str] = field(default_factory=list)
 
     @property
@@ -875,12 +876,18 @@ def load(path: str | Path, *, placeholders: bool = False, _stack: tuple[Path, ..
         raise RnError('mix.cut_fade: up to 0.25 s (it removes clicks at hard cuts; longer fades are audio items)')
     crf = int(_num(output.get('crf', 18), 'output.crf', minimum=0))
     preset = output.get('preset', 'medium')
-    unknown = set(raw) - {'output', 'tracks', 'audio', 'subtitles', 'mix', 'markers', 'note', 'version'}
+    accept = raw.get('accept') or []
+    if not isinstance(accept, list) or not all(isinstance(a, dict) and isinstance(a.get('check'), str) for a in accept):
+        raise RnError('accept: [{"check": "dead_air", "at": 1.5, "note": "the pause before the drop"}, ...] ("at" optional)')
+    for a in accept:
+        if 'at' in a:
+            _num(a['at'], 'accept[].at', minimum=0)
+    unknown = set(raw) - {'output', 'tracks', 'audio', 'subtitles', 'mix', 'markers', 'note', 'version', 'accept'}
     if unknown:
         raise RnError(f'unknown top-level field(s) {sorted(unknown)}')
     return Edit(path=path, width=width, height=height, fps=fps, background=background, crf=crf, preset=preset, base=base,
                 overlays=overlays, audio=audio, subtitles=subtitles, subtitle_style=style, lufs=lufs, true_peak=true_peak,
-                duck_db=duck, total_frames=total, warnings=warnings, cut_fade=cut_fade)
+                duck_db=duck, total_frames=total, warnings=warnings, cut_fade=cut_fade, accept=accept)
 
 
 def seconds(frames: int, fps: Fraction) -> float:
