@@ -1885,6 +1885,8 @@ wheels = [
 name = "renoise-kit"
 source = { editable = "." }
 dependencies = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "pillow" },
 ]
 
@@ -1895,8 +1897,6 @@ all = [
     { name = "librosa", version = "0.11.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "librosa", version = "1.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "matplotlib" },
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "opencv-python-headless" },
     { name = "playwright" },
     { name = "pysubs2", version = "1.8.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1915,21 +1915,13 @@ faces = [
 fonts = [
     { name = "fonttools" },
 ]
-fx = [
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-]
 listen = [
     { name = "librosa", version = "0.11.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "librosa", version = "1.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "matplotlib" },
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
 transcribe = [
     { name = "faster-whisper" },
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
 
 [package.dev-dependencies]
@@ -1953,16 +1945,14 @@ requires-dist = [
     { name = "fonttools", marker = "extra == 'fonts'" },
     { name = "librosa", marker = "extra == 'listen'" },
     { name = "matplotlib", marker = "extra == 'listen'" },
-    { name = "numpy", marker = "extra == 'fx'" },
-    { name = "numpy", marker = "extra == 'listen'" },
-    { name = "numpy", marker = "extra == 'transcribe'" },
+    { name = "numpy" },
     { name = "opencv-python-headless", marker = "extra == 'faces'", specifier = ">=4.8" },
     { name = "pillow", specifier = ">=10.1" },
     { name = "playwright", marker = "extra == 'capture'" },
     { name = "pysubs2", marker = "extra == 'captions'" },
-    { name = "renoise-kit", extras = ["captions", "capture", "faces", "fonts", "fx", "listen", "transcribe"], marker = "extra == 'all'" },
+    { name = "renoise-kit", extras = ["captions", "capture", "faces", "fonts", "listen", "transcribe"], marker = "extra == 'all'" },
 ]
-provides-extras = ["listen", "transcribe", "faces", "capture", "captions", "fonts", "fx", "all"]
+provides-extras = ["listen", "transcribe", "faces", "capture", "captions", "fonts", "all"]
 
 [package.metadata.requires-dev]
 dev = [

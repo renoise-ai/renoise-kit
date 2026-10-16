@@ -210,6 +210,45 @@ def _parser() -> argparse.ArgumentParser:
     assemble.add_argument('--keep', action='store_true', help='keep per-clip slots and the mix next to the output (<out>.parts/)')
     assemble.add_argument('--preview', action='store_true',
                           help='half-size draft with a fast encode: check timing and layout before the full render (not for delivery)')
+    assemble.add_argument('--placeholders', action='store_true',
+                          help='a missing source becomes a card (id, meta.label or meta.prompt) for its time span instead of an error')
+    assemble.add_argument('--no-cache', action='store_true',
+                          help='render every slot afresh (default: reuse slots and nested edits from .rn-cache next to the EDL, or RN_CACHE)')
+
+    edit = add('edit', 'change an EDL by operations on clip ids (checked before writing)',
+               'Each operation lays the whole edit out again and writes the file only if it is valid. Clips are addressed\n'
+               'by "id" (rn edit e.json ids gives every clip one) or by position "track:index" / "audio:index".\n'
+               'The main track plays back to back: deleting or trimming there ripples what follows; overlays and audio\n'
+               'anchored with {"clip": "<id>"} follow, ones at fixed seconds stay. Examples:\n'
+               '  rn edit e.json ids\n'
+               '  rn edit e.json split c3 --at 4.2\n'
+               '  rn edit e.json set c3 out=5.5 meta.take=2 --unset speed\n'
+               '  rn edit e.json delete c4 --lift\n'
+               '  rn edit e.json insert --after c2 --clip \'{"id": "c9", "src": "s9.mp4", "out": 2}\'\n'
+               '  rn edit e.json move t1 --track 2')
+    edit.add_argument('edl')
+    ops = edit.add_subparsers(dest='op', required=True, metavar='op')
+    ops.add_parser('ids', help='give every clip and audio item without an id one (c1.. main, o1.. overlays, a1.. audio)')
+    op_set = ops.add_parser('set', help='set fields: key=value (JSON when it parses), dotted keys reach into objects')
+    op_set.add_argument('ref')
+    op_set.add_argument('assignments', nargs='*', metavar='key=value')
+    op_set.add_argument('--unset', action='append', default=[], metavar='KEY')
+    op_split = ops.add_parser('split', help='cut a clip in two at a timeline time; both halves play as the one did')
+    op_split.add_argument('ref')
+    op_split.add_argument('--at', type=float, required=True, help='timeline seconds')
+    op_split.add_argument('--id', help='id for the second half (default <id>-2)')
+    op_delete = ops.add_parser('delete', help='remove a clip (main track ripples; --lift keeps a gap)')
+    op_delete.add_argument('ref')
+    op_delete.add_argument('--lift', action='store_true')
+    for name, text in (('insert', 'add a clip given as JSON or @file.json'), ('move', 'move a clip next to another or onto a track')):
+        op = ops.add_parser(name, help=text)
+        if name == 'insert':
+            op.add_argument('--clip', required=True, help='clip JSON or @file.json')
+        else:
+            op.add_argument('ref')
+        op.add_argument('--before', metavar='ID')
+        op.add_argument('--after', metavar='ID')
+        op.add_argument('--track', metavar='N|audio', help='append to track N (one past the last adds a track) or to audio')
 
     compare = add('compare', 'two videos side by side at the same times (+ cut timing)',
                   'A cut against its reference, or two versions of a cut: frames at the same times, A on the top row and B\n'
@@ -276,9 +315,9 @@ def _print_summary(command: str, result: dict) -> None:
             print(f'timeline {out["width"]}x{out["height"]} {out["fps"]}fps  {out["frames"]} frames  {out["duration"]}s')
             for clip in result['base']:
                 fade = f'  (xfade {clip["transition_frames"]}f)' if clip['transition_frames'] else ''
-                print(f'  {clip["where"]}: frames {clip["start_frame"]}..{clip["start_frame"] + clip["frames"] - 1}{fade}')
+                print(f'  {clip["id"] or clip["where"]}: frames {clip["start_frame"]}..{clip["start_frame"] + clip["frames"] - 1}{fade}')
             for clip in result['overlays']:
-                print(f'  {clip["where"]}: overlay frames {clip["start_frame"]}..{clip["start_frame"] + clip["frames"] - 1}')
+                print(f'  {clip["id"] or clip["where"]}: overlay frames {clip["start_frame"]}..{clip["start_frame"] + clip["frames"] - 1}')
         for warning in result.get('warnings', []):
             print(f'warning: {warning}')
     elif command == 'finish':
@@ -295,10 +334,9 @@ def _print_summary(command: str, result: dict) -> None:
               f'{len(result["checks"]) - result["failed"] - result["warnings"]} passed  ({result["path"]})')
 
 
-SUMMARIZED = {'cuts', 'listen', 'faces', 'ref', 'capture', 'fx', 'fonts', 'assets', 'captions', 'compare'}
+SUMMARIZED = {'cuts', 'listen', 'faces', 'ref', 'capture', 'fx', 'fonts', 'assets', 'captions', 'compare', 'edit'}
 # The pip extra that brings a command's optional Python modules (the media sandbox has them all).
-EXTRAS = {'listen': 'listen', 'ref': 'listen', 'faces': 'faces', 'capture': 'capture', 'captions': 'captions', 'fonts': 'fonts',
-          'fx': 'fx'}
+EXTRAS = {'listen': 'listen', 'ref': 'listen', 'faces': 'faces', 'capture': 'capture', 'captions': 'captions', 'fonts': 'fonts'}
 
 
 def _size(text: str) -> tuple[int, int]:
@@ -341,6 +379,22 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
         lines = [f'{e["name"]:10} {e["js"]:16} {e["py"]:18} {e["what"]}' for e in result['effects']]
         return result, lines + ([f'source: {result["js"]}', f'        {result["py"]}'] if args.source else
                                 ['rn fx --source prints the files to read or copy'])
+    elif command == 'edit':
+        from . import editops
+        path = Path(args.edl)
+        if args.op == 'ids':
+            result = editops.ids_op(path)
+        elif args.op == 'set':
+            result = editops.set_op(path, args.ref, args.assignments, args.unset)
+        elif args.op == 'split':
+            result = editops.split_op(path, args.ref, args.at, args.id)
+        elif args.op == 'delete':
+            result = editops.delete_op(path, args.ref, args.lift)
+        elif args.op == 'insert':
+            result = editops.insert_op(path, args.clip, args.before, args.after, args.track)
+        else:
+            result = editops.move_op(path, args.ref, args.before, args.after, args.track)
+        return result, editops.summary_lines(result)
     elif command == 'compare':
         from .compare import compare_command, summary_lines
         result = compare_command(args.a, args.b, out=args.out, count=args.count, seconds=args.seconds, width=args.width,
@@ -387,7 +441,8 @@ def main(argv: list[str] | None = None) -> int:
             result, lines = _run_summarized(args)
         elif args.command == 'assemble':
             from .assemble import assemble_command
-            result = assemble_command(args.edl, args.out, dry_run=args.dry_run, keep=args.keep, preview=args.preview)
+            result = assemble_command(args.edl, args.out, dry_run=args.dry_run, keep=args.keep, preview=args.preview,
+                                      cache=not args.no_cache, placeholders=args.placeholders)
         elif args.command == 'finish':
             from .assemble import finish_command
             lufs = None if args.lufs == 'keep' else float(args.lufs)

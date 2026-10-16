@@ -1,9 +1,13 @@
-"""The edit decision list (edit.json): parsed into a frame-exact timeline. Contract: spec/mcp/03-media-kit.md §4."""
+"""The edit decision list (edit.json): parsed into a frame-exact timeline. Contract: SPEC.md §4."""
 from __future__ import annotations
 
+import hashlib
 import json
 import math
+import os
 import re
+import shutil
+import subprocess
 from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
@@ -25,12 +29,13 @@ KEYS_MAIN = {'scale', 'x', 'y', 'rotate'}
 KEYS_OVERLAY = {'scale', 'x', 'y', 'rotate', 'opacity'}
 _SEQ = re.compile(r'%0?(\d*)d')
 ROLES = {'music', 'voice', 'sfx'}
+ID = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]*$')
 
 
 @dataclass
 class Clip:
     where: str
-    kind: str  # video | sequence | image | color
+    kind: str  # video | sequence | image | color | edit (a nested EDL, rendered before the slots)
     source: Path | None
     color: str | None
     start_s: float  # position inside the source, seconds from its first frame
@@ -59,6 +64,8 @@ class Clip:
     keys: dict | None = None
     seq_start: int = 0  # sequences: first file number
     src_size: tuple[int, int] | None = None  # sequences and images: pixel size
+    id: str | None = None
+    meta: object = None  # kept as given, never interpreted
 
 
 @dataclass
@@ -72,6 +79,8 @@ class AudioItem:
     gain_db: float
     fade_in: float
     fade_out: float
+    id: str | None = None
+    meta: object = None
 
 
 @dataclass
@@ -102,10 +111,10 @@ class Edit:
         return {
             'output': {'width': self.width, 'height': self.height, 'fps': str(self.fps), 'frames': self.total_frames,
                        'duration': round(self.duration, 4)},
-            'base': [{'where': c.where, 'start_frame': c.timeline_start, 'frames': c.frames, 'transition_frames': c.transition_frames}
-                     for c in self.base],
-            'overlays': [{'where': c.where, 'start_frame': c.timeline_start, 'frames': c.frames} for c in self.overlays],
-            'audio': [{'where': a.where, 'role': a.role, 'at': a.at} for a in self.audio],
+            'base': [{'where': c.where, 'id': c.id, 'start_frame': c.timeline_start, 'frames': c.frames,
+                      'transition_frames': c.transition_frames} for c in self.base],
+            'overlays': [{'where': c.where, 'id': c.id, 'start_frame': c.timeline_start, 'frames': c.frames} for c in self.overlays],
+            'audio': [{'where': a.where, 'id': a.id, 'role': a.role, 'at': a.at} for a in self.audio],
             'warnings': self.warnings,
         }
 
@@ -166,6 +175,7 @@ class Timeline:
     edit_dir: Path
     base: list[Clip]
     markers: dict[str, float]
+    by_id: dict[str, Clip] = field(default_factory=dict)  # main-track clips and the overlays parsed so far
     _listen: dict[str, dict] = field(default_factory=dict)
 
     def listen(self, value, where: str) -> dict:
@@ -180,7 +190,8 @@ class Timeline:
 
 def _anchor(value, where: str, timeline: Timeline) -> float:
     """Seconds on the output timeline: a number, or an anchor plus "offset" seconds:
-    {"clip": i} / {"clip_end": i} (main-track clip i as laid out, transitions included), {"marker": "name"},
+    {"clip": i} / {"clip_end": i} (main-track clip i as laid out, transitions included; or a clip id, main track or an
+    earlier overlay), {"marker": "name"},
     {"frame": n}, {"beat": n, "listen": "music.json"}, {"word": n, "listen": "vo.json", "edge": "start"|"end"}.
     Beat and word times are relative to the analysed file: add "offset" when that audio is placed later."""
     if not isinstance(value, dict):
@@ -192,9 +203,14 @@ def _anchor(value, where: str, timeline: Timeline) -> float:
     kind = kinds[0]
     index = value[kind]
     if kind in ('clip', 'clip_end'):
-        if not isinstance(index, int) or not 0 <= index < len(timeline.base):
-            raise RnError(f'{where}.{kind}: main-track clip index 0..{len(timeline.base) - 1}')
-        clip = timeline.base[index]
+        if isinstance(index, str):
+            clip = timeline.by_id.get(index)
+            if clip is None:
+                raise RnError(f'{where}.{kind}: no clip with id "{index}" on the main track or in an earlier overlay')
+        elif not isinstance(index, int) or not 0 <= index < len(timeline.base):
+            raise RnError(f'{where}.{kind}: main-track clip index 0..{len(timeline.base) - 1}, or a clip id')
+        else:
+            clip = timeline.base[index]
         frame = clip.timeline_start + (clip.frames if kind == 'clip_end' else 0)
         seconds = float(frame / timeline.fps)
     elif kind == 'marker':
@@ -283,13 +299,111 @@ def _sequence(edit_dir: Path, pattern, where: str) -> tuple[Path, int, int, tupl
     return path, start, count, size
 
 
+def cache_dir(edit_dir: Path) -> Path:
+    """Renders rn can reuse: slots, nested edits, placeholder cards. RN_CACHE overrides <edit dir>/.rn-cache."""
+    return Path(os.environ.get('RN_CACHE') or edit_dir / '.rn-cache')
+
+
+def _ident(raw: dict, where: str) -> tuple[str | None, object]:
+    ident = raw.get('id')
+    if ident is not None and (not isinstance(ident, str) or not ID.match(ident)):
+        raise RnError(f'{where}.id: letters, digits, "_", "-" and "." (starting with a letter or digit)')
+    return ident, raw.get('meta')
+
+
+_SANS_CJK = ('Noto Sans CJK', 'NotoSansCJK', 'PingFang', 'Source Han Sans', 'SourceHanSans', 'Hiragino Sans', 'Heiti', 'WenQuanYi')
+
+
+def _font(size: int):
+    """A face that covers Chinese when fontconfig lists one (placeholder text is often a prompt), else Pillow's default.
+    fc-match ':lang=zh' is not enough: it falls back to any font; fc-list only lists fonts that cover the language."""
+    from PIL import ImageFont
+    if shutil.which('fc-list'):
+        files = subprocess.run(['fc-list', ':lang=zh-cn', '--format', '%{file}\n'], capture_output=True, text=True).stdout.split('\n')
+        files = [f for f in files if Path(f).suffix.lower() in ('.ttf', '.otf', '.ttc')]
+        for path in sorted(files, key=lambda f: not any(name in f for name in _SANS_CJK)):
+            try:
+                return ImageFont.truetype(path, size)
+            except OSError:
+                continue
+    return ImageFont.load_default(size=size)
+
+
+def _wrap(draw, text: str, font, width: int) -> list[str]:
+    """Greedy by measured width; breaks at spaces when a line has one, anywhere otherwise (CJK has no spaces)."""
+    lines, line = [], ''
+    for char in text:
+        if draw.textlength(line + char, font=font) <= width:
+            line += char
+            continue
+        cut = line.rfind(' ')
+        if cut > 0 and not char.isspace():
+            lines.append(line[:cut])
+            line = line[cut + 1:] + char
+        else:
+            lines.append(line)
+            line = char.lstrip()
+    return lines + ([line] if line else [])
+
+
+def _card(edit_dir: Path, size: tuple[int, int], lines: list[str]) -> Path:
+    """A placeholder still: dark slate, the clip's name, its meta label or prompt, and what is missing."""
+    from PIL import Image, ImageDraw
+    digest = hashlib.sha1(json.dumps([size, lines], ensure_ascii=False).encode()).hexdigest()[:16]
+    path = cache_dir(edit_dir) / 'placeholders' / f'{digest}.png'
+    if path.exists():
+        return path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    width, height = size
+    image = Image.new('RGB', size, (38, 40, 46))
+    draw = ImageDraw.Draw(image)
+    unit = max(14, min(width, height) // 18)
+    big, small = _font(unit * 2), _font(unit)
+    y = height // 6
+    draw.text((width // 12, y), lines[0], fill=(255, 214, 90), font=big)
+    y += unit * 3
+    for line in lines[1:]:
+        for wrapped in _wrap(draw, line, small, width * 5 // 6)[:8]:
+            draw.text((width // 12, y), wrapped, fill=(230, 230, 230), font=small)
+            y += int(unit * 1.4)
+        y += unit // 2
+    image.save(path)
+    return path
+
+
+def _placeholder(raw: dict, where: str, edit_dir: Path, size: tuple[int, int], warnings: list[str]) -> dict | None:
+    """With placeholders on, a clip whose source is missing becomes a card for the same time span."""
+    key = next(k for k in ('src', 'frames', 'image', 'color') if k in raw)
+    value = raw[key]
+    if key == 'color' or not isinstance(value, str):
+        return None
+    path = (edit_dir / value).expanduser()
+    if (path.parent.is_dir() and any(path.parent.iterdir())) if key == 'frames' else path.exists():
+        return None
+    if 'duration' in raw:
+        seconds = raw['duration']
+    elif isinstance(raw.get('out'), (int, float)) and isinstance(raw.get('in', 0), (int, float)):
+        seconds = (raw['out'] - raw.get('in', 0)) / raw.get('speed', 1)
+    else:
+        raise RnError(f'{where}: {value} is missing; a placeholder needs "duration" or numeric "in"/"out"')
+    meta = raw.get('meta') if isinstance(raw.get('meta'), dict) else {}
+    label = meta.get('label') or meta.get('prompt') or ''
+    card = _card(edit_dir, size, [raw.get('id') or Path(value).name, *([str(label)] if label else []), f'missing: {value}'])
+    warnings.append(f'{where}: {value} is missing; placeholder card for {seconds}s')
+    keep = {k: v for k, v in raw.items() if k not in ('src', 'frames', 'image', 'fps', 'in', 'out', 'speed', 'audio', 'gain_db', 'duration', 'until')}
+    return {**keep, 'image': str(card), 'duration': seconds, 'fit': raw.get('fit', 'contain')}
+
+
 def _clip(raw: dict, where: str, edit_dir: Path, fps: Fraction, *, overlay: bool, warnings: list[str],
-          timeline: Timeline | None = None) -> Clip:
+          timeline: Timeline | None = None, size: tuple[int, int] = (1920, 1080), placeholders: bool = False,
+          stack: tuple[Path, ...] = ()) -> Clip:
     if not isinstance(raw, dict):
         raise RnError(f'{where}: expected an object')
     kinds = [k for k in ('src', 'frames', 'image', 'color') if k in raw]
     if len(kinds) != 1:
-        raise RnError(f'{where}: give exactly one of "src" (video), "frames" (image sequence), "image" or "color"')
+        raise RnError(f'{where}: give exactly one of "src" (video or a nested edit .json), "frames" (image sequence), "image" or "color"')
+    if placeholders:
+        raw = _placeholder(raw, where, edit_dir, size, warnings) or raw
     at_s = 0.0
     if overlay:
         assert timeline is not None
@@ -312,9 +426,21 @@ def _clip(raw: dict, where: str, edit_dir: Path, fps: Fraction, *, overlay: bool
     gain = _num(raw.get('gain_db', 0.0), f'{where}.gain_db')
     clip = Clip(where=where, kind='video', source=None, color=None, start_s=0.0, speed=speed, frames=0, fit=fit,
                 audio=bool(raw.get('audio', not overlay)), gain_db=gain)
+    clip.id, clip.meta = _ident(raw, where)
 
     if 'src' in raw or 'frames' in raw:
-        if 'src' in raw:
+        if 'src' in raw and str(raw['src']).lower().endswith('.json'):
+            # A nested edit: laid out and checked now, rendered (and cached) by assemble before the slots.
+            clip.source = _resolve(edit_dir, raw['src'], f'{where}.src').resolve()
+            if clip.source in stack:
+                raise RnError(f'{where}.src: {clip.source.name} includes itself (through {" -> ".join(p.name for p in stack)})')
+            sub = load(clip.source, placeholders=placeholders, _stack=stack)
+            clip.kind = 'edit'
+            src_fps = sub.fps
+            clip.src_size = (sub.width, sub.height)
+            src_len = sub.duration
+            clip.has_audio = bool(sub.audio or any(c.audio and c.has_audio for c in sub.base))
+        elif 'src' in raw:
             clip.source = _resolve(edit_dir, raw['src'], f'{where}.src')
             info = probe(clip.source)
             video = info['video']
@@ -406,7 +532,7 @@ def _clip(raw: dict, where: str, edit_dir: Path, fps: Fraction, *, overlay: bool
     if clip.keys and overlay and ('scale' in clip.keys or 'rotate' in clip.keys) and clip.kind == 'color' and not (clip.w and clip.h):
         raise RnError(f'{where}.keys: give a colour overlay "w" and "h" to scale or rotate it')
     unknown = set(raw) - {'src', 'frames', 'fps', 'image', 'color', 'in', 'out', 'duration', 'until', 'speed', 'fit', 'audio', 'gain_db',
-                          'at', 'x', 'y', 'w', 'h', 'opacity', 'fade_in', 'fade_out', 'transition', 'keys', 'note'}
+                          'at', 'x', 'y', 'w', 'h', 'opacity', 'fade_in', 'fade_out', 'transition', 'keys', 'note', 'id', 'meta'}
     if unknown:
         raise RnError(f'{where}: unknown field(s) {sorted(unknown)}')
     return clip
@@ -432,17 +558,20 @@ def _audio(raw: dict, where: str, edit_dir: Path, timeline: Timeline) -> AudioIt
         duration = _num(raw['out'], f'{where}.out', positive=True) - start
         if duration <= 0:
             raise RnError(f'{where}.out: must be after "in"')
-    unknown = set(raw) - {'src', 'role', 'at', 'in', 'out', 'duration', 'gain_db', 'fade_in', 'fade_out', 'note'}
+    unknown = set(raw) - {'src', 'role', 'at', 'in', 'out', 'duration', 'gain_db', 'fade_in', 'fade_out', 'note', 'id', 'meta'}
     if unknown:
         raise RnError(f'{where}: unknown field(s) {sorted(unknown)}')
+    ident, meta = _ident(raw, where)
     return AudioItem(where=where, source=source, role=role, at=_anchor(raw.get('at', 0), f'{where}.at', timeline), start_s=start,
                      duration=duration, gain_db=_num(raw.get('gain_db', 0), f'{where}.gain_db'),
                      fade_in=_num(raw.get('fade_in', 0), f'{where}.fade_in', minimum=0),
-                     fade_out=_num(raw.get('fade_out', 0), f'{where}.fade_out', minimum=0))
+                     fade_out=_num(raw.get('fade_out', 0), f'{where}.fade_out', minimum=0), id=ident, meta=meta)
 
 
-def load(path: str | Path) -> Edit:
+def load(path: str | Path, *, placeholders: bool = False, _stack: tuple[Path, ...] = ()) -> Edit:
+    """Parses and lays out an EDL. placeholders: a missing source becomes a card for its time span instead of an error."""
     path = Path(path).resolve()
+    stack = (*_stack, path)
     try:
         raw = json.loads(path.read_text())
     except FileNotFoundError:
@@ -469,7 +598,9 @@ def load(path: str | Path) -> Edit:
     if not isinstance(tracks, list) or not tracks or not isinstance(tracks[0], dict) or not tracks[0].get('clips'):
         raise RnError('tracks: need at least one track whose "clips" list is the main track')
     warnings: list[str] = []
-    base = [_clip(c, f'tracks[0].clips[{i}]', edit_dir, fps, overlay=False, warnings=warnings) for i, c in enumerate(tracks[0]['clips'])]
+    context = {'size': (width, height), 'placeholders': placeholders, 'stack': stack}
+    base = [_clip(c, f'tracks[0].clips[{i}]', edit_dir, fps, overlay=False, warnings=warnings, **context)
+            for i, c in enumerate(tracks[0]['clips'])]
     if base[0].transition:
         raise RnError('tracks[0].clips[0].transition: the first clip has nothing to transition from')
     position = 0
@@ -492,19 +623,38 @@ def load(path: str | Path) -> Edit:
     for name, value in markers_raw.items():
         markers[name] = _position(value, f'markers.{name}', fps)
     timeline = Timeline(fps=fps, edit_dir=edit_dir, base=base, markers=markers)
+    seen: set[str] = set()
+
+    def register(item, clip: Clip | None = None) -> None:
+        if item.id is None:
+            return
+        if item.id in seen:
+            raise RnError(f'{item.where}.id: "{item.id}" is used twice; ids must be unique in the edit')
+        seen.add(item.id)
+        if clip is not None:
+            timeline.by_id[item.id] = clip
+
+    for clip in base:
+        register(clip, clip)
     overlays = []
     for t, track in enumerate(tracks[1:], start=1):
         if not isinstance(track, dict) or not isinstance(track.get('clips'), list):
             raise RnError(f'tracks[{t}]: expected {{"clips": [...]}}')
         for i, c in enumerate(track['clips']):
-            clip = _clip(c, f'tracks[{t}].clips[{i}]', edit_dir, fps, overlay=True, warnings=warnings, timeline=timeline)
+            clip = _clip(c, f'tracks[{t}].clips[{i}]', edit_dir, fps, overlay=True, warnings=warnings, timeline=timeline, **context)
             if clip.timeline_start >= total:
                 raise RnError(f'{clip.where}.at: starts after the main track ends ({float(total / fps):.3f}s)')
             if clip.timeline_start + clip.frames > total:
                 warnings.append(f'{clip.where}: runs past the end of the main track; cut at {float(total / fps):.3f}s')
                 clip.frames = total - clip.timeline_start
             overlays.append(clip)
+            register(clip, clip)
+        unknown = set(track) - {'clips', 'id', 'meta', 'note'}
+        if unknown:
+            raise RnError(f'tracks[{t}]: unknown field(s) {sorted(unknown)}')
     audio = [_audio(a, f'audio[{i}]', edit_dir, timeline) for i, a in enumerate(raw.get('audio') or [])]
+    for item in audio:
+        register(item)
 
     subtitles = style = None
     if raw.get('subtitles'):

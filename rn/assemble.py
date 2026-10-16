@@ -11,14 +11,19 @@ Pipeline (spec/mcp/03-media-kit.md §4-5):
 """
 from __future__ import annotations
 
+import dataclasses
+import hashlib
+import json
 import math
+import os
 import shutil
 import tempfile
 from fractions import Fraction
 from pathlib import Path
 
+from . import __version__
 from . import audio as audio_mod
-from .edl import Clip, Edit, load
+from .edl import Clip, Edit, cache_dir, load
 from .ff import RnError, ff_color, has_filter, probe, run, source_matrix, to_bt709
 
 SR = audio_mod.SAMPLE_RATE
@@ -349,8 +354,61 @@ def _preview(edit: Edit, scale: float) -> None:
                 clip.keys[prop] = [(t, v * scale, ease) for t, v, ease in clip.keys[prop]]
 
 
-def assemble_command(edl_path: str, out: str, *, dry_run: bool, keep: bool, preview: bool = False) -> dict:
-    edit = load(edl_path)
+def _files(source: Path | None, sequence: bool = False) -> list:
+    """What a render depends on besides its parameters: the source files' size and mtime (a sequence: its folder's)."""
+    if source is None:
+        return []
+    files = sorted(f for f in source.parent.iterdir() if f.is_file()) if sequence else [source]
+    return [(f.name, f.stat().st_size, f.stat().st_mtime_ns) for f in files]
+
+
+def _slot_key(clip: Clip, edit: Edit, part: str) -> str:
+    # Where a clip sits and how it is named do not change its slot; moving or renaming a clip reuses the render.
+    params = {k: v for k, v in dataclasses.asdict(clip).items()
+              if k not in ('where', 'timeline_start', 'id', 'meta', 'transition', 'transition_frames')}
+    material = [__version__, part, edit.width, edit.height, str(edit.fps), edit.background, params,
+                _files(clip.source, clip.kind == 'sequence')]
+    return hashlib.sha256(json.dumps(material, default=str, sort_keys=True).encode()).hexdigest()[:24]
+
+
+def _cached(cache: Path | None, key: str, suffix: str, work: Path, render) -> Path:
+    """render(path) once per key. ponytail: the cache only grows; delete .rn-cache (or RN_CACHE) to reclaim space."""
+    if cache is None:
+        target = work / f'{key}{suffix}'
+        render(target)
+        return target
+    target = cache / f'{key}{suffix}'
+    if not target.exists():
+        cache.mkdir(parents=True, exist_ok=True)
+        partial = cache / f'{key}.{os.getpid()}.part{suffix}'
+        render(partial)
+        partial.replace(target)
+    return target
+
+
+def _fingerprint(path: Path, placeholders: bool) -> str:
+    """A nested edit's render depends on its text and, recursively, on every file it reads."""
+    edit = load(path, placeholders=placeholders)
+    parts = [__version__, path.read_text(), placeholders]
+    for clip in edit.base + edit.overlays:
+        parts.append(_fingerprint(clip.source, placeholders) if clip.kind == 'edit' else _files(clip.source, clip.kind == 'sequence'))
+    parts += [_files(item.source) for item in edit.audio] + [_files(edit.subtitles)]
+    return hashlib.sha256(json.dumps(parts, default=str).encode()).hexdigest()[:24]
+
+
+def _render_nested(edit: Edit, cache: Path | None, work: Path, placeholders: bool) -> None:
+    """Nested edits render first (to the cache when on) and then play as ordinary video sources."""
+    for clip in edit.base + edit.overlays:
+        if clip.kind == 'edit':
+            key = 'edit-' + _fingerprint(clip.source, placeholders)
+            clip.source = _cached(cache, key, '.mp4', work, lambda target, source=clip.source: assemble_command(
+                str(source), str(target), dry_run=False, keep=False, cache=cache is not None, placeholders=placeholders))
+            clip.kind = 'video'
+
+
+def assemble_command(edl_path: str, out: str, *, dry_run: bool, keep: bool, preview: bool = False, cache: bool = True,
+                     placeholders: bool = False) -> dict:
+    edit = load(edl_path, placeholders=placeholders)
     if edit.subtitles and not has_filter('subtitles'):
         raise RnError('this ffmpeg has no libass, so it cannot burn subtitles; on macOS: brew install ffmpeg-full, then put '
                       '"$(brew --prefix ffmpeg-full)/bin" first on PATH')
@@ -359,16 +417,15 @@ def assemble_command(edl_path: str, out: str, *, dry_run: bool, keep: bool, prev
     if dry_run:
         return edit.summary()
     out_path = Path(out)
+    store = cache_dir(edit.path.parent) / 'slots' if cache else None
     with tempfile.TemporaryDirectory(prefix='rn-assemble-') as tmp:
         work = Path(tmp)
+        _render_nested(edit, store, work, placeholders)
         slots, slot_audio = [], []
-        for i, clip in enumerate(edit.base):
-            slot = work / f'slot{i:03d}.mkv'
-            _render_slot(clip, edit, slot)
-            slots.append(slot)
-            wav = work / f'slot{i:03d}.wav'
-            _render_slot_audio(clip, edit, wav)
-            slot_audio.append(wav)
+        for clip in edit.base:
+            slots.append(_cached(store, _slot_key(clip, edit, 'video'), '.mkv', work, lambda target, c=clip: _render_slot(c, edit, target)))
+            slot_audio.append(_cached(store, _slot_key(clip, edit, 'audio'), '.wav', work,
+                                      lambda target, c=clip: _render_slot_audio(c, edit, target)))
         video = work / 'video.mp4'
         _render_video(edit, slots, work, video)
         frames = probe(video, exact=True)['video']['frames']

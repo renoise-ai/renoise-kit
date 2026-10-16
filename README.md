@@ -8,7 +8,7 @@ The same `rn` runs in the Renoise media sandbox and on your machine.
 ```sh
 brew install ffmpeg-full                               # ffmpeg 7+ with libass (Homebrew's plain ffmpeg has none)
 export PATH="$(brew --prefix ffmpeg-full)/bin:$PATH"   # keg-only; Linux: your distro's ffmpeg
-uv tool install 'renoise-kit[all]'                     # or pick extras: listen, transcribe, faces, capture, captions, fonts, fx
+uv tool install 'renoise-kit[all]'                     # or pick extras: listen, transcribe, faces, capture, captions, fonts
 playwright install chromium                            # only for rn capture
 
 rn --help
