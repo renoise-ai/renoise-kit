@@ -60,7 +60,7 @@ def _parser() -> argparse.ArgumentParser:
                 'Examples:\n  rn sheet take.mp4 --fps 4            # pick in-points from a generated take\n'
                 '  rn sheet ref.mp4 --every 1 -o ref.jpg  # every frame of a reference, paged\n'
                 '  rn sheet out.mp4 --indices 0,47,48,95  # both sides of each cut')
-    sheet.add_argument('files', nargs='+')
+    sheet.add_argument('files', nargs='+', help='videos, or folders of stills (tiled in name order, labelled by file name)')
     choose = sheet.add_mutually_exclusive_group()
     choose.add_argument('--every', type=int, metavar='N', help='every Nth frame')
     choose.add_argument('--fps', type=float, metavar='R', help='R frames per second of video')
@@ -325,6 +325,9 @@ def _parser() -> argparse.ArgumentParser:
     finish.add_argument('--preset', default='medium')
     finish.add_argument('--copy-video', action='store_true', help='keep the video stream when it is already H.264 yuv420p')
     finish.add_argument('--height', type=int, metavar='N', help='scale to N px high, aspect kept (e.g. a 1080p copy of a 4K master)')
+    finish.add_argument('--audio', metavar='FILE', help='take the sound from FILE instead (e.g. a separate WAV mix from the renderer)')
+    finish.add_argument('--audio-offset', type=float, default=0.0, metavar='S',
+                        help='move the sound S seconds later (negative: earlier), e.g. -0.0437 to undo an uncompensated AAC delay')
 
     qa = add('qa', 'delivery checks on an encoded file (exit 1 on FAIL)',
              'Frame count, fps, size, codec, pix_fmt, SAR, color tags, faststart, audio/video duration, container\n'
@@ -517,7 +520,8 @@ def main(argv: list[str] | None = None) -> int:
             from .assemble import finish_command
             lufs = None if args.lufs == 'keep' else float(args.lufs)
             result = finish_command(args.file, args.out, lufs=lufs, true_peak=args.true_peak, crf=args.crf,
-                                    preset=args.preset, copy_video=args.copy_video, height=args.height)
+                                    preset=args.preset, copy_video=args.copy_video, height=args.height, audio=args.audio,
+                                    audio_offset=args.audio_offset)
         else:
             from .qa import parse_accept, qa_command
             result = qa_command(args.file, edl=args.edl, frames=args.expect_frames, size=args.expect_size, fps=args.expect_fps,

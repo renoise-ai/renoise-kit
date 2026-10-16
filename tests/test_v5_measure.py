@@ -137,3 +137,35 @@ def test_export_otio_fcpxml_xml(media, tmp_path):
     for suffix in ('.fcpxml', '.xml'):
         target = tmp_path / f'cut{suffix}'
         assert rn('export', edl, '-o', target) == 0 and target.stat().st_size > 500
+
+
+def test_finish_takes_a_separate_mix_and_an_offset(media, tmp_path):
+    # A renderer's MP4 whose sound runs 0.25 s late, plus its separate WAV mix: --audio uses the WAV, --audio-offset fixes the MP4.
+    late = tmp_path / 'late.mp4'
+    ffmpeg('-f', 'lavfi', '-i', 'testsrc2=s=320x240:r=24:d=2', '-f', 'lavfi',
+           '-i', "aevalsrc='0.5*sin(2*PI*440*t)*gte(t\\,0.25)':s=48000:d=2", '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', str(late))
+    mix = tmp_path / 'mix.wav'
+    ffmpeg('-f', 'lavfi', '-i', "aevalsrc='0.5*sin(2*PI*440*t)':s=48000:d=2", str(mix))
+    from rn.signal import pcm
+    import numpy as np
+
+    def onset(path) -> float:
+        samples = np.abs(pcm(path))
+        return float(np.argmax(samples > 0.05) / 48000)
+
+    for n, args in enumerate((['--audio', mix], ['--audio-offset', '-0.25'])):
+        out = tmp_path / f'fixed{n}.mp4'
+        assert rn('finish', late, '-o', out, '--lufs', 'keep', *args) == 0
+        assert onset(out) < 0.03
+        assert probe(out, exact=True)['video']['frames'] == 48
+
+
+def test_sheet_of_a_folder_of_stills(tmp_path):
+    stills = tmp_path / 'stills'
+    stills.mkdir()
+    for n in (792, 1062, 1500):
+        Image.new('RGB', (640, 360), (n % 255, 80, 160)).save(stills / f'f{n}.png')
+    report = tmp_path / 'sheet.json'
+    assert rn('sheet', stills, '-o', tmp_path / 'stills.jpg', '--json', report) == 0
+    page = json.loads(report.read_text())['pages'][0]
+    assert page['files'] == ['f792.png', 'f1062.png', 'f1500.png'] and page['bytes'] <= 125 * 1024
