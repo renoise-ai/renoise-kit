@@ -98,7 +98,7 @@ def test_package_builds_with_readme_and_extras(tmp_path):
     import zipfile
     metadata = next(n for n in zipfile.ZipFile(wheel).namelist() if n.endswith('METADATA'))
     text = zipfile.ZipFile(wheel).read(metadata).decode()
-    assert 'Provides-Extra: all' in text and 'Provides-Extra: faces' in text and '# rn' in text
+    assert 'Provides-Extra: all' in text and 'Provides-Extra: faces' in text and '# renoise-kit' in text
 
 
 def test_outputs_declare_a_fixed_frame_rate(media, tmp_path):
