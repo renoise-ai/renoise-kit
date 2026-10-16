@@ -25,8 +25,13 @@ XFADE = {
 }
 FITS = {'cover', 'contain', 'stretch'}
 EASES = {'linear', 'in', 'out', 'inout', 'in3', 'out3', 'inout3', 'hold'}
-KEYS_MAIN = {'scale', 'x', 'y', 'rotate', 'speed'}
+KEYS_MAIN = {'scale', 'x', 'y', 'rotate', 'speed', 'gain_db'}
 KEYS_OVERLAY = {'scale', 'x', 'y', 'rotate', 'opacity', 'speed'}
+KEYS_AUDIO = {'gain_db'}
+# ffmpeg blend modes, computed in RGB; "add" is accepted for "addition".
+BLENDS = {'normal', 'addition', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'difference', 'exclusion', 'softlight',
+          'hardlight', 'colordodge', 'colorburn', 'linearlight', 'vividlight', 'pinlight', 'average', 'negation', 'phoenix'}
+_GRAPH_BREAKERS = re.compile(r'[;\[\]]')
 # The same curves as assemble's ffmpeg expressions (assemble._EASE), for what rn computes itself (speed ramps).
 EASE_FN = {
     'linear': lambda u: u, 'hold': lambda u: 0.0, 'in': lambda u: u * u, 'out': lambda u: 1 - (1 - u) ** 2,
@@ -110,6 +115,12 @@ class Clip:
     src_size: tuple[int, int] | None = None  # sequences and images: pixel size
     id: str | None = None
     meta: object = None  # kept as given, never interpreted
+    vf: str | None = None  # raw ffmpeg video filters, applied in the clip's own chain
+    af: str | None = None  # raw ffmpeg audio filters (main-track clips' own sound)
+    blend: str | None = None  # overlays: blend mode against everything below
+    mask: 'Clip | None' = None  # overlays: a full-frame matte timed on the timeline
+    mask_mode: str = 'luma'  # luma | alpha
+    mask_invert: bool = False
 
 
 @dataclass
@@ -125,6 +136,8 @@ class AudioItem:
     fade_out: float
     id: str | None = None
     meta: object = None
+    af: str | None = None
+    keys: dict | None = None  # gain_db over time, t from the item's first sample on the timeline
 
 
 @dataclass
@@ -318,6 +331,8 @@ def _keys(raw, where: str, allowed: set[str]) -> dict | None:
                 raise RnError(f'{where}.opacity: between 0 and 1')
             if prop == 'speed' and not 0.1 <= value <= 8:
                 raise RnError(f'{where}.speed: between 0.1 and 8')
+            if prop == 'gain_db' and not -60 <= value <= 24:
+                raise RnError(f'{where}.gain_db: between -60 and 24 dB')
             parsed.append((t, value, ease))
             last = t
         keys[prop] = parsed
@@ -352,6 +367,17 @@ def _sequence(edit_dir: Path, pattern, where: str) -> tuple[Path, int, int, tupl
 def cache_dir(edit_dir: Path) -> Path:
     """Renders rn can reuse: slots, nested edits, placeholder cards. RN_CACHE overrides <edit dir>/.rn-cache."""
     return Path(os.environ.get('RN_CACHE') or edit_dir / '.rn-cache')
+
+
+def _filters(raw: dict, key: str, where: str) -> str | None:
+    """A raw ffmpeg filter chain ("eq=saturation=1.2,unsharp"): any filter, but one linear chain, so it cannot reach
+    into the rest of the graph."""
+    value = raw.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip() or _GRAPH_BREAKERS.search(value):
+        raise RnError(f'{where}.{key}: one ffmpeg filter chain like "eq=saturation=1.2,unsharp" (no ; [ ])')
+    return value
 
 
 def _ident(raw: dict, where: str) -> tuple[str | None, object]:
@@ -477,6 +503,9 @@ def _clip(raw: dict, where: str, edit_dir: Path, fps: Fraction, *, overlay: bool
     clip = Clip(where=where, kind='video', source=None, color=None, start_s=0.0, speed=speed, frames=0, fit=fit,
                 audio=bool(raw.get('audio', not overlay)), gain_db=gain)
     clip.id, clip.meta = _ident(raw, where)
+    clip.vf, clip.af = _filters(raw, 'vf', where), _filters(raw, 'af', where)
+    if overlay and clip.af:
+        raise RnError(f'{where}.af: overlays are silent; filter their sound in "audio"')
     clip.keys = _keys(raw.get('keys'), f'{where}.keys', KEYS_OVERLAY if overlay else KEYS_MAIN)
     ramp = (clip.keys or {}).get('speed')
     if ramp and 'speed' in raw:
@@ -601,8 +630,16 @@ def _clip(raw: dict, where: str, edit_dir: Path, fps: Fraction, *, overlay: bool
             raise RnError(f'{where}.transition: transitions are for the first (main) track; use fade_in / fade_out on overlays')
         if 'audio' in raw or 'gain_db' in raw:
             raise RnError(f'{where}: overlay clips are silent; add their sound to "audio" with "at" (role "sfx")')
+        blend = raw.get('blend')
+        if blend is not None:
+            blend = {'add': 'addition'}.get(blend, blend)
+            if blend not in BLENDS:
+                raise RnError(f'{where}.blend: one of {sorted(BLENDS | {"add"})}')
+            clip.blend = blend
+        if 'mask' in raw:
+            clip.mask, clip.mask_mode, clip.mask_invert = _mask(raw['mask'], where, clip, edit_dir, fps, warnings, timeline, size)
     else:
-        for key in ('at', 'x', 'y', 'w', 'h', 'opacity', 'fade_in', 'fade_out'):
+        for key in ('at', 'x', 'y', 'w', 'h', 'opacity', 'fade_in', 'fade_out', 'blend', 'mask'):
             if key in raw:
                 raise RnError(f'{where}.{key}: main-track clips play back to back; put positioned clips on another track')
         transition = raw.get('transition')
@@ -611,14 +648,39 @@ def _clip(raw: dict, where: str, edit_dir: Path, fps: Fraction, *, overlay: bool
                 raise RnError(f'{where}.transition: {{"type": one of xfade names (fade, dissolve, wipeleft, slideup, ...), "duration": s}}')
             clip.transition = transition['type']
             clip.transition_frames = _frames(_num(transition.get('duration', 0.5), f'{where}.transition.duration', positive=True), fps)
+    if clip.keys and 'gain_db' in clip.keys and not (clip.audio and clip.has_audio):
+        raise RnError(f'{where}.keys.gain_db: the clip plays no sound of its own')
     if clip.keys and overlay and ('scale' in clip.keys or 'rotate' in clip.keys) and clip.kind == 'color' and not (clip.w and clip.h):
         raise RnError(f'{where}.keys: give a colour overlay "w" and "h" to scale or rotate it')
     unknown = set(raw) - {'src', 'frames', 'fps', 'image', 'color', 'in', 'out', 'duration', 'until', 'speed', 'fit', 'audio', 'gain_db',
                           'at', 'x', 'y', 'w', 'h', 'opacity', 'fade_in', 'fade_out', 'transition', 'keys', 'note', 'id', 'meta',
-                          'pivot'}
+                          'pivot', 'vf', 'af', 'blend', 'mask'}
     if unknown:
         raise RnError(f'{where}: unknown field(s) {sorted(unknown)}')
     return clip
+
+
+def _mask(raw, where: str, layer: Clip, edit_dir: Path, fps: Fraction, warnings: list[str], timeline: Timeline,
+          size: tuple[int, int]) -> tuple[Clip, str, bool]:
+    """A matte over the whole frame (stretched to it) that multiplies an overlay's alpha: "luma" white = keep, or the
+    matte's own "alpha". Its time defaults to the overlay's; outside its span the overlay is not masked."""
+    where = f'{where}.mask'
+    if not isinstance(raw, dict):
+        raise RnError(f'{where}: {{"frames": "matte/%05d.png", "mode": "luma"|"alpha", "invert": false}} (any clip source)')
+    mode, invert = raw.get('mode', 'luma'), raw.get('invert', False)
+    if mode not in ('luma', 'alpha') or not isinstance(invert, bool):
+        raise RnError(f'{where}: "mode" luma or alpha, "invert" true or false')
+    placed = {'x', 'y', 'w', 'h', 'blend', 'mask', 'opacity'} & set(raw)
+    if placed:
+        raise RnError(f'{where}: a mask covers the whole frame; {sorted(placed)} do not apply')
+    matte = {k: v for k, v in raw.items() if k not in ('mode', 'invert')}
+    matte.setdefault('at', float(layer.timeline_start / fps))
+    if not {'duration', 'out', 'until'} & set(matte):
+        matte['duration'] = float(layer.frames / fps)
+    matte.setdefault('fit', 'stretch')
+    clip = _clip(matte, where, edit_dir, fps, overlay=True, warnings=warnings, timeline=timeline, size=size)
+    clip.w, clip.h = size
+    return clip, mode, invert
 
 
 def _audio(raw: dict, where: str, edit_dir: Path, timeline: Timeline) -> AudioItem:
@@ -641,7 +703,8 @@ def _audio(raw: dict, where: str, edit_dir: Path, timeline: Timeline) -> AudioIt
         duration = _num(raw['out'], f'{where}.out', positive=True) - start
         if duration <= 0:
             raise RnError(f'{where}.out: must be after "in"')
-    unknown = set(raw) - {'src', 'role', 'at', 'in', 'out', 'duration', 'gain_db', 'fade_in', 'fade_out', 'note', 'id', 'meta', 'pivot'}
+    unknown = set(raw) - {'src', 'role', 'at', 'in', 'out', 'duration', 'gain_db', 'fade_in', 'fade_out', 'note', 'id', 'meta', 'pivot',
+                          'af', 'keys'}
     if unknown:
         raise RnError(f'{where}: unknown field(s) {sorted(unknown)}')
     ident, meta = _ident(raw, where)
@@ -662,7 +725,8 @@ def _audio(raw: dict, where: str, edit_dir: Path, timeline: Timeline) -> AudioIt
     return AudioItem(where=where, source=source, role=role, at=at, start_s=start,
                      duration=duration, gain_db=_num(raw.get('gain_db', 0), f'{where}.gain_db'),
                      fade_in=_num(raw.get('fade_in', 0), f'{where}.fade_in', minimum=0),
-                     fade_out=_num(raw.get('fade_out', 0), f'{where}.fade_out', minimum=0), id=ident, meta=meta)
+                     fade_out=_num(raw.get('fade_out', 0), f'{where}.fade_out', minimum=0), id=ident, meta=meta,
+                     af=_filters(raw, 'af', where), keys=_keys(raw.get('keys'), f'{where}.keys', KEYS_AUDIO))
 
 
 def _expand_ranges(clips: list) -> tuple[list[tuple[str, dict]], dict[str, tuple[int, int]]]:

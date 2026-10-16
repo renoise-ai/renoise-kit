@@ -129,6 +129,8 @@ def _render_slot(clip: Clip, edit: Edit, out: Path) -> None:
         cy = f'(H/2+({_curve(clip.keys.get("y"), t, 0)})*H)'
         chain += ',perspective=' + _perspective(clip.keys, edit.fps, centre=(cx, cy)).replace('{px}', 'W/2').replace('{py}', 'H/2') \
             + ':eval=frame:interpolation=cubic'
+    if clip.vf:
+        chain += f',{clip.vf}'
     chain += f',setsar=1,format=yuv420p,{audio_mod.BT709}'
     # Hold the last frame if the source runs short, then cut to the exact frame count.
     chain += f',tpad=stop_mode=clone:stop={clip.frames},trim=end_frame={clip.frames},setpts=N/({edit.fps}*TB)'
@@ -151,6 +153,14 @@ def _atempo(speed: float) -> str:
     return ','.join(f'atempo={f:.6f}' for f in factors if abs(f - 1) > 1e-9)
 
 
+def _gain(keys: dict | None, af: str | None) -> str:
+    """keys.gain_db (dB over t, the stream's own seconds) and a raw "af" chain, as filters to append."""
+    chain = ''
+    if keys and 'gain_db' in keys:
+        chain += f",volume=volume='pow(10,({_curve(keys['gain_db'], 't', 0)})/20)':eval=frame"
+    return chain + (f',{af}' if af else '')
+
+
 def _render_slot_audio(clip: Clip, edit: Edit, out: Path, fades: tuple[float, float] = (0.0, 0.0)) -> None:
     """The clip's own sound, exactly as long as its slot; `fades` (in, out) soften hard cuts (mix.cut_fade)."""
     samples = round(clip.frames / edit.fps * SR)
@@ -160,6 +170,7 @@ def _render_slot_audio(clip: Clip, edit: Edit, out: Path, fades: tuple[float, fl
         chain += (',' + tempo if tempo else '') + f',aresample={SR},aformat=sample_fmts=flt:channel_layouts=stereo'
         if clip.gain_db:
             chain += f',volume={clip.gain_db}dB'
+        chain += _gain(clip.keys, clip.af)
         chain += f',apad,atrim=end_sample={samples}'
         if fades[0]:
             chain += f',afade=t=in:d={fades[0]:.4f}'
@@ -237,6 +248,8 @@ def _overlay_chain(clip: Clip, edit: Edit, index: int) -> str:
         parts.append(_timing(clip, edit.fps))
     size = f'{clip.w or -2}:{clip.h or -2}' if (clip.w or clip.h) and clip.kind != 'color' else 'iw:ih'
     parts.append(f'scale={size}:flags=lanczos:{to_bt709(clip.matrix)}')
+    if clip.vf:
+        parts.append(clip.vf)
     parts.append(f'format=yuva420p,{audio_mod.BT709}')
     # Integer frame pts on the output grid (as _join): a float seconds offset truncates one frame early.
     parts.append(f'tpad=stop_mode=clone:stop={clip.frames},trim=end_frame={clip.frames},'
@@ -270,14 +283,50 @@ def _overlay_chain(clip: Clip, edit: Edit, index: int) -> str:
 def _render_video(edit: Edit, slots: list[Path], work: Path, out: Path, span: tuple[int, int]) -> None:
     inputs = ['-f', 'concat', '-safe', '0', '-i', str(_join(edit, slots, work))]
     lines, current = [f'[0:v]{_grid(edit)}[base]'], 'base'
-    for clip in edit.overlays:
+    def add(clip: Clip) -> int:
         index = sum(1 for arg in inputs if arg == '-i')
         # A solid has no size of its own: missing dimensions fill the frame.
-        size = (clip.w or edit.width, clip.h or edit.height)
-        inputs += _video_input(clip, edit.fps, size)
+        inputs.extend(_video_input(clip, edit.fps, (clip.w or edit.width, clip.h or edit.height)))
         lines.append(_overlay_chain(clip, edit, index))
+        return index
+
+    def canvas(color: str, fmt: str) -> str:
+        """A full-frame stream lasting the whole timeline, to lay a layer or a matte on."""
+        index = sum(1 for arg in inputs if arg == '-i')
+        inputs.extend(['-f', 'lavfi', '-i', f'color=c={color}:s={edit.width}x{edit.height}:r={edit.fps}:'
+                                             f'd={float(edit.total_frames / edit.fps):.6f},format={fmt}'])
+        return f'{index}:v'
+
+    for clip in edit.overlays:
+        index = add(clip)
         x, y = (-MARGIN, -MARGIN) if _moves(clip) else (clip.x, clip.y)
-        lines.append(f'[{current}][o{index}]overlay=x={x}:y={y}:eof_action=pass:format=auto[ov{index}]')
+        if not (clip.mask or clip.blend):
+            lines.append(f'[{current}][o{index}]overlay=x={x}:y={y}:eof_action=pass:format=auto[ov{index}]')
+            current = f'ov{index}'
+            continue
+        # Masks and blend modes work on the layer spread over the whole frame and timeline (alpha kept).
+        lines.append(f'[{canvas("black@0", "yuva420p")}][o{index}]overlay=x={x}:y={y}:eof_action=pass:format=auto[layer{index}]')
+        layer = f'layer{index}'
+        if clip.mask:
+            matte = add(clip.mask)
+            pick = 'alphaextract' if clip.mask_mode == 'alpha' else 'format=gray'
+            # Inverted before it is laid on white: where the matte has no frames the layer stays unmasked.
+            lines.append(f'[o{matte}]{pick}{",negate" if clip.mask_invert else ""}[mg{index}]')
+            lines.append(f'[{canvas("white", "gray")}][mg{index}]overlay=eof_action=pass:format=auto,format=gray[mk{index}]')
+            lines.append(f'[{layer}]split[lc{index}][la{index}];[la{index}]alphaextract[a{index}];'
+                         f'[a{index}][mk{index}]blend=all_mode=multiply[am{index}];[lc{index}][am{index}]alphamerge[lm{index}]')
+            layer = f'lm{index}'
+        if clip.blend and clip.blend != 'normal':
+            # Blend modes are RGB arithmetic: convert explicitly (BT.709 limited) both ways, never by swscale defaults.
+            rgb = 'scale=in_color_matrix=bt709:in_range=tv'
+            lines.append(f'[{current}]{rgb},format=gbrp,split[b1_{index}][b2_{index}]')
+            lines.append(f'[{layer}]{rgb},format=gbrap,split[l1_{index}][l2_{index}];[l1_{index}]format=gbrp[lr{index}];'
+                         f'[l2_{index}]alphaextract[lx{index}]')
+            lines.append(f'[b1_{index}][lr{index}]blend=all_mode={clip.blend}[bl{index}];[bl{index}][lx{index}]alphamerge[bx{index}]')
+            lines.append(f'[b2_{index}][bx{index}]overlay=format=gbrp,scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,'
+                         f'{audio_mod.BT709}[ov{index}]')
+        else:
+            lines.append(f'[{current}][{layer}]overlay=format=auto[ov{index}]')
         current = f'ov{index}'
     tail = f'[{current}]'
     if edit.subtitles:
@@ -318,6 +367,7 @@ def _render_audio(edit: Edit, slot_audio: list[Path], work: Path) -> Path | None
         chain += f',asetpts=PTS-STARTPTS,aresample={SR},aformat=sample_fmts=flt:channel_layouts=stereo'
         if item.gain_db:
             chain += f',volume={item.gain_db}dB'
+        chain += _gain(item.keys, item.af)
         if item.fade_in:
             chain += f',afade=t=in:st=0:d={item.fade_in:.4f}'
         if item.fade_out:
@@ -378,6 +428,8 @@ def _preview(edit: Edit, scale: float) -> None:
         for prop in ('x', 'y'):
             if clip.keys and prop in clip.keys:
                 clip.keys[prop] = [(t, v * scale, ease) for t, v, ease in clip.keys[prop]]
+        if clip.mask:
+            clip.mask.w, clip.mask.h = edit.width, edit.height
 
 
 def _files(source: Path | None, sequence: bool = False) -> list:
