@@ -20,6 +20,17 @@ def _rt(otio, frames: float, rate: float):
     return otio.opentime.RationalTime(frames, rate)
 
 
+def _plain(value):
+    """OTIO metadata is a C++ any-dictionary: JSON types only (no tuples, None, Fractions or Paths)."""
+    if isinstance(value, dict):
+        return {str(k): _plain(v) for k, v in value.items() if v is not None}
+    if isinstance(value, (list, tuple)):
+        return [_plain(v) for v in value if v is not None]
+    if isinstance(value, (bool, int, float, str)):
+        return value
+    return str(value)
+
+
 def _lost(clip: Clip) -> dict:
     """What an NLE file cannot carry for this clip, kept as metadata."""
     keep = {k: getattr(clip, k) for k in ('keys', 'vf', 'af', 'blend') if getattr(clip, k)}
@@ -29,7 +40,7 @@ def _lost(clip: Clip) -> dict:
         keep['place'] = {'x': clip.x, 'y': clip.y, 'w': clip.w, 'h': clip.h, 'opacity': clip.opacity}
     if clip.fade_in or clip.fade_out:
         keep['fades'] = [clip.fade_in, clip.fade_out]
-    return {key: (value if isinstance(value, (dict, str, int, float)) else str(value)) for key, value in keep.items()}
+    return _plain(keep)
 
 
 STILL_HOURS = 1  # stills are endless in an NLE; FCP X still wants a range
@@ -73,10 +84,10 @@ def _item(otio, clip: Clip, edit: Edit, head: int, tail: int, lost: list):
         start = clip.start_s + head / rate * clip.speed
         stack.source_range = otio.opentime.TimeRange(_rt(otio, start * rate, rate), _rt(otio, frames, rate))
         stack.name = clip.id or clip.source.stem
-        stack.metadata['rn'] = meta
+        stack.metadata['rn'] = _plain(meta)
         return stack
     if clip.kind == 'color':
-        return otio.schema.Gap(source_range=otio.opentime.TimeRange(duration=_rt(otio, frames, rate)), metadata={'rn': meta})
+        return otio.schema.Gap(source_range=otio.opentime.TimeRange(duration=_rt(otio, frames, rate)), metadata={'rn': _plain(meta)})
     src_rate = float(clip.src_fps) if clip.src_fps else rate
     start = (clip.start_s + head / rate * clip.speed) if clip.kind in ('video', 'sequence') else head / rate
     item = otio.schema.Clip(name=clip.id or (clip.source.name if clip.source else clip.color), media_reference=_reference(otio, clip, rate),
@@ -84,7 +95,7 @@ def _item(otio, clip: Clip, edit: Edit, head: int, tail: int, lost: list):
                                                                  _rt(otio, frames * src_rate / rate, src_rate)))
     if clip.speed != 1:
         item.effects.append(otio.schema.LinearTimeWarp(time_scalar=clip.speed))
-    item.metadata['rn'] = {**meta, **({'meta': clip.meta} if clip.meta is not None else {})}
+    item.metadata['rn'] = _plain({**meta, 'meta': clip.meta})
     return item
 
 
@@ -135,12 +146,12 @@ def _stack(otio, edit: Edit, lost: list):
                 track.append(otio.schema.Gap(source_range=otio.opentime.TimeRange(duration=_rt(otio, round((item.at - position) * rate), rate))))
             seconds = lengths[id(item)]
             meta = {k: v for k, v in (('gain_db', item.gain_db), ('fade_in', item.fade_in), ('fade_out', item.fade_out),
-                                      ('af', item.af), ('keys', str(item.keys) if item.keys else None), ('role', item.role)) if v}
+                                      ('af', item.af), ('keys', item.keys), ('role', item.role)) if v}
             source = otio.schema.ExternalReference(target_url=str(item.source.resolve()),
                                                    available_range=_available(otio, round((probe(item.source)['audio']['duration'] or 0) * rate), rate))
             track.append(otio.schema.Clip(name=item.id or item.source.name, media_reference=source,
                                           source_range=otio.opentime.TimeRange(_rt(otio, round(item.start_s * rate), rate), _rt(otio, round(seconds * rate), rate)),
-                                          metadata={'rn': {**meta, **({'meta': item.meta} if item.meta is not None else {})}}))
+                                          metadata={'rn': _plain({**meta, 'meta': item.meta})}))
             position = item.at + round(seconds * rate) / rate
         stack.append(track)
     return stack
@@ -158,7 +169,7 @@ def export_command(edl_path: str, out: str, *, srt: str | None) -> dict:
     stack = _stack(otio, edit, lost)
     timeline = otio.schema.Timeline(name=edit.path.stem, global_start_time=_rt(otio, 0, float(edit.fps)))
     timeline.tracks = stack
-    timeline.metadata['rn'] = {'width': edit.width, 'height': edit.height, 'fps': str(edit.fps)}
+    timeline.metadata['rn'] = _plain({'width': edit.width, 'height': edit.height, 'fps': edit.fps})
     target.parent.mkdir(parents=True, exist_ok=True)
     try:
         otio.adapters.write_to_file(timeline, str(target), adapter_name=adapter)
