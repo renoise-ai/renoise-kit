@@ -45,8 +45,9 @@ def _sound(path: str, seconds: float) -> dict:
     silences = [(max(0.0, s), ends[i] if i < len(ends) else seconds) for i, s in enumerate(starts)]
     silences = [(a, b) for a, b in silences if a > 0.05 and b < seconds - 0.05]  # lead-in and tail-out are a choice
     levels = [float(v) for v in re.findall(r'RMS_level=(-?inf|-?[\d.]+)', result.stdout)]
+    # The last window is partial and holds the encoder's tail, so it reads as a drop; skip it like the head.
     jumps = [(round(k * 0.1, 1), levels[k - 1], levels[k]) for k in range(1, len(levels))
-             if abs(levels[k] - levels[k - 1]) >= JUMP_DB and max(levels[k], levels[k - 1]) > -60]
+             if k * 0.1 < seconds - 0.15 and abs(levels[k] - levels[k - 1]) >= JUMP_DB and max(levels[k], levels[k - 1]) > -60]
     return {'silence': silences, 'jumps': jumps}
 
 
