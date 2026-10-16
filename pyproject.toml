@@ -3,6 +3,8 @@ name = "renoise-kit"
 dynamic = ["version"]
 description = "rn: frame-exact probing, contact sheets, EDL assembly, finishing and QA for AI video edits"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = ["pillow>=10.1"]
 
@@ -23,12 +25,13 @@ dev = ["pytest", "numpy", "librosa", "matplotlib", "opencv-python-headless>=4.8"
 
 [project.urls]
 Homepage = "https://renoise.ai"
+Source = "https://github.com/renoise-ai/renoise-kit"
 
 [project.scripts]
 rn = "rn.cli:main"
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]  # SPDX license expression
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
