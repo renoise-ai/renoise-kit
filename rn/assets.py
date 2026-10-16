@@ -42,6 +42,24 @@ def _open(url: str):
         raise RnError(f'{url}: {getattr(error, "reason", error)}') from None
 
 
+def fetch_checked(source: str, digest: str, cached: Path, *, name: str) -> Path:
+    """Downloads `source` to `cached` once, refusing content whose sha256 is not `digest`."""
+    if cached.exists():
+        return cached
+    cached.parent.mkdir(parents=True, exist_ok=True)
+    partial = cached.with_name(f'{cached.name}.part')
+    hasher = hashlib.sha256()
+    with _open(source) as response, open(partial, 'wb') as file:
+        while chunk := response.read(1 << 20):
+            hasher.update(chunk)
+            file.write(chunk)
+    if hasher.hexdigest() != digest:
+        partial.unlink()
+        raise RnError(f'{name}: checksum mismatch, refusing the download')
+    partial.rename(cached)
+    return cached
+
+
 def manifest() -> tuple[str, list[dict]]:
     url = _url()
     if '://' not in url:
@@ -91,18 +109,7 @@ def get_command(ids: list[str], *, out: str) -> dict:
         asset = by_id[asset_id]
         digest = asset.get('sha256', '')
         source = urllib.parse.urljoin(url, asset['url'])
-        cached = cache / digest
-        if not cached.exists():
-            partial = cache / f'{digest}.part'
-            hasher = hashlib.sha256()
-            with _open(source) as response, open(partial, 'wb') as file:
-                while chunk := response.read(1 << 20):
-                    hasher.update(chunk)
-                    file.write(chunk)
-            if hasher.hexdigest() != digest:
-                partial.unlink()
-                raise RnError(f'{asset_id}: checksum mismatch, refusing the download')
-            partial.rename(cached)
+        cached = fetch_checked(source, digest, cache / digest, name=asset_id)
         target = out_dir / f'{asset_id}{Path(urllib.parse.urlparse(source).path).suffix}'
         shutil.copyfile(cached, target)
         files.append({'id': asset_id, 'path': str(target), 'license': asset.get('license'), 'source': asset.get('source')})

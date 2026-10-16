@@ -61,6 +61,9 @@ def finish_audio(mix_wav: Path, out_m4a: Path, *, lufs: float | None, true_peak:
 BT709 = 'setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709'
 VIDEO_ENCODE = ['-c:v', 'libx264', '-profile:v', 'high', '-pix_fmt', 'yuv420p',
                 '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709']
+# fixed_frame_rate_flag=1 in the SPS: with 0, some players and platforms time frames from the VUI tick and show a
+# 30 fps film at half its length (promo-video, 2026-09-29). Only for constant-rate input: x264 then ignores timestamps.
+CFR_VUI = ['-x264-params', 'force-cfr=1']
 
 
 def mux(video: Path, audio_m4a: Path | None, out: Path, *, frames: int) -> None:

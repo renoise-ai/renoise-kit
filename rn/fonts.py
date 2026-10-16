@@ -33,7 +33,7 @@ def _license(path: str) -> str | None:
 
 def installed() -> dict[str, dict]:
     if not shutil.which('fc-list'):
-        raise RnError('fc-list not found (fontconfig); the media sandbox has it')
+        raise RnError('fc-list not found: install fontconfig (brew install fontconfig, apt install fontconfig)')
     output = subprocess.run(['fc-list', '--format', '%{family[0]}\t%{style[0]}\t%{weight}\t%{variable}\t%{file}\t%{lang}\n'],
                             capture_output=True, text=True, check=True).stdout
     families: dict[str, dict] = {}

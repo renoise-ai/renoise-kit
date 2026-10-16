@@ -97,10 +97,11 @@ def _difference(current: Path, previous: Path | None):
     return ImageChops.difference(image, Image.open(previous).convert('RGB')).point(lambda v: min(255, v * 4))
 
 
-def _compose(tiles: list[tuple[int, Path]], fps: Fraction, columns: int, title: str, images=None):
+def _compose(tiles: list[tuple[int, Path]], fps: Fraction, columns: int, title: str, images=None, labels: list[str] | None = None):
     from PIL import Image, ImageDraw, ImageFont
 
     images = images or [Image.open(path).convert('RGB') for _, path in tiles]
+    labels = labels or [f'#{index}  {_timecode(index, fps)}' for index, _ in tiles]
     tile_w, tile_h = images[0].size
     label_h = max(14, tile_w // 14)
     font = ImageFont.load_default(size=label_h - 3)
@@ -109,11 +110,11 @@ def _compose(tiles: list[tuple[int, Path]], fps: Fraction, columns: int, title: 
     sheet = Image.new('RGB', (columns * tile_w + (columns + 1) * 2, title_h + rows * (tile_h + label_h + 2) + 2), (24, 24, 24))
     draw = ImageDraw.Draw(sheet)
     draw.text((4, 2), title, fill=(255, 255, 255), font=font)
-    for position, ((index, _), image) in enumerate(zip(tiles, images)):
+    for position, (label, image) in enumerate(zip(labels, images)):
         x = 2 + (position % columns) * (tile_w + 2)
         y = title_h + (position // columns) * (tile_h + label_h + 2)
         sheet.paste(image, (x, y + label_h))
-        draw.text((x + 2, y + 1), f'#{index}  {_timecode(index, fps)}', fill=(255, 220, 64), font=font)
+        draw.text((x + 2, y + 1), label, fill=(255, 220, 64), font=font)
     return sheet
 
 

@@ -19,7 +19,7 @@ from pathlib import Path
 
 from . import audio as audio_mod
 from .edl import Clip, Edit, load
-from .ff import RnError, ff_color, probe, run, source_matrix, to_bt709
+from .ff import RnError, ff_color, has_filter, probe, run, source_matrix, to_bt709
 
 SR = audio_mod.SAMPLE_RATE
 # Lossless slots: the only lossy step is the final encode.
@@ -255,7 +255,7 @@ def _render_video(edit: Edit, slots: list[Path], work: Path, out: Path) -> None:
         lines.append(f"{tail}subtitles=filename=subs{edit.subtitles.suffix.lower()}{style}[sub]")
         tail = '[sub]'
     lines.append(f'{tail}format=yuv420p,{audio_mod.BT709},trim=end_frame={edit.total_frames},setpts=N/({edit.fps}*TB)[out]')
-    run(['ffmpeg', *inputs, '-filter_complex', ';'.join(lines), '-map', '[out]', *audio_mod.VIDEO_ENCODE,
+    run(['ffmpeg', *inputs, '-filter_complex', ';'.join(lines), '-map', '[out]', *audio_mod.VIDEO_ENCODE, *audio_mod.CFR_VUI,
          '-crf', str(edit.crf), '-preset', edit.preset, '-r', str(edit.fps), '-an', '-y', str(out.resolve())],
         cwd=work)
 
@@ -330,8 +330,32 @@ def _render_audio(edit: Edit, slot_audio: list[Path], work: Path) -> Path | None
     return mix
 
 
-def assemble_command(edl_path: str, out: str, *, dry_run: bool, keep: bool) -> dict:
+PREVIEW_SCALE = 0.5
+
+
+def _preview(edit: Edit, scale: float) -> None:
+    """A draft: smaller frame, fast encode. Overlay pixel positions and sizes scale with the frame; main-track keys are
+    fractions of the frame and libass scales subtitles by their PlayRes, so the draft is the same edit, smaller.
+    ponytail: renders the whole timeline; a time range needs anchors, transitions and subtitles shifted, add if drafts get slow."""
+    edit.width, edit.height = (max(2, round(v * scale / 2) * 2) for v in (edit.width, edit.height))
+    edit.crf, edit.preset = 30, 'ultrafast'
+    for clip in edit.overlays:
+        if clip.kind != 'color' and not (clip.w or clip.h):
+            clip.w = (clip.src_size or (probe(clip.source)['video']['width'],))[0]
+        clip.x, clip.y = round(clip.x * scale), round(clip.y * scale)
+        clip.w, clip.h = (max(1, round(v * scale)) if v else v for v in (clip.w, clip.h))
+        for prop in ('x', 'y'):
+            if clip.keys and prop in clip.keys:
+                clip.keys[prop] = [(t, v * scale, ease) for t, v, ease in clip.keys[prop]]
+
+
+def assemble_command(edl_path: str, out: str, *, dry_run: bool, keep: bool, preview: bool = False) -> dict:
     edit = load(edl_path)
+    if edit.subtitles and not has_filter('subtitles'):
+        raise RnError('this ffmpeg has no libass, so it cannot burn subtitles; on macOS: brew install ffmpeg-full, then put '
+                      '"$(brew --prefix ffmpeg-full)/bin" first on PATH')
+    if preview:
+        _preview(edit, PREVIEW_SCALE)
     if dry_run:
         return edit.summary()
     out_path = Path(out)
@@ -363,6 +387,7 @@ def assemble_command(edl_path: str, out: str, *, dry_run: bool, keep: bool) -> d
     summary = edit.summary()
     summary['path'] = str(out_path)
     summary['audio'] = loudness
+    summary['preview'] = preview
     return summary
 
 
@@ -382,7 +407,8 @@ def finish_command(source: str, out: str, *, lufs: float | None, true_peak: floa
             run(['ffmpeg', '-i', source, '-map', '0:v:0', '-c:v', 'copy', '-an', '-y', str(encoded)])
         else:
             even = f'scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=lanczos:{to_bt709(source_matrix(video))},setsar=1,format=yuv420p,{audio_mod.BT709}'
-            run(['ffmpeg', *(['-c:v', video['alpha_decoder']] if video.get('alpha_decoder') else []), '-i', source, '-map', '0:v:0', '-vf', even, *audio_mod.VIDEO_ENCODE, '-crf', str(crf), '-preset', preset,
+            run(['ffmpeg', *(['-c:v', video['alpha_decoder']] if video.get('alpha_decoder') else []), '-i', source, '-map', '0:v:0', '-vf', even, *audio_mod.VIDEO_ENCODE,
+                 *(audio_mod.CFR_VUI if video['cfr'] else []), '-crf', str(crf), '-preset', preset,
                  '-fps_mode', 'passthrough', '-an', '-y', str(encoded)])
         loudness = None
         m4a = None

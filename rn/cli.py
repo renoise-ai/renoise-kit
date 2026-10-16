@@ -1,5 +1,5 @@
 """rn: Renoise media kit. Measure (probe, frame, sheet, cuts, listen, faces, ref), render (capture, fx, fonts,
-assets, captions), assemble an EDL frame-exactly, finish and QA. It measures and guarantees the mechanics; every
+assets, captions), assemble an EDL frame-exactly, compare, finish and QA. It measures and guarantees the mechanics; every
 creative decision stays yours.
 
 Every command prints a short summary; --json FILE writes the full result. Failures exit non-zero with
@@ -208,6 +208,24 @@ def _parser() -> argparse.ArgumentParser:
     assemble.add_argument('-o', '--out', default='out.mp4')
     assemble.add_argument('--dry-run', action='store_true', help='validate and print the timeline without rendering')
     assemble.add_argument('--keep', action='store_true', help='keep per-clip slots and the mix next to the output (<out>.parts/)')
+    assemble.add_argument('--preview', action='store_true',
+                          help='half-size draft with a fast encode: check timing and layout before the full render (not for delivery)')
+
+    compare = add('compare', 'two videos side by side at the same times (+ cut timing)',
+                  'A cut against its reference, or two versions of a cut: frames at the same times, A on the top row and B\n'
+                  'underneath, labelled with each one\'s own frame index. --cuts runs rn cuts on both and pairs the cuts\n'
+                  '(within 0.25 s) with their offsets: the rhythm comparison. --video writes A|B side by side to watch.\n'
+                  'Differences are facts to look at, not scores.')
+    compare.add_argument('a')
+    compare.add_argument('b')
+    compare_times = compare.add_mutually_exclusive_group()
+    compare_times.add_argument('--count', type=int, metavar='N', help='N evenly spaced times (default 12)')
+    compare_times.add_argument('--seconds', type=_numbers(float), metavar='T1,T2,..', help='exact times')
+    compare.add_argument('-o', '--out', help='output .jpg (pages get -p2, ...); default sheets/compare-<a>-<b>.jpg')
+    compare.add_argument('--width', type=int, default=256, help='tile width in px (default 256)')
+    compare.add_argument('--max-kb', type=int, default=125)
+    compare.add_argument('--cuts', action='store_true', help='compare shot boundaries (rn cuts defaults)')
+    compare.add_argument('--video', metavar='MP4', help='also write a side-by-side video (A left, B right, A\'s sound)')
 
     finish = add('finish', 'bring any video to the delivery standard',
                  'For a video you built yourself: H.264 High yuv420p bt709, even size, square pixels, moov first,\n'
@@ -249,7 +267,8 @@ def _print_summary(command: str, result: dict) -> None:
     elif command == 'assemble':
         out = result['output']
         if 'path' in result:
-            print(f'{result["path"]}  {out["width"]}x{out["height"]} {out["fps"]}fps  {out["frames"]} frames  {out["duration"]}s')
+            print(f'{result["path"]}  {out["width"]}x{out["height"]} {out["fps"]}fps  {out["frames"]} frames  {out["duration"]}s'
+                  + ('  (preview: draft size and encode, not for delivery)' if result.get('preview') else ''))
             if result.get('audio'):
                 audio = result['audio']
                 print(f'audio {audio["lufs"]} LUFS, true peak {audio["true_peak"]} dBTP, gain {audio["gain_db"]} dB')
@@ -276,7 +295,10 @@ def _print_summary(command: str, result: dict) -> None:
               f'{len(result["checks"]) - result["failed"] - result["warnings"]} passed  ({result["path"]})')
 
 
-SUMMARIZED = {'cuts', 'listen', 'faces', 'ref', 'capture', 'fx', 'fonts', 'assets', 'captions'}
+SUMMARIZED = {'cuts', 'listen', 'faces', 'ref', 'capture', 'fx', 'fonts', 'assets', 'captions', 'compare'}
+# The pip extra that brings a command's optional Python modules (the media sandbox has them all).
+EXTRAS = {'listen': 'listen', 'ref': 'listen', 'faces': 'faces', 'capture': 'capture', 'captions': 'captions', 'fonts': 'fonts',
+          'fx': 'fx'}
 
 
 def _size(text: str) -> tuple[int, int]:
@@ -319,6 +341,10 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
         lines = [f'{e["name"]:10} {e["js"]:16} {e["py"]:18} {e["what"]}' for e in result['effects']]
         return result, lines + ([f'source: {result["js"]}', f'        {result["py"]}'] if args.source else
                                 ['rn fx --source prints the files to read or copy'])
+    elif command == 'compare':
+        from .compare import compare_command, summary_lines
+        result = compare_command(args.a, args.b, out=args.out, count=args.count, seconds=args.seconds, width=args.width,
+                                 max_kb=args.max_kb, cuts=args.cuts, video=args.video)
     elif command == 'fonts':
         from .fonts import fonts_command, summary_lines
         result = fonts_command(family=args.family, script=args.script, licenses=args.licenses)
@@ -361,7 +387,7 @@ def main(argv: list[str] | None = None) -> int:
             result, lines = _run_summarized(args)
         elif args.command == 'assemble':
             from .assemble import assemble_command
-            result = assemble_command(args.edl, args.out, dry_run=args.dry_run, keep=args.keep)
+            result = assemble_command(args.edl, args.out, dry_run=args.dry_run, keep=args.keep, preview=args.preview)
         elif args.command == 'finish':
             from .assemble import finish_command
             lufs = None if args.lufs == 'keep' else float(args.lufs)
@@ -377,6 +403,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     except ValueError as error:
         print(f'rn: error: {error}', file=sys.stderr)
+        return 1
+    except ModuleNotFoundError as error:
+        extra = EXTRAS.get(args.command, 'all')
+        print(f"rn: error: rn {args.command} needs the Python module {error.name} (extra \"{extra}\"): "
+              f"uv tool install 'renoise-kit[all]'", file=sys.stderr)
         return 1
     except Exception as error:  # a kit bug: keep the traceback for the report, end on the usual one-liner
         import traceback

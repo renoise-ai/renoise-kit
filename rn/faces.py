@@ -10,7 +10,10 @@ from pathlib import Path
 from .ff import RnError
 from .frames import _compose, _save_under
 
-DEFAULT_MODEL = '/opt/media-sandbox/models/face_detection_yunet_2023mar.onnx'
+DEFAULT_MODEL = '/opt/media-sandbox/models/face_detection_yunet_2023mar.onnx'  # baked into the sandbox
+# Outside the sandbox: fetched once into ~/.cache/rn (OpenCV zoo, MIT).
+MODEL_URL = 'https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx'
+MODEL_SHA256 = '8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4'
 DETECT_LONG_SIDE = 960  # larger frames are detected at this size, then mapped back to source pixels
 SHEET_FRAMES = 12
 
@@ -30,7 +33,11 @@ def faces_command(path: str, *, every: int = 1, model: str | None = None, min_sc
     Coordinates are source pixels; `f` is the exact decoded frame index. `eyes` and `mouth` are ordered left-to-right as seen in the image."""
     import cv2
 
-    model_path = model or os.environ.get('RN_YUNET_MODEL') or DEFAULT_MODEL
+    model_path = model or os.environ.get('RN_YUNET_MODEL')
+    if not model_path:
+        from .assets import fetch_checked
+        model_path = DEFAULT_MODEL if Path(DEFAULT_MODEL).is_file() else str(
+            fetch_checked(MODEL_URL, MODEL_SHA256, Path.home() / '.cache' / 'rn' / Path(DEFAULT_MODEL).name, name='face model'))
     if not Path(model_path).is_file():
         raise RnError(f'face model not found: {model_path} (set RN_YUNET_MODEL or pass --model)')
     if every < 1:

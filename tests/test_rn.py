@@ -7,7 +7,6 @@ import pytest
 from PIL import Image
 
 from conftest import has_filter, ramp_index, write_edl
-from rn import __version__
 from rn.cli import main
 from rn.ff import probe
 
@@ -30,16 +29,6 @@ def frame_at(video: Path, index: int, tmp_path: Path) -> Path:
     out = tmp_path / f'f{index}.png'
     assert rn('frame', video, '--index', index, '-o', out) == 0
     return out
-
-
-def test_version_matches_template_and_worker():
-    template_path = Path(__file__).parents[2] / 'template.ts'
-    if not template_path.exists():
-        pytest.skip('kit checked out without the template')
-    assert re.search(r"version: 'v([\d.]+)'", template_path.read_text()).group(1) == __version__
-    # The Worker replaces sandboxes built from any other template, so all three must move together.
-    worker = (Path(__file__).parents[3] / 'worker/src/services/mcp-sandbox.ts').read_text()
-    assert re.search(r"MEDIA_SANDBOX_TEMPLATE = 'renoise-media:v([\d.]+)'", worker).group(1) == __version__
 
 
 def test_probe_counts_frames_and_faststart(media):

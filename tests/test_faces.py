@@ -91,3 +91,19 @@ def test_no_face(tmp_path, model):
     result = faces_command(str(clip), model=model)
     assert result['summary']['with_faces'] == 0 and result['summary']['union_box'] is None
     assert result['summary']['face_count_histogram'] == {'0': 25}
+
+
+def test_default_model_is_fetched_once_and_checked(lena_clip, model, tmp_path, monkeypatch):
+    import rn.faces as faces
+    monkeypatch.delenv('RN_YUNET_MODEL', raising=False)
+    monkeypatch.setattr(faces, 'DEFAULT_MODEL', str(tmp_path / 'not-baked' / 'face_detection_yunet_2023mar.onnx'))
+    monkeypatch.setattr(faces, 'MODEL_URL', Path(model).resolve().as_uri())
+    monkeypatch.setenv('HOME', str(tmp_path / 'home'))
+    monkeypatch.setattr(Path, 'home', classmethod(lambda cls: tmp_path / 'home'))
+    monkeypatch.setattr(faces, 'MODEL_SHA256', '0' * 64)
+    with pytest.raises(RnError, match='checksum mismatch'):
+        faces_command(str(lena_clip), every=10)
+    import hashlib
+    monkeypatch.setattr(faces, 'MODEL_SHA256', hashlib.sha256(Path(model).read_bytes()).hexdigest())
+    assert faces_command(str(lena_clip), every=10)['summary']['with_faces'] > 0
+    assert (tmp_path / 'home' / '.cache' / 'rn' / 'face_detection_yunet_2023mar.onnx').is_file()

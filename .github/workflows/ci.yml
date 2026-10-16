@@ -1,0 +1,26 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # Same base as the media sandbox: Debian trixie, ffmpeg 7.1.
+  debian:
+    runs-on: ubuntu-latest
+    container: python:3.12
+    steps:
+      - uses: actions/checkout@v4
+      - run: apt-get update && apt-get install -y --no-install-recommends ffmpeg fontconfig fonts-dejavu-core && pip install uv
+      - run: uv run playwright install --with-deps chromium
+      - run: uv run pytest -q
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      # Homebrew's plain ffmpeg has no libass; ffmpeg-full is keg-only.
+      - run: brew install ffmpeg-full && echo "$(brew --prefix ffmpeg-full)/bin" >> "$GITHUB_PATH"
+      - run: uv run playwright install chromium
+      - run: uv run pytest -q

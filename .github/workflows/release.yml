@@ -1,0 +1,18 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  pypi:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # PyPI trusted publishing: no token stored in the repo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Tag matches rn.__version__
+        run: test "${GITHUB_REF_NAME#v}" = "$(sed -n "s/^__version__ = '\(.*\)'/\1/p" rn/__init__.py)"
+      - run: uv build
+      - run: uv publish

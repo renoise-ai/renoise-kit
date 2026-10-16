@@ -28,6 +28,36 @@ def _scan(path: str) -> dict:
     return {'black': black, 'freeze': freezes, 'crop': crop}
 
 
+SILENCE_DB, SILENCE_MIN = -70, 0.06  # digital silence inside a mix reads as a glitch, not a pause
+JUMP_DB = 15  # between adjacent 100 ms RMS windows: right for a designed hit, wrong for a music edit
+
+
+def _sound(path: str, seconds: float) -> dict:
+    """One decode pass: digital silences away from the head and tail, and level jumps between 100 ms windows."""
+    result = subprocess.run(['ffmpeg', '-hide_banner', '-nostdin', '-i', path, '-map', '0:a:0', '-af',
+                             f'aresample=48000,silencedetect=noise={SILENCE_DB}dB:d={SILENCE_MIN},asetnsamples=n=4800:p=0,'
+                             'astats=metadata=1:reset=1,ametadata=mode=print:key=lavfi.astats.Overall.RMS_level:file=-',
+                             '-f', 'null', '-'], capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RnError(f'{path}: audio decode failed: {result.stderr.strip().splitlines()[-1:]}')
+    starts = [float(v) for v in re.findall(r'silence_start: (-?[\d.]+)', result.stderr)]
+    ends = [float(v) for v in re.findall(r'silence_end: ([\d.]+)', result.stderr)]
+    silences = [(max(0.0, s), ends[i] if i < len(ends) else seconds) for i, s in enumerate(starts)]
+    silences = [(a, b) for a, b in silences if a > 0.05 and b < seconds - 0.05]  # lead-in and tail-out are a choice
+    levels = [float(v) for v in re.findall(r'RMS_level=(-?inf|-?[\d.]+)', result.stdout)]
+    jumps = [(round(k * 0.1, 1), levels[k - 1], levels[k]) for k in range(1, len(levels))
+             if abs(levels[k] - levels[k - 1]) >= JUMP_DB and max(levels[k], levels[k - 1]) > -60]
+    return {'silence': silences, 'jumps': jumps}
+
+
+def _fixed_frame_rate(path: str) -> bool | None:
+    """The H.264 SPS fixed_frame_rate_flag, or None when the stream carries no timing info."""
+    result = subprocess.run(['ffmpeg', '-hide_banner', '-nostdin', '-i', path, '-map', '0:v:0', '-c', 'copy', '-bsf:v', 'trace_headers',
+                             '-frames:v', '1', '-f', 'null', '-'], capture_output=True, text=True)
+    flag = re.search(r'fixed_frame_rate_flag\s+[01]\s+=\s+([01])', result.stderr)
+    return flag.group(1) == '1' if flag else None
+
+
 def _intended(edit: Edit | None, kind: str) -> list[tuple[float, float]]:
     """Timeline ranges the EDL itself makes black or still, so qa does not flag them."""
     if not edit:
@@ -85,6 +115,11 @@ def qa_command(path: str, *, edl: str | None, frames: int | None, size: str | No
     check('sar', 'PASS' if video['sar'] == '1:1' else 'FAIL', f'{video["sar"]}' + ('' if video['sar'] == '1:1' else ' (non-square pixels display stretched)'))
     tags = (video['color_space'], video['color_primaries'], video['color_transfer'])
     check('color', 'PASS' if tags == ('bt709', 'bt709', 'bt709') else 'WARN', 'space/primaries/transfer = ' + '/'.join(str(t) for t in tags))
+    if video['codec'] == 'h264':
+        fixed = _fixed_frame_rate(path)
+        if fixed is not None:
+            check('fixed_frame_rate', 'PASS' if fixed else 'WARN', 'SPS fixed_frame_rate_flag=1' if fixed else
+                  'SPS fixed_frame_rate_flag=0: some players time frames from the VUI and show the wrong length (rn finish fixes it)')
     if info['faststart'] is not None:
         check('faststart', 'PASS' if info['faststart'] else 'FAIL', 'moov before mdat' if info['faststart'] else 'moov at the end: remux with -movflags +faststart')
 
@@ -108,6 +143,14 @@ def qa_command(path: str, *, edl: str | None, frames: int | None, size: str | No
                 check('loudness', 'PASS' if ok else 'WARN', f'{integrated:.1f} LUFS (target {lufs:.1f} ±{lufs_tolerance:g}), LRA {loud["lra"]}')
             else:
                 check('loudness', 'PASS', f'{integrated:.1f} LUFS, LRA {loud["lra"]}')
+            sound = _sound(path, video_seconds)
+            check('dead_air', 'WARN' if sound['silence'] else 'PASS',
+                  ', '.join(f'{a:.2f}-{b:.2f}s' for a, b in sound['silence']) + ' below -70 dBFS (fill with a tail, room tone or bed)'
+                  if sound['silence'] else 'no digital silence inside the mix')
+            jumps = sound['jumps']
+            check('level_jumps', 'WARN' if jumps else 'PASS',
+                  ', '.join(f'{t:.1f}s {a:.0f}->{b:.0f} dB' for t, a, b in jumps[:8]) + (f' (+{len(jumps) - 8} more)' if len(jumps) > 8 else '')
+                  if jumps else f'no jump >= {JUMP_DB} dB between 100 ms windows')
         else:
             check('loudness', 'WARN', 'audio track is silent')
     else:

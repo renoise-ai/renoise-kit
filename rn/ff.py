@@ -6,6 +6,7 @@ import re
 import struct
 import subprocess
 from fractions import Fraction
+from functools import lru_cache
 from pathlib import Path
 
 
@@ -25,6 +26,13 @@ def run(args: list[str], *, quiet: bool = True, cwd: str | Path | None = None) -
         tail = '\n'.join((causes[:3] + lines[-2:]) if causes else lines[-6:])
         raise RnError(f'{args[0]} failed: {tail or "exit " + str(result.returncode)}')
     return result
+
+
+@lru_cache(maxsize=None)
+def has_filter(name: str) -> bool:
+    """Whether this ffmpeg build has a filter (Homebrew's plain ffmpeg, for one, has no libass `subtitles`)."""
+    filters = subprocess.run(['ffmpeg', '-hide_banner', '-filters'], capture_output=True, text=True).stdout
+    return any(line.split()[1:2] == [name] for line in filters.splitlines())
 
 
 def ffprobe_json(path: str | Path, *extra: str) -> dict:
@@ -88,6 +96,8 @@ def probe(path: str | Path, *, exact: bool = False) -> dict:
     }
     if video_stream:
         fps = rational(video_stream.get('avg_frame_rate')) or rational(video_stream.get('r_frame_rate'))
+        # Constant rate when the average rate equals the base rate; a VFR phone clip averages below it.
+        cfr = rational(video_stream.get('avg_frame_rate')) == rational(video_stream.get('r_frame_rate'))
         frames = video_stream.get('nb_read_frames') if exact else video_stream.get('nb_read_packets')
         frames = int(frames) if frames not in (None, 'N/A') else None
         single_image = (video_stream.get('codec_name') in ('png', 'mjpeg', 'webp', 'bmp', 'tiff')) and (frames or 0) <= 1
@@ -116,6 +126,7 @@ def probe(path: str | Path, *, exact: bool = False) -> dict:
             'alpha': vpx_alpha or (video_stream.get('pix_fmt') or '').startswith(('yuva', 'rgba', 'argb', 'bgra', 'abgr', 'gbrap', 'ya')),
             'alpha_decoder': ({'vp9': 'libvpx-vp9', 'vp8': 'libvpx'}.get(video_stream.get('codec_name')) if vpx_alpha else None),
             'still': single_image,
+            'cfr': cfr and not single_image,
         }
     if audio_stream:
         result['audio'] = {

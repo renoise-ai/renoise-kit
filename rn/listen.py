@@ -82,7 +82,7 @@ def _transcribe(wav: Path, *, language: str | None, model: str) -> dict:
     try:
         from faster_whisper import WhisperModel
     except ImportError:
-        raise RnError('faster-whisper is not installed; transcription needs it (baked into the sandbox image)')
+        raise RnError("--transcribe needs faster-whisper (extra \"transcribe\"): uv tool install 'renoise-kit[all]'")
     import numpy as np
     # Decode here and pass samples: faster-whisper's own file decoding goes through PyAV, whose API it does not pin
     # (av 16 dropped the `metadata_errors` argument it passes).

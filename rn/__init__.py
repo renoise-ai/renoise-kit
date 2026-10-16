@@ -1,2 +1,2 @@
-"""Renoise media kit (`rn`). Version = the media sandbox template version (packages/media-sandbox/template.ts)."""
-__version__ = '0.3.4'
+"""Renoise kit (`rn`, PyPI `renoise-kit`). Released on its own; the media sandbox template pins a version."""
+__version__ = '0.4.0'

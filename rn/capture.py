@@ -64,7 +64,7 @@ def capture_command(page: str, *, out: str, frames: int, width: int, height: int
     try:
         import playwright  # noqa: F401
     except ImportError:
-        raise RnError('playwright is not installed (the media sandbox has it; locally: pip install playwright && playwright install chromium)') from None
+        raise RnError("rn capture needs playwright (extra \"capture\"): uv tool install 'renoise-kit[all]' && playwright install chromium") from None
     out_dir = Path(out)
     out_dir.mkdir(parents=True, exist_ok=True)
     for stale in out_dir.glob('*.png'):
