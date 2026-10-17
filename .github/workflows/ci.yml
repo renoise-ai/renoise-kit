@@ -24,3 +24,18 @@ jobs:
       - run: brew install ffmpeg-full && echo "$(brew --prefix ffmpeg-full)/bin" >> "$GITHUB_PATH"
       - run: uv run playwright install chromium
       - run: uv run pytest -q
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONUTF8: '0'  # keep Windows' own default encoding, so a missing encoding='utf-8' shows up here
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      # gyan.dev's full build: ffmpeg 7+ with libass and fontconfig, the same build the README points Windows users to.
+      - run: choco install ffmpeg-full -y --no-progress
+      - run: uv run playwright install chromium
+      - run: uv run pytest -q

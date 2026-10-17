@@ -5,6 +5,7 @@ import json
 import re
 import struct
 import subprocess
+import tempfile
 from fractions import Fraction
 from functools import lru_cache
 from pathlib import Path
@@ -14,11 +15,28 @@ class RnError(Exception):
     """A failure the agent can act on; the CLI prints it as one line."""
 
 
+# Windows caps a whole command line at 32767 characters, Linux one argument at 128 KiB: a long filter graph (many
+# overlays, keyframes) goes to ffmpeg as a file instead, through ffmpeg 7's "-/option file".
+LONG_FILTER = 8000
+FILTER_OPTIONS = ('-filter_complex', '-lavfi', '-vf', '-af', '-filter:v', '-filter:a')
+
+
+def _filters_from_files(args: list[str], folder: Path) -> list[str]:
+    out = list(args)
+    for i in range(len(out) - 1):
+        if out[i] in FILTER_OPTIONS and len(out[i + 1]) > LONG_FILTER:
+            script = folder / f'filter{i}.txt'
+            script.write_text(out[i + 1], encoding='utf-8')
+            out[i], out[i + 1] = '-/' + out[i][1:], str(script)
+    return out
+
+
 def run(args: list[str], *, quiet: bool = True, cwd: str | Path | None = None) -> subprocess.CompletedProcess:
     """Runs ffmpeg (or ffprobe); raises RnError with the tail of stderr on failure."""
     flags = ['-nostdin', *(['-v', 'error'] if quiet else [])] if args[0] == 'ffmpeg' else []
-    command = [args[0], '-hide_banner', *flags, *args[1:]]
-    result = subprocess.run(command, capture_output=True, text=True, cwd=cwd)
+    with tempfile.TemporaryDirectory(prefix='rn-filters-') as tmp:
+        command = [args[0], '-hide_banner', *flags, *_filters_from_files(args[1:], Path(tmp))]
+        result = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', errors='replace', cwd=cwd)
     if result.returncode != 0:
         lines = result.stderr.strip().splitlines()
         # The cause is usually an earlier line than the generic 'Task finished with error' tail.
@@ -31,7 +49,7 @@ def run(args: list[str], *, quiet: bool = True, cwd: str | Path | None = None) -
 @lru_cache(maxsize=None)
 def has_filter(name: str) -> bool:
     """Whether this ffmpeg build has a filter (Homebrew's plain ffmpeg, for one, has no libass `subtitles`)."""
-    filters = subprocess.run(['ffmpeg', '-hide_banner', '-filters'], capture_output=True, text=True).stdout
+    filters = subprocess.run(['ffmpeg', '-hide_banner', '-filters'], capture_output=True, text=True, encoding='utf-8', errors='replace').stdout
     return any(line.split()[1:2] == [name] for line in filters.splitlines())
 
 

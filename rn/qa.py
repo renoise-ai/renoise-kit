@@ -15,7 +15,7 @@ def _scan(path: str) -> dict:
     """One decode pass: black intervals, frozen intervals and the union crop box (black bars)."""
     result = subprocess.run(['ffmpeg', '-hide_banner', '-nostdin', '-i', path, '-map', '0:v:0', '-vf',
                              'blackdetect=d=0.1:pix_th=0.10,freezedetect=n=-60dB:d=0.5,cropdetect=limit=24:round=2:reset=0',
-                             '-f', 'null', '-'], capture_output=True, text=True)
+                             '-f', 'null', '-'], capture_output=True, text=True, encoding='utf-8', errors='replace')
     if result.returncode != 0:
         raise RnError(f'{path}: decode failed: {result.stderr.strip().splitlines()[-1:]}')
     log = result.stderr
@@ -37,7 +37,7 @@ def _sound(path: str, seconds: float) -> dict:
     result = subprocess.run(['ffmpeg', '-hide_banner', '-nostdin', '-i', path, '-map', '0:a:0', '-af',
                              f'aresample=48000,silencedetect=noise={SILENCE_DB}dB:d={SILENCE_MIN},asetnsamples=n=4800:p=0,'
                              'astats=metadata=1:reset=1,ametadata=mode=print:key=lavfi.astats.Overall.RMS_level:file=-',
-                             '-f', 'null', '-'], capture_output=True, text=True)
+                             '-f', 'null', '-'], capture_output=True, text=True, encoding='utf-8', errors='replace')
     if result.returncode != 0:
         raise RnError(f'{path}: audio decode failed: {result.stderr.strip().splitlines()[-1:]}')
     starts = [float(v) for v in re.findall(r'silence_start: (-?[\d.]+)', result.stderr)]
@@ -54,7 +54,7 @@ def _sound(path: str, seconds: float) -> dict:
 def _fixed_frame_rate(path: str) -> bool | None:
     """The H.264 SPS fixed_frame_rate_flag, or None when the stream carries no timing info."""
     result = subprocess.run(['ffmpeg', '-hide_banner', '-nostdin', '-i', path, '-map', '0:v:0', '-c', 'copy', '-bsf:v', 'trace_headers',
-                             '-frames:v', '1', '-f', 'null', '-'], capture_output=True, text=True)
+                             '-frames:v', '1', '-f', 'null', '-'], capture_output=True, text=True, encoding='utf-8', errors='replace')
     flag = re.search(r'fixed_frame_rate_flag\s+[01]\s+=\s+([01])', result.stderr)
     return flag.group(1) == '1' if flag else None
 

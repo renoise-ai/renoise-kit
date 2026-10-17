@@ -1,5 +1,6 @@
 """EDL additions in template v0.3.0: image sequences, timeline anchors, shot positions, keyframes (spec §3.1 / §4)."""
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -44,7 +45,7 @@ def test_cuts_finds_the_hard_cut(two_shots):
 
 
 def test_shot_positions_resolve_inside_the_source(two_shots, tmp_path):
-    (tmp_path / 'two.mp4').symlink_to(two_shots)
+    shutil.copyfile(two_shots, tmp_path / 'two.mp4')
     edl = write_edl(tmp_path, {'output': {'width': 320, 'height': 180, 'fps': 30},
                                'tracks': [{'clips': [{'src': 'two.mp4', 'in': {'shot': 1}, 'out': {'shot': 1, 'offset': -0.5}},
                                                      {'src': 'two.mp4', 'in': {'shot': 0, 'offset': 0.5}, 'out': {'shot': 0}}]}]})
@@ -57,9 +58,9 @@ def test_shot_positions_resolve_inside_the_source(two_shots, tmp_path):
 
 
 def test_timeline_anchors(media, tmp_path):
-    (tmp_path / 'listen.json').write_text(json.dumps({'beats': {'times': [0.5, 1.25]}, 'words': [{'word': 'hi', 'start': 0.4, 'end': 0.9}]}))
-    (tmp_path / 'red.png').symlink_to(media / 'red.png')
-    (tmp_path / 'bars.mp4').symlink_to(media / 'bars.mp4')
+    (tmp_path / 'listen.json').write_text(json.dumps({'beats': {'times': [0.5, 1.25]}, 'words': [{'word': 'hi', 'start': 0.4, 'end': 0.9}]}), encoding='utf-8')
+    shutil.copyfile(media / 'red.png', tmp_path / 'red.png')
+    shutil.copyfile(media / 'bars.mp4', tmp_path / 'bars.mp4')
     edl = write_edl(tmp_path, {
         'output': {'width': 320, 'height': 240, 'fps': 30},
         'markers': {'drop': 1.0},
@@ -86,7 +87,7 @@ def test_timeline_anchors(media, tmp_path):
     ({'clip': 0, 'marker': 'x'}, 'one of clip'),
 ])
 def test_bad_anchors_explain_themselves(media, tmp_path, anchor, message):
-    (tmp_path / 'red.png').symlink_to(media / 'red.png')
+    shutil.copyfile(media / 'red.png', tmp_path / 'red.png')
     edl = write_edl(tmp_path, {'output': {'width': 320, 'height': 240, 'fps': 30},
                                'tracks': [{'clips': [{'color': 'black', 'duration': 1}]},
                                           {'clips': [{'image': 'red.png', 'at': anchor, 'duration': 0.2}]}]})
@@ -139,7 +140,7 @@ def test_sequence_errors(tmp_path):
 
 
 def test_overlay_keys_move_and_fade(media, tmp_path):
-    (tmp_path / 'red.png').symlink_to(media / 'red.png')
+    shutil.copyfile(media / 'red.png', tmp_path / 'red.png')
     edl = write_edl(tmp_path, {'output': {'width': 320, 'height': 240, 'fps': 30},
                                'tracks': [{'clips': [{'color': '#000000', 'duration': 2}]},
                                           {'clips': [{'image': 'red.png', 'duration': 2, 'x': 0, 'y': 0,
@@ -155,7 +156,7 @@ def test_overlay_keys_move_and_fade(media, tmp_path):
 
 
 def test_main_track_keys_zoom_the_plate(media, tmp_path):
-    (tmp_path / 'bars.mp4').symlink_to(media / 'bars.mp4')
+    shutil.copyfile(media / 'bars.mp4', tmp_path / 'bars.mp4')
     edl = write_edl(tmp_path, {'output': {'width': 640, 'height': 360, 'fps': 30},
                                'tracks': [{'clips': [{'src': 'bars.mp4', 'keys': {'scale': [[0, 1], [1, 2, 'inout']]}}]}],
                                'mix': {'lufs': None}})
@@ -176,7 +177,7 @@ def test_main_track_keys_zoom_the_plate(media, tmp_path):
     ({'scale': [[0, 0]]}, 'must be > 0'),
 ])
 def test_bad_keys(media, tmp_path, keys, message):
-    (tmp_path / 'bars.mp4').symlink_to(media / 'bars.mp4')
+    shutil.copyfile(media / 'bars.mp4', tmp_path / 'bars.mp4')
     edl = write_edl(tmp_path, {'output': {'width': 320, 'height': 180, 'fps': 30},
                                'tracks': [{'clips': [{'src': 'bars.mp4', 'keys': keys}]}]})
     with pytest.raises(RnError, match=message):

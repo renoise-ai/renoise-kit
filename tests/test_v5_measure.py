@@ -28,7 +28,7 @@ def flash_click(tmp_path_factory):
 def test_signal_series_flashes_and_clicks(flash_click, tmp_path):
     report, image = tmp_path / 'signal.json', tmp_path / 'signal.png'
     assert rn('signal', flash_click, '--json', report, '-o', image) == 0
-    result = json.loads(report.read_text())
+    result = json.loads(report.read_text(encoding='utf-8'))
     assert result['frames'] == 72 and len(result['video']['luma']) == 72 and len(result['audio']['onset_db']) == 72
     assert result['flashes'] == [30]
     assert result['clicks'] == [pytest.approx(1.5, abs=0.001)]
@@ -46,10 +46,10 @@ def test_align_finds_an_excerpt(tmp_path):
     ffmpeg('-f', 'lavfi', '-i', 'anoisesrc=a=0.3:d=8:c=pink', str(other))
     report = tmp_path / 'align.json'
     assert rn('align', song, excerpt, '--json', report) == 0
-    found = json.loads(report.read_text())
+    found = json.loads(report.read_text(encoding='utf-8'))
     assert found['offset'] == pytest.approx(7.315, abs=0.002) and found['match'] > 0.9
     assert rn('align', song, other, '--json', report) == 0
-    assert json.loads(report.read_text())['match'] < 0.2
+    assert json.loads(report.read_text(encoding='utf-8'))['match'] < 0.2
 
 
 def test_qa_clicks_and_accept(flash_click, media, tmp_path):
@@ -59,7 +59,7 @@ def test_qa_clicks_and_accept(flash_click, media, tmp_path):
 
     def checks(*extra):
         rn('qa', clip, '--json', report, *extra)
-        return {c['check']: c for c in json.loads(report.read_text())['checks']}
+        return {c['check']: c for c in json.loads(report.read_text(encoding='utf-8'))['checks']}
 
     assert checks()['clicks']['status'] == 'WARN'
     accepted = checks('--accept', 'clicks@1.5', '--accept', 'color')
@@ -69,7 +69,7 @@ def test_qa_clicks_and_accept(flash_click, media, tmp_path):
     edl = write_edl(media, {'output': {'width': 320, 'height': 240, 'fps': 24}, 'tracks': [{'clips': [{'color': 'gray', 'duration': 3}]}],
                             'accept': [{'check': 'clicks', 'at': 1.5, 'note': 'the snap'}]}, 'accept.json')
     rn('qa', clip, '--edl', edl, '--json', report)
-    assert {c['check']: c['status'] for c in json.loads(report.read_text())['checks']}['clicks'] == 'PASS'
+    assert {c['check']: c['status'] for c in json.loads(report.read_text(encoding='utf-8'))['checks']}['clicks'] == 'PASS'
 
 
 def test_finish_height(media, tmp_path):
@@ -90,7 +90,7 @@ def test_text_reads_a_title(tmp_path):
            '-filter_complex', '[0:v][1:v]overlay=enable=\'between(t,0.5,1.4)\'', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(clip))
     report = tmp_path / 'text.json'
     assert rn('text', clip, '--lang', 'eng', '--json', report) == 0
-    spans = json.loads(report.read_text())['spans']
+    spans = json.loads(report.read_text(encoding='utf-8'))['spans']
     title = next(s for s in spans if 'RENOISE' in s['text'])
     # Read twice a second: on screen 0.5-1.4 s is seen at 0.5 and 1.0, so the span ends at the 1.5 s read that misses it.
     assert title['start'] == pytest.approx(0.5, abs=0.05) and title['end'] == pytest.approx(1.5, abs=0.05)
@@ -133,7 +133,7 @@ def test_export_otio_fcpxml_xml(media, tmp_path):
     assert clips[0].metadata['rn']['meta'] == {'take': 2}
     assert any(isinstance(e, otio.schema.LinearTimeWarp) for e in clips[1].effects)
     assert any(isinstance(item, otio.schema.Stack) for item in timeline.tracks[0])
-    assert any(l['clip'] == 't' for l in json.loads(report.read_text())['lost'])
+    assert any(l['clip'] == 't' for l in json.loads(report.read_text(encoding='utf-8'))['lost'])
     for suffix in ('.fcpxml', '.xml'):
         target = tmp_path / f'cut{suffix}'
         assert rn('export', edl, '-o', target) == 0 and target.stat().st_size > 500
@@ -167,5 +167,5 @@ def test_sheet_of_a_folder_of_stills(tmp_path):
         Image.new('RGB', (640, 360), (n % 255, 80, 160)).save(stills / f'f{n}.png')
     report = tmp_path / 'sheet.json'
     assert rn('sheet', stills, '-o', tmp_path / 'stills.jpg', '--json', report) == 0
-    page = json.loads(report.read_text())['pages'][0]
+    page = json.loads(report.read_text(encoding='utf-8'))['pages'][0]
     assert page['files'] == ['f792.png', 'f1062.png', 'f1500.png'] and page['bytes'] <= 125 * 1024

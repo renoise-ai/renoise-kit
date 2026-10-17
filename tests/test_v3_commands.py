@@ -32,7 +32,7 @@ def _library(tmp_path, monkeypatch):
                'license': 'CC0', 'source': 'test', 'url': 'whoosh.wav', 'sha256': hashlib.sha256(b'RIFF-fake-whoosh').hexdigest()},
               {'id': 'sfx-pop', 'kind': 'sfx', 'title': 'Pop', 'tags': ['ui', 'pop'], 'license': 'CC0', 'source': 'test',
                'url': 'pop.wav', 'sha256': 'deadbeef'}]
-    (files / 'manifest.json').write_text(json.dumps({'version': 1, 'assets': assets}))
+    (files / 'manifest.json').write_text(json.dumps({'version': 1, 'assets': assets}), encoding='utf-8')
     monkeypatch.setenv('RN_ASSETS_URL', str(files / 'manifest.json'))
     monkeypatch.setenv('RN_ASSETS_CACHE', str(tmp_path / 'cache'))
 
@@ -79,12 +79,12 @@ def test_ref_writes_a_breakdown(media, tmp_path):
     pytest.importorskip('matplotlib')
     from rn.ref import ref_command
     result = ref_command(str(media / 'ramp.mp4'), out=str(tmp_path / 'ref'), every=2, transcribe=False, language=None, model='small')
-    saved = json.loads((tmp_path / 'ref' / 'ref.json').read_text())
+    saved = json.loads((tmp_path / 'ref' / 'ref.json').read_text(encoding='utf-8'))
     assert saved['coverage']['sampled'] == 30 and saved['coverage']['frames'] == 60
     assert result['listen']['duration'] == pytest.approx(2.5, abs=0.05)
     assert all((tmp_path / 'ref' / p.split('/')[-1]).exists() for p in saved['coverage']['pages'])
     assert saved['coverage']['page_frames'][0][0] == 0 and saved['coverage']['page_frames'][-1][1] == 58
-    assert (tmp_path / 'ref' / 'GUIDE.md').read_text().startswith('# Reading a reference edit')
+    assert (tmp_path / 'ref' / 'GUIDE.md').read_text(encoding='utf-8').startswith('# Reading a reference edit')
 
 
 def test_cut_sync_measures_offsets_to_the_nearest_onset():

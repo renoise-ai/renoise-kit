@@ -30,7 +30,7 @@ def test_compare_aligns_times_and_cuts(media, tmp_path, capsys):
                '-filter_complex', '[0:v][1:v]concat=n=2:v=1[v]', '-map', '[v]', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(path))
     out, report, video = tmp_path / 'cmp.jpg', tmp_path / 'cmp.json', tmp_path / 'sbs.mp4'
     assert rn('compare', a, b, '--count', '8', '--cuts', '--video', video, '-o', out, '--json', report) == 0
-    result = json.loads(report.read_text())
+    result = json.loads(report.read_text(encoding='utf-8'))
     assert [p['path'] for p in result['pages']] == [str(tmp_path / 'cmp-p1.jpg'), str(tmp_path / 'cmp-p2.jpg')]
     assert all(p['bytes'] <= 125 * 1024 for p in result['pages'])
     pair = result['cuts']['pairs'][0]
@@ -65,14 +65,14 @@ def test_qa_flags_dead_air_and_level_jumps(tmp_path):
            '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', '-movflags', '+faststart', str(clip))
     report = tmp_path / 'qa.json'
     rn('qa', clip, '--json', report)
-    status = {c['check']: c for c in json.loads(report.read_text())['checks']}
+    status = {c['check']: c for c in json.loads(report.read_text(encoding='utf-8'))['checks']}
     assert status['dead_air']['status'] == 'WARN' and '1.50-2.00s' in status['dead_air']['detail']
     assert status['level_jumps']['status'] == 'WARN'
     steady = tmp_path / 'steady.mp4'
     ffmpeg('-f', 'lavfi', '-i', 'testsrc2=s=320x240:r=24:d=2', '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=2',
            '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', str(steady))
     rn('qa', steady, '--json', report)
-    status = {c['check']: c['status'] for c in json.loads(report.read_text())['checks']}
+    status = {c['check']: c['status'] for c in json.loads(report.read_text(encoding='utf-8'))['checks']}
     assert status['dead_air'] == 'PASS' and status['level_jumps'] == 'PASS'
 
 
@@ -87,7 +87,7 @@ def test_missing_extra_names_the_install(media, monkeypatch, capsys):
     monkeypatch.setattr(builtins, '__import__', no_cv2)
     assert rn('faces', media / 'ramp.mp4') == 1
     err = capsys.readouterr().err.strip().splitlines()[-1]
-    assert err == "rn: error: rn faces needs the Python module cv2 (extra \"faces\"): uv tool install 'renoise-kit[all]'"
+    assert err == 'rn: error: rn faces needs the Python module cv2 (extra "faces"): uv tool install "renoise-kit[all]"'
 
 
 def test_package_builds_with_readme_and_extras(tmp_path):
@@ -107,7 +107,7 @@ def test_outputs_declare_a_fixed_frame_rate(media, tmp_path):
 
     def fixed(path) -> str:
         rn('qa', path, '--json', report)
-        return {c['check']: c['status'] for c in json.loads(report.read_text())['checks']}['fixed_frame_rate']
+        return {c['check']: c['status'] for c in json.loads(report.read_text(encoding='utf-8'))['checks']}['fixed_frame_rate']
 
     assert fixed(media / 'bars.mp4') == 'WARN'
     finished = tmp_path / 'finished.mp4'

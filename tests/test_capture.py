@@ -20,7 +20,7 @@ window.renderFrame = (i) => { ctx.clearRect(0, 0, RN.width, RN.height); ctx.fill
 
 def _chromium_or_skip(tmp_path: Path) -> None:
     probe = tmp_path / 'probe.html'
-    probe.write_text(PAGE)
+    probe.write_text(PAGE, encoding='utf-8')
     try:
         capture_command(str(probe), out=str(tmp_path / 'probe'), frames=1, width=64, height=64, fps=30, shards=1)
     except RnError as error:
@@ -32,7 +32,7 @@ def _chromium_or_skip(tmp_path: Path) -> None:
 def test_frames_are_exact_transparent_and_shard_independent(tmp_path):
     _chromium_or_skip(tmp_path)
     page = tmp_path / 'page.html'
-    page.write_text(PAGE)
+    page.write_text(PAGE, encoding='utf-8')
     one = capture_command(str(page), out=str(tmp_path / 'one'), frames=12, width=160, height=60, fps=30, shards=1)
     three = capture_command(str(page), out=str(tmp_path / 'three'), frames=12, width=160, height=60, fps=30, shards=3)
     assert one['frames'] == three['frames'] == 12 and len(three['shards']) == 3
@@ -48,7 +48,7 @@ def test_capture_feeds_the_edl(tmp_path):
     _chromium_or_skip(tmp_path)
     from rn.assemble import assemble_command
     page = tmp_path / 'page.html'
-    page.write_text(PAGE)
+    page.write_text(PAGE, encoding='utf-8')
     capture_command(str(page), out=str(tmp_path / 'layer'), frames=10, width=160, height=60, fps=30, shards=1)
     edl = write_edl(tmp_path, {'output': {'width': 320, 'height': 240, 'fps': 30},
                                'tracks': [{'clips': [{'color': '#0000ff', 'duration': 1}]},
@@ -60,11 +60,11 @@ def test_capture_feeds_the_edl(tmp_path):
 def test_page_errors_are_reported(tmp_path):
     _chromium_or_skip(tmp_path)
     missing = tmp_path / 'missing.html'
-    missing.write_text('<!doctype html><p>no renderFrame</p>')
+    missing.write_text('<!doctype html><p>no renderFrame</p>', encoding='utf-8')
     with pytest.raises(RnError, match='renderFrame'):
         capture_command(str(missing), out=str(tmp_path / 'm'), frames=2, width=64, height=64, fps=30, shards=1)
     broken = tmp_path / 'broken.html'
-    broken.write_text('<!doctype html><script>window.renderFrame = (i) => { if (i === 1) throw new Error("boom"); };</script>')
+    broken.write_text('<!doctype html><script>window.renderFrame = (i) => { if (i === 1) throw new Error("boom"); };</script>', encoding='utf-8')
     with pytest.raises(RnError, match='boom'):
         capture_command(str(broken), out=str(tmp_path / 'b'), frames=3, width=64, height=64, fps=30, shards=1)
 
@@ -74,7 +74,7 @@ def test_grain_keeps_an_overlay_transparent(tmp_path):
     # empty overlay stays transparent instead of turning into a grey noise layer (staging2 F5).
     _chromium_or_skip(tmp_path)
     page = tmp_path / 'grain.html'
-    page.write_text(PAGE.replace("throw new Error('RNFX missing'); };", "throw new Error('RNFX missing'); RNFX.grain(ctx, i, {}); };"))
+    page.write_text(PAGE.replace("throw new Error('RNFX missing'); };", "throw new Error('RNFX missing'); RNFX.grain(ctx, i, {}); };"), encoding='utf-8')
     capture_command(str(page), out=str(tmp_path / 'grain'), frames=2, width=160, height=60, fps=30, shards=1)
     image = Image.open(tmp_path / 'grain' / '00001.png')
     assert image.getpixel((150, 5))[3] == 0, 'empty overlay pixels stay transparent'

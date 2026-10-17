@@ -17,7 +17,7 @@ from .ff import RnError
 
 def _read(path: Path) -> dict:
     try:
-        return json.loads(path.read_text())
+        return json.loads(path.read_text(encoding='utf-8-sig'))
     except FileNotFoundError:
         raise RnError(f'no such file: {path}') from None
     except json.JSONDecodeError as error:
@@ -27,7 +27,7 @@ def _read(path: Path) -> dict:
 def _write_checked(path: Path, raw: dict) -> dict:
     """Lays the edited JSON out next to the original (relative paths resolve the same), then replaces it."""
     trial = path.with_name(f'.{path.stem}.rn-edit.json')
-    trial.write_text(json.dumps(raw, indent=2, ensure_ascii=False) + '\n')
+    trial.write_text(json.dumps(raw, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
     try:
         summary = load(trial).summary()
     except RnError:
@@ -209,7 +209,7 @@ def _destination(raw: dict, before: str | None, after: str | None, track: str | 
 
 def insert_op(path: Path, clip_json: str, before: str | None, after: str | None, track: str | None) -> dict:
     """Adds a clip given as JSON (or @file.json)."""
-    text = Path(clip_json[1:]).read_text() if clip_json.startswith('@') else clip_json
+    text = Path(clip_json[1:]).read_text(encoding='utf-8-sig') if clip_json.startswith('@') else clip_json
     try:
         clip = json.loads(text)
     except json.JSONDecodeError as error:

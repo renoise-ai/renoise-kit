@@ -75,7 +75,7 @@ def test_flash_window_and_transform_cover():
 def test_catalog_resolves_and_js_exists():
     js = fx.js_path()
     assert js.is_file()
-    source = js.read_text()
+    source = js.read_text(encoding='utf-8')
     for entry in fx.catalog():
         assert callable(getattr(fx, entry['py'].split('.')[-1]))
         assert re.search(r'\b' + entry['js'].split('.')[-1] + r'\b', source.split('window.RNFX = ')[-1])

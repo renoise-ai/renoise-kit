@@ -20,7 +20,7 @@ MAX_LIMITER_PASSES = 6
 def measure(path: str | Path, *, stream: str = 'a:0') -> dict:
     """Integrated loudness (LUFS), loudness range and true peak (dBTP) via ebur128."""
     result = subprocess.run(['ffmpeg', '-hide_banner', '-nostdin', '-i', str(path), '-map', f'0:{stream}',
-                             '-af', 'ebur128=peak=true:framelog=quiet', '-f', 'null', '-'], capture_output=True, text=True)
+                             '-af', 'ebur128=peak=true:framelog=quiet', '-f', 'null', '-'], capture_output=True, text=True, encoding='utf-8', errors='replace')
     if result.returncode != 0:
         raise RnError(f'loudness measurement failed: {result.stderr.strip().splitlines()[-1:]}')
     summary = result.stderr[result.stderr.rfind('Summary:'):]

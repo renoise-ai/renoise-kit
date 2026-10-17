@@ -107,7 +107,7 @@ def test_script_alignment_chinese_chars(tmp_path):
 def faces_file(tmp_path, box, t0=0.0, t1=3.0):
     path = tmp_path / 'faces.json'
     frames = [{'f': i, 't': t, 'faces': [{'box': box}]} for i, t in enumerate([t0 + (t1 - t0) * k / 6 for k in range(7)])]
-    path.write_text(json.dumps({'meta': {'width': 1080, 'height': 1920, 'fps': 30}, 'frames': frames}))
+    path.write_text(json.dumps({'meta': {'width': 1080, 'height': 1920, 'fps': 30}, 'frames': frames}), encoding='utf-8')
     return str(path)
 
 

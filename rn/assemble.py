@@ -211,7 +211,9 @@ def _join(edit: Edit, slots: list[Path], work: Path) -> Path:
              '-map', '[v]', *INTERMEDIATE, '-r', str(edit.fps), '-y', str(piece)])
         pieces.append(piece)
     listing = work / 'main.txt'
-    listing.write_text(''.join(f"file '{piece.resolve()}'\n" for piece in pieces))
+    # Forward slashes work on every OS (a backslash is the demuxer's escape character); a quote closes and reopens.
+    quoted = (piece.resolve().as_posix().replace("'", "'\\''") for piece in pieces)
+    listing.write_text(''.join(f"file '{path}'\n" for path in quoted), encoding='utf-8')
     return listing
 
 
@@ -467,7 +469,7 @@ def _cached(cache: Path | None, key: str, suffix: str, work: Path, render) -> Pa
 def _fingerprint(path: Path, placeholders: bool) -> str:
     """A nested edit's render depends on its text and, recursively, on every file it reads."""
     edit = load(path, placeholders=placeholders)
-    parts = [__version__, path.read_text(), placeholders]
+    parts = [__version__, path.read_text(encoding='utf-8'), placeholders]
     for clip in edit.base + edit.overlays:
         parts.append(_fingerprint(clip.source, placeholders) if clip.kind == 'edit' else _files(clip.source, clip.kind == 'sequence'))
     parts += [_files(item.source) for item in edit.audio] + [_files(edit.subtitles)]

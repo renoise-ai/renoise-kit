@@ -22,16 +22,19 @@ machine.
 
 `rn` drives the system's ffmpeg and ffprobe, version 7 or later, built with libass for burned-in subtitles.
 
-| | macOS | Debian / Ubuntu |
-|---|---|---|
-| ffmpeg with libass | `brew install ffmpeg-full`, then `export PATH="$(brew --prefix ffmpeg-full)/bin:$PATH"` (keg-only; Homebrew's plain `ffmpeg` has no libass) | `apt install ffmpeg fontconfig` |
-| OCR for `rn text` (optional) | comes with `ffmpeg-full` | `apt install tesseract-ocr tesseract-ocr-chi-sim` |
+| | macOS | Debian / Ubuntu | Windows 10 / 11 |
+|---|---|---|---|
+| ffmpeg with libass | `brew install ffmpeg-full`, then `export PATH="$(brew --prefix ffmpeg-full)/bin:$PATH"` (keg-only; Homebrew's plain `ffmpeg` has no libass) | `apt install ffmpeg fontconfig` | `winget install Gyan.FFmpeg` (the full build, libass and fontconfig included), then open a new terminal |
+| OCR for `rn text` (optional) | comes with `ffmpeg-full` | `apt install tesseract-ocr tesseract-ocr-chi-sim` | `winget install UB-Mannheim.TesseractOCR`, then add `C:\Program Files\Tesseract-OCR` to `PATH` |
 
 ```sh
-uv tool install 'renoise-kit[all]'     # or: pipx install 'renoise-kit[all]'
+uv tool install "renoise-kit[all]"     # or: pipx install "renoise-kit[all]"
 playwright install chromium            # only for rn capture
 rn --version
 ```
+
+The same commands work in a POSIX shell, PowerShell and cmd (hence the double quotes). On Windows `rn fonts` reads the
+system font folders directly when fontconfig is not installed, and `rn` writes UTF-8 when its output goes to a pipe.
 
 The core install is Pillow and numpy. Heavier dependencies come as extras, so you can install only what you use. When
 a command needs a missing extra, its error line names the extra to install.
@@ -250,8 +253,9 @@ In the Renoise media sandbox, `rn` comes preinstalled at the version pinned by t
 uv run pytest -q    # Python 3.12 (as the sandbox); needs ffmpeg with libass; playwright install chromium for capture tests
 ```
 
-CI runs on Debian trixie with ffmpeg 7.1 (the same base as the sandbox) and on macOS with ffmpeg-full. The tests
-generate their own media.
+CI runs on Debian trixie with ffmpeg 7.1 (the same base as the sandbox), on macOS with ffmpeg-full and on Windows with
+gyan.dev's full build (with Windows' own default encoding, so a file read without `encoding='utf-8'` fails there). The
+tests generate their own media.
 
 To release:
 

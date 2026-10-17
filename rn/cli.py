@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -492,6 +493,11 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    if sys.platform == 'win32' and not os.environ.get('PYTHONIOENCODING'):
+        # A pipe (an agent reading rn) would get the ANSI code page, which cannot hold every file name or caption.
+        for stream in (sys.stdout, sys.stderr):
+            if not stream.isatty() and hasattr(stream, 'reconfigure'):
+                stream.reconfigure(encoding='utf-8', errors='replace')
     args = _parser().parse_args(argv)
     for tool in ('ffmpeg', 'ffprobe'):
         if not shutil.which(tool):
@@ -536,7 +542,7 @@ def main(argv: list[str] | None = None) -> int:
     except ModuleNotFoundError as error:
         extra = EXTRAS.get(args.command, 'all')
         print(f"rn: error: rn {args.command} needs the Python module {error.name} (extra \"{extra}\"): "
-              f"uv tool install 'renoise-kit[all]'", file=sys.stderr)
+              'uv tool install "renoise-kit[all]"', file=sys.stderr)
         return 1
     except Exception as error:  # a kit bug: keep the traceback for the report, end on the usual one-liner
         import traceback
@@ -545,7 +551,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     if args.json:
         Path(args.json).parent.mkdir(parents=True, exist_ok=True)
-        Path(args.json).write_text(json.dumps(result, indent=1, ensure_ascii=False, default=str))
+        Path(args.json).write_text(json.dumps(result, indent=1, ensure_ascii=False, default=str), encoding='utf-8')
     if args.command in SUMMARIZED:
         print('\n'.join(lines))
     else:

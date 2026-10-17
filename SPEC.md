@@ -68,7 +68,7 @@ EDL 是可选捷径：创意部分（HTML / canvas、Manim、Blender、ffmpeg �
 | `rn ref FILE` | v0.3.0（v0.3.1 起加 `cut_sync`、`GUIDE.md`、合并剪点留作 suspect）：`ref/<name>/` 下的 ref.json（probe、镜头、suspects、listen、`cut_sync` 剪点踩声比例与逐剪点偏移帧数、每页帧范围）、cuts.jpg、listen.jpg、全帧覆盖接触表，以及 `GUIDE.md`（读片方法：先写一句话手法、逐帧看全并记覆盖范围、检测器漏判/误判清单、文字/图层/调色/运镜/帧节奏、BPM 倍频校验、含义与镜头角色，产出 `breakdown.md`；参照 Katana analysis.md 改写，去掉其 EXACT 模式、记账与不问用户的规则）。`rn cuts` 因 `min_gap` 合并掉的近邻剪点保留为 suspect（可能是 1–2 帧插帧或碎剪）。OCR 未做 |
 | `rn capture page.html -o DIR --frames N --size WxH [--shards K]` | v0.3.0：页面实现 `window.renderFrame(i)`；逐帧调用后截图成 RGBA PNG 序列，多 Chromium 分片。页面运行前注入 `window.RN`、`window.RNFX`，`window.rnReady` 会被等待 |
 | `rn fx [--source]` | v0.3.0：效果代码库目录（`rn/fx/fx.js` 的 `RNFX.*` 与 `rn.fx.*` numpy 版）：grain、vignette、leak、flash、letterbox、rgb_split、glitch、strobe、punch、shake |
-| `rn fonts [--family] [--script] [--licenses]` | v0.3.0：fontconfig 实时数据：实际存在的 CSS 字重、可变字体、覆盖文字、许可证（fontTools 读 name 表） |
+| `rn fonts [--family] [--script] [--licenses]` | v0.3.0：fontconfig 实时数据（没有 fontconfig 时，如 Windows，用 fontTools 直接读系统字体目录）：实际存在的 CSS 字重、可变字体、覆盖文字、许可证（fontTools 读 name 表） |
 | `rn assets search/get` | v0.3.0：CDN 素材库客户端（`RN_ASSETS_URL` 指向 manifest，sha256 校验并缓存）。素材内容尚未采购发布 |
 | `rn captions WORDS.json --size WxH -o caps.ass [--script] [--faces]` | v0.3.0：原稿对齐 Whisper 时间、CJK 按字分块与避头尾、两行均衡断行、平台安全区、避脸；输出 .ass（单一可读样式）、.srt、带词级时间的 .json |
 
@@ -198,7 +198,7 @@ v0.5.0 新增：
 
 - 独立仓库，PyPI 包 `renoise-kit`，入口 `rn`。版本 = `rn/__init__.py` 的 `__version__`（`rn --version` 同值），与沙箱模板版本无关。
 - 发布：打 tag `v<version>`，`.github/workflows/release.yml` 校验 tag 与 `__version__` 一致后经 PyPI trusted publishing 上传。
-- 本地：ffmpeg 7+（带 libass；macOS 用 `ffmpeg-full`，keg-only，需放到 PATH 前面）+ `uv tool install 'renoise-kit[all]'`；
+- 本地：macOS / Linux / Windows。ffmpeg 7+（带 libass；macOS 用 `ffmpeg-full`，keg-only，需放到 PATH 前面；Windows 用 gyan.dev 的 full 版）+ `uv tool install "renoise-kit[all]"`；
   `rn capture` 另需 `playwright install chromium`，`rn text` 需系统 tesseract。核心依赖 Pillow、numpy；可选依赖按功能分 extras
   （listen、transcribe、faces、capture、captions、fonts、matte、export），
   缺哪个就在 `rn: error:` 行里点名。人脸模型首次使用时下载到 `~/.cache/rn` 并校验 sha256（沙箱里已预置）。
@@ -213,5 +213,5 @@ PASS / WARN / FAIL、preview、compare、打包元数据；v0.5.0 起加 `rn edi
 pivot、`--range` 的帧与响度、cut_fade、`normal` 混合与普通叠加逐像素一致、screen / multiply 数值、遮罩与反相、增益曲线、signal 的
 闪帧 / 爆音 / onset、align 的偏移与 match、qa 豁免、finish --height、OTIO 往返与 FCP X / FCP7 写出。rembg 与 tesseract 不在 dev 组里：
 缺时 matte / text 用例跳过（CI 的 Debian 与 macOS 都装了 tesseract）。帧号校验用一段无损「双位数」灰度片：左半亮度编码 `N // 8`、右半编码 `N % 8`，
-相差 25 级，不受各平台 yuv→rgb 取整差异影响。CI（`.github/workflows/ci.yml`）在 Debian trixie（ffmpeg 7.1，同沙箱）与 macOS
-（ffmpeg-full）上都跑。
+相差 25 级，不受各平台 yuv→rgb 取整差异影响。CI（`.github/workflows/ci.yml`）在 Debian trixie（ffmpeg 7.1，同沙箱）、macOS
+（ffmpeg-full）与 Windows（gyan.dev full 版，保留系统默认编码以暴露漏写的 `encoding='utf-8'`）上都跑。
