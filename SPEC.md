@@ -1,6 +1,8 @@
 # renoise-kit：剪辑底层 CLI `rn`
 
-> 状态：v0.5.0（2026-10-16）：§3.1 的通用原语全部实现。v0.2.0–v0.3.4 在 Renoise 主仓库 `packages/media-sandbox/kit` 随沙箱模板发布；v0.4.0 起拆为独立仓库与 PyPI 包 `renoise-kit`（命令仍为 `rn`），沙箱模板固定一个版本安装，集成见主仓库 `spec/mcp/03-media-kit.md`。v0.4.0 新增：`rn compare`、`rn assemble --preview`、`rn qa` 的 dead_air / level_jumps / fixed_frame_rate 检查、成片写 `fixed_frame_rate_flag=1`、本地安装（按功能的 extras、人脸模型首次使用时下载并校验、缺 libass 时提前报错）。
+> 状态：v0.5.1（2026-10-17）：§3.1 的通用原语全部实现。v0.2.0–v0.3.4 在 Renoise 主仓库 `packages/media-sandbox/kit` 随沙箱模板发布；v0.4.0 起拆为独立仓库与 PyPI 包 `renoise-kit`（命令仍为 `rn`），沙箱模板固定一个版本安装，集成见主仓库 `spec/mcp/03-media-kit.md`。v0.4.0 新增：`rn compare`、`rn assemble --preview`、`rn qa` 的 dead_air / level_jumps / fixed_frame_rate 检查、成片写 `fixed_frame_rate_flag=1`、本地安装（按功能的 extras、人脸模型首次使用时下载并校验、缺 libass 时提前报错）。
+>
+> v0.5.1（2026-10-17）：Windows 支持：文本一律 UTF-8、拼接列表与长滤镜图可移植、没有 fontconfig 时直接读系统字体目录、字幕在 Windows 上用微软雅黑；CI 加 Windows。
 >
 > v0.5.0：`id` / `meta`、`rn edit`、slot 增量缓存、嵌套 EDL、缺失素材占位（批 1）；`ranges`、变速曲线、`pivot`、`--range`、`mix.cut_fade`（批 2）；`blend`、`mask`、`vf` / `af`、`keys.gain_db`（批 3）；`rn signal`、`rn align`、`rn matte`、`rn text`、`rn export`、qa 的 `clicks` 与 `accept`、`finish --height`（批 4）。numpy 成为核心依赖。
 
@@ -70,7 +72,7 @@ EDL 是可选捷径：创意部分（HTML / canvas、Manim、Blender、ffmpeg �
 | `rn fx [--source]` | v0.3.0：效果代码库目录（`rn/fx/fx.js` 的 `RNFX.*` 与 `rn.fx.*` numpy 版）：grain、vignette、leak、flash、letterbox、rgb_split、glitch、strobe、punch、shake |
 | `rn fonts [--family] [--script] [--licenses]` | v0.3.0：fontconfig 实时数据（没有 fontconfig 时，如 Windows，用 fontTools 直接读系统字体目录）：实际存在的 CSS 字重、可变字体、覆盖文字、许可证（fontTools 读 name 表） |
 | `rn assets search/get` | v0.3.0：CDN 素材库客户端（`RN_ASSETS_URL` 指向 manifest，sha256 校验并缓存）。素材内容尚未采购发布 |
-| `rn captions WORDS.json --size WxH -o caps.ass [--script] [--faces]` | v0.3.0：原稿对齐 Whisper 时间、CJK 按字分块与避头尾、两行均衡断行、平台安全区、避脸；输出 .ass（单一可读样式）、.srt、带词级时间的 .json |
+| `rn captions WORDS.json --size WxH -o caps.ass [--script] [--faces]` | v0.3.0：原稿对齐 Whisper 时间、CJK 按字分块与避头尾、两行均衡断行、平台安全区、避脸；输出 .ass（单一可读样式；字体 Noto Sans CJK，Windows 上用微软雅黑 / Yu Gothic / Malgun Gothic / Segoe UI）、.srt、带词级时间的 .json |
 
 ### 3.1 路线（2026-10-16）：通用原语，不做场景
 

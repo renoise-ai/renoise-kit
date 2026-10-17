@@ -1,4 +1,5 @@
 import json
+import sys
 
 import pytest
 
@@ -144,7 +145,7 @@ def test_ass_has_single_style_and_srt_written(tmp_path):
     result, events = run(tmp_path, timed(list(ZH)), 'zh')
     subs = pysubs2.load(result['ass'])
     assert list(subs.styles) == ['Default'] and len(subs) == len(events)
-    assert subs.styles['Default'].fontname == 'Noto Sans CJK SC'
+    assert subs.styles['Default'].fontname == ('Microsoft YaHei' if sys.platform == 'win32' else 'Noto Sans CJK SC')
     assert subs.info['PlayResY'] == '1920'
     srt = open(result['srt'], encoding='utf-8').read()
     assert '-->' in srt and srt.startswith('1\n00:00:00,000')
@@ -156,3 +157,9 @@ def test_errors(tmp_path):
         run(tmp_path, [], 'en')
     with pytest.raises(RnError):
         run(tmp_path, timed(['a']), 'en', safe='bogus')
+
+
+def test_windows_names_its_own_faces(tmp_path, monkeypatch):
+    monkeypatch.setattr('rn.captions.sys.platform', 'win32')
+    assert pysubs2.load(run(tmp_path, timed(list(ZH)), 'zh')[0]['ass']).styles['Default'].fontname == 'Microsoft YaHei'
+    assert pysubs2.load(run(tmp_path, timed(['hello', 'world']), 'en')[0]['ass']).styles['Default'].fontname == 'Segoe UI'

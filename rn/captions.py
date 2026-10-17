@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 import unicodedata
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -27,7 +28,9 @@ OPENERS = set('「『（([“‘《〈【')
 SENTENCE_END = set('。！？.!?…‼⁇')
 SOFT_BREAK = set('，、；：,;:—')
 CLOSERS = set('」』）)]”’》〉】"\'')
-FONTS = {'zh': 'Noto Sans CJK SC', 'yue': 'Noto Sans CJK SC', 'ja': 'Noto Sans CJK JP', 'ko': 'Noto Sans CJK KR'}
+FONTS = {'zh': 'Noto Sans CJK SC', 'yue': 'Noto Sans CJK SC', 'ja': 'Noto Sans CJK JP', 'ko': 'Noto Sans CJK KR', '': 'Noto Sans'}
+# Windows ships no Noto face and libass would fall back silently, so name the faces every Windows has.
+WINDOWS_FONTS = {'zh': 'Microsoft YaHei', 'yue': 'Microsoft YaHei', 'ja': 'Yu Gothic', 'ko': 'Malgun Gothic', '': 'Segoe UI'}
 PAUSE_BREAK = 0.5  # seconds of silence that ends a caption
 
 
@@ -251,7 +254,8 @@ def captions_command(words_json: str, *, script: str | None = None, faces_json: 
     max_chars = max_chars or max(4, round(BASE_CHARS['cjk' if cjk else 'latin'] * width / 1080))
     em_per_char = 1.0 if cjk else LATIN_EM
     font_size = round(min(height * (0.03 if height > width else 0.05), safe_width / (max_chars * em_per_char)))
-    font_name = FONTS.get(language.split('-')[0].lower(), 'Noto Sans') if language else ('Noto Sans CJK SC' if cjk else 'Noto Sans')
+    fonts = WINDOWS_FONTS if sys.platform == 'win32' else FONTS
+    font_name = fonts.get(language.split('-')[0].lower(), fonts['']) if language else fonts['zh' if cjk else '']
 
     chunks = _chunk(units, max_chars=max_chars, max_lines=max_lines, min_duration=min_duration, max_duration=max_duration, cjk=cjk)
     for chunk in chunks:
