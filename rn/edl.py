@@ -242,7 +242,7 @@ class Timeline:
         path = _resolve(self.edit_dir, value, where)
         if str(path) not in self._listen:
             try:
-                self._listen[str(path)] = json.loads(path.read_text())
+                self._listen[str(path)] = json.loads(path.read_text(encoding='utf-8-sig'))
             except json.JSONDecodeError as error:
                 raise RnError(f'{where}: {path.name} is not JSON ({error}); write it with rn listen --json') from None
         return self._listen[str(path)]
@@ -388,21 +388,29 @@ def _ident(raw: dict, where: str) -> tuple[str | None, object]:
     return ident, raw.get('meta')
 
 
-_SANS_CJK = ('Noto Sans CJK', 'NotoSansCJK', 'PingFang', 'Source Han Sans', 'SourceHanSans', 'Hiragino Sans', 'Heiti', 'WenQuanYi')
+_SANS_CJK = ('Noto Sans CJK', 'NotoSansCJK', 'NotoSansSC', 'PingFang', 'Source Han Sans', 'SourceHanSans', 'Hiragino Sans', 'Heiti',
+             'WenQuanYi', 'wqy', 'msyh', 'Microsoft YaHei', 'Deng', 'simhei')
+_CJK_FILES = _SANS_CJK + ('simsun', 'STHeiti', 'Songti', 'NotoSerifCJK')  # without fontconfig: file names to try, sans first
 
 
 def _font(size: int):
-    """A face that covers Chinese when fontconfig lists one (placeholder text is often a prompt), else Pillow's default.
-    fc-match ':lang=zh' is not enough: it falls back to any font; fc-list only lists fonts that cover the language."""
+    """A face that covers Chinese when one is installed (placeholder text is often a prompt), else Pillow's default.
+    fc-match ':lang=zh' is not enough: it falls back to any font; fc-list only lists fonts that cover the language.
+    Without fontconfig (Windows) the system font folders are searched for well-known Chinese faces by file name."""
     from PIL import ImageFont
+    from .fonts import FONT_SUFFIXES, font_files
     if shutil.which('fc-list'):
-        files = subprocess.run(['fc-list', ':lang=zh-cn', '--format', '%{file}\n'], capture_output=True, text=True).stdout.split('\n')
-        files = [f for f in files if Path(f).suffix.lower() in ('.ttf', '.otf', '.ttc')]
-        for path in sorted(files, key=lambda f: not any(name in f for name in _SANS_CJK)):
-            try:
-                return ImageFont.truetype(path, size)
-            except OSError:
-                continue
+        files = subprocess.run(['fc-list', ':lang=zh-cn', '--format', '%{file}\n'], capture_output=True, text=True, encoding='utf-8', errors='replace').stdout.split('\n')
+        files = [f for f in files if Path(f).suffix.lower() in FONT_SUFFIXES]
+        files = sorted(files, key=lambda f: not any(name in f for name in _SANS_CJK))
+    else:
+        rank = lambda f: next((i for i, name in enumerate(_CJK_FILES) if name.lower() in f.name.lower()), None)  # noqa: E731
+        files = [str(f) for f in sorted((f for f in font_files() if rank(f) is not None), key=rank)]
+    for path in files:
+        try:
+            return ImageFont.truetype(path, size)
+        except OSError:
+            continue
     return ImageFont.load_default(size=size)
 
 
@@ -765,7 +773,7 @@ def load(path: str | Path, *, placeholders: bool = False, _stack: tuple[Path, ..
     path = Path(path).resolve()
     stack = (*_stack, path)
     try:
-        raw = json.loads(path.read_text())
+        raw = json.loads(path.read_text(encoding='utf-8-sig'))
     except FileNotFoundError:
         raise RnError(f'no such file: {path}') from None
     except json.JSONDecodeError as error:

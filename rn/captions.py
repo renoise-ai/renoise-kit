@@ -220,7 +220,7 @@ def captions_command(words_json: str, *, script: str | None = None, faces_json: 
     if width <= 0 or height <= 0 or max_lines < 1 or min_duration > max_duration:
         raise RnError('captions: width/height must be positive, max_lines >= 1, min_duration <= max_duration')
     try:
-        listen = json.loads(Path(words_json).read_text(encoding='utf-8'))
+        listen = json.loads(Path(words_json).read_text(encoding='utf-8-sig'))
     except (OSError, ValueError) as error:
         raise RnError(f'cannot read words json {words_json}: {error}') from error
     words = [w for w in listen.get('words', []) if str(w.get('word', '')).strip()]
@@ -234,7 +234,7 @@ def captions_command(words_json: str, *, script: str | None = None, faces_json: 
     alignment = None
     if script is not None:
         try:
-            script_text = Path(script).read_text(encoding='utf-8')
+            script_text = Path(script).read_text(encoding='utf-8-sig')
         except OSError as error:
             raise RnError(f'cannot read script {script}: {error}') from error
         script_units = _script_units(script_text, cjk)
@@ -263,7 +263,7 @@ def captions_command(words_json: str, *, script: str | None = None, faces_json: 
     scale = (1.0, 1.0)
     if faces_json:
         try:
-            faces = json.loads(Path(faces_json).read_text(encoding='utf-8'))
+            faces = json.loads(Path(faces_json).read_text(encoding='utf-8-sig'))
         except (OSError, ValueError) as error:
             raise RnError(f'cannot read faces json {faces_json}: {error}') from error
         frames = faces.get('frames', [])

@@ -56,7 +56,7 @@ def fetch_checked(source: str, digest: str, cached: Path, *, name: str) -> Path:
     if hasher.hexdigest() != digest:
         partial.unlink()
         raise RnError(f'{name}: checksum mismatch, refusing the download')
-    partial.rename(cached)
+    partial.replace(cached)  # rename() refuses to overwrite on Windows
     return cached
 
 

@@ -29,23 +29,23 @@ def frame_index(video, index, tmp_path) -> int:
 
 def test_ids_meta_and_anchor_by_id(media):
     edl = base_edl(media, 'ids.json')
-    raw = json.loads(edl.read_text())
+    raw = json.loads(edl.read_text(encoding='utf-8'))
     raw['tracks'][0]['clips'][1]['meta'] = {'prompt': 'anything', 'take': 3}
     raw['tracks'].append({'id': 'titles', 'clips': [{'id': 't', 'color': 'white', 'w': 20, 'h': 20, 'at': {'clip': 'b', 'offset': 0.25},
                                                      'until': {'clip_end': 'b'}}]})
     raw['audio'] = [{'id': 'hit', 'src': 'voice.wav', 'at': {'clip': 't'}}]
-    edl.write_text(json.dumps(raw))
+    edl.write_text(json.dumps(raw), encoding='utf-8')
     edit = load(edl)
     assert edit.base[1].meta == {'prompt': 'anything', 'take': 3}
     assert (edit.overlays[0].timeline_start, edit.overlays[0].frames) == (24 + 6, 12)
     assert edit.audio[0].at == pytest.approx(30 / 24)
     raw['audio'][0]['id'] = 'a'
-    edl.write_text(json.dumps(raw))
+    edl.write_text(json.dumps(raw), encoding='utf-8')
     with pytest.raises(RnError, match='used twice'):
         load(edl)
     raw['audio'][0]['id'] = 'hit'
     raw['tracks'][1]['clips'][0]['at'] = {'clip': 'nope'}
-    edl.write_text(json.dumps(raw))
+    edl.write_text(json.dumps(raw), encoding='utf-8')
     with pytest.raises(RnError, match='no clip with id "nope"'):
         load(edl)
 
@@ -55,7 +55,7 @@ def test_edit_split_keeps_every_frame(media, tmp_path):
     whole = tmp_path / 'whole.mp4'
     assert rn('assemble', edl, '-o', whole, '--no-cache') == 0
     assert rn('edit', edl, 'split', 'a', '--at', 0.5) == 0
-    clips = json.loads(edl.read_text())['tracks'][0]['clips']
+    clips = json.loads(edl.read_text(encoding='utf-8'))['tracks'][0]['clips']
     assert [c['id'] for c in clips] == ['a', 'a-2', 'b']
     assert clips[0]['out'] == pytest.approx(0.5) and clips[1]['in'] == pytest.approx(0.5)
     parts = tmp_path / 'parts.mp4'
@@ -67,19 +67,19 @@ def test_edit_split_keeps_every_frame(media, tmp_path):
 
 def test_edit_set_delete_insert_move(media, capsys):
     edl = base_edl(media, 'ops.json')
-    before = edl.read_text()
+    before = edl.read_text(encoding='utf-8')
     assert rn('edit', edl, 'set', 'b', 'speed=99') == 1  # invalid: nothing written
-    assert edl.read_text() == before
+    assert edl.read_text(encoding='utf-8') == before
     assert rn('edit', edl, 'set', 'b', 'meta.label=hero shot', 'out=1.5') == 0
-    clip = json.loads(edl.read_text())['tracks'][0]['clips'][1]
+    clip = json.loads(edl.read_text(encoding='utf-8'))['tracks'][0]['clips'][1]
     assert clip['meta'] == {'label': 'hero shot'} and clip['out'] == 1.5
     assert rn('edit', edl, 'delete', 'a', '--lift') == 0
-    assert json.loads(edl.read_text())['tracks'][0]['clips'][0] == {'color': '#000000', 'duration': 1.0}
+    assert json.loads(edl.read_text(encoding='utf-8'))['tracks'][0]['clips'][0] == {'color': '#000000', 'duration': 1.0}
     assert rn('edit', edl, 'delete', '0:0') == 0
     assert load(edl).total_frames == 6  # b: 1.25-1.5 s
     assert rn('edit', edl, 'insert', '--before', 'b', '--clip', '{"id": "c", "color": "red", "duration": 0.5}') == 0
     assert rn('edit', edl, 'move', 'c', '--track', '1') == 0
-    raw = json.loads(edl.read_text())
+    raw = json.loads(edl.read_text(encoding='utf-8'))
     assert [c['id'] for c in raw['tracks'][0]['clips']] == ['b'] and raw['tracks'][1]['clips'][0]['id'] == 'c'
     assert rn('edit', edl, 'ids') == 0
     assert 'ids added: none' in capsys.readouterr().out
@@ -107,9 +107,9 @@ def test_nested_edit_plays_as_a_source(media, tmp_path, monkeypatch):
     assert rn('assemble', outer, '-o', out) == 0
     assert probe(out, exact=True)['video']['frames'] == 30 + 12  # inner is 42 frames, from 0.5 s
     assert frame_index(out, 0, tmp_path) == 12  # inner frame 12 is ramp frame 12
-    loop = json.loads(inner.read_text())
+    loop = json.loads(inner.read_text(encoding='utf-8'))
     loop['tracks'][0]['clips'].append({'src': 'outer.json'})
-    inner.write_text(json.dumps(loop))
+    inner.write_text(json.dumps(loop), encoding='utf-8')
     with pytest.raises(RnError, match='includes itself'):
         load(outer)
 

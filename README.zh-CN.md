@@ -15,16 +15,19 @@
 
 `rn` 调用系统里的 ffmpeg 和 ffprobe，要求 7 以上的版本，并且带 libass（烧录字幕要用）。
 
-| | macOS | Debian / Ubuntu |
-|---|---|---|
-| 带 libass 的 ffmpeg | `brew install ffmpeg-full`，再执行 `export PATH="$(brew --prefix ffmpeg-full)/bin:$PATH"`（它是 keg-only；Homebrew 普通的 `ffmpeg` 不带 libass） | `apt install ffmpeg fontconfig` |
-| `rn text` 用的 OCR（可选） | `ffmpeg-full` 已自带 | `apt install tesseract-ocr tesseract-ocr-chi-sim` |
+| | macOS | Debian / Ubuntu | Windows 10 / 11 |
+|---|---|---|---|
+| 带 libass 的 ffmpeg | `brew install ffmpeg-full`，再执行 `export PATH="$(brew --prefix ffmpeg-full)/bin:$PATH"`（它是 keg-only；Homebrew 普通的 `ffmpeg` 不带 libass） | `apt install ffmpeg fontconfig` | `winget install Gyan.FFmpeg`（full 版，自带 libass 和 fontconfig），装完新开一个终端 |
+| `rn text` 用的 OCR（可选） | `ffmpeg-full` 已自带 | `apt install tesseract-ocr tesseract-ocr-chi-sim` | `winget install UB-Mannheim.TesseractOCR`，再把 `C:\Program Files\Tesseract-OCR` 加进 `PATH` |
 
 ```sh
-uv tool install 'renoise-kit[all]'     # 或者：pipx install 'renoise-kit[all]'
+uv tool install "renoise-kit[all]"     # 或者：pipx install "renoise-kit[all]"
 playwright install chromium            # 只有 rn capture 需要
 rn --version
 ```
+
+这几条命令在 POSIX shell、PowerShell 和 cmd 里都能直接用（所以用双引号）。Windows 上没装 fontconfig 时，`rn fonts` 直接读系统字体目录；
+`rn` 的输出接到管道时一律是 UTF-8。
 
 核心依赖只有 Pillow 和 numpy。较重的依赖按功能拆成了 extras，用到哪个装哪个。某条命令缺少依赖时，报错的最后一行会写明该装哪个 extra。
 
@@ -228,7 +231,8 @@ rn edit edit.json delete end --lift
 uv run pytest -q    # Python 3.12（和沙箱一致）；需要带 libass 的 ffmpeg；capture 的测试需要 playwright install chromium
 ```
 
-CI 在两个环境里跑：Debian trixie + ffmpeg 7.1（和沙箱同一个基础），以及 macOS + ffmpeg-full。测试用的媒体都是现场生成的。
+CI 在三个环境里跑：Debian trixie + ffmpeg 7.1（和沙箱同一个基础）、macOS + ffmpeg-full，以及 Windows + gyan.dev 的 full 版
+（保留 Windows 自己的默认编码，漏写 `encoding='utf-8'` 的读写在这里会失败）。测试用的媒体都是现场生成的。
 
 发布步骤：
 

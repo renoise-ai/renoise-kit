@@ -67,9 +67,9 @@ def test_pivot_lands_a_point_on_the_anchor(media):
     assert edit.audio[0].at == pytest.approx(0.75)
     voice = edit.audio[1]  # its 1.0 s point at 0.25 s: starts 0.25 s early, so 0.25 s is cut from its head
     assert (voice.at, voice.start_s, voice.duration) == (0.0, pytest.approx(0.75), pytest.approx(0.75))
-    raw = json.loads(edl.read_text())
+    raw = json.loads(edl.read_text(encoding='utf-8'))
     raw['audio'][1]['pivot'] = 0.2
-    edl.write_text(json.dumps(raw))
+    edl.write_text(json.dumps(raw), encoding='utf-8')
     with pytest.raises(RnError, match='before "in"'):
         load(edl)
 

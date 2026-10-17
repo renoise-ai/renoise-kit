@@ -22,7 +22,7 @@ FRAME_TIMEOUT_MS = 20_000
 def _init_script(fps: float, frames: int, width: int, height: int, shard: int) -> str:
     from .fx import js_path
     meta = json.dumps({'fps': fps, 'frames': frames, 'width': width, 'height': height, 'shard': shard})
-    return f'window.RN = {meta};\n' + js_path().read_text()
+    return f'window.RN = {meta};\n' + js_path().read_text(encoding='utf-8')
 
 
 def _shard(args: tuple) -> dict:
@@ -64,7 +64,7 @@ def capture_command(page: str, *, out: str, frames: int, width: int, height: int
     try:
         import playwright  # noqa: F401
     except ImportError:
-        raise RnError("rn capture needs playwright (extra \"capture\"): uv tool install 'renoise-kit[all]' && playwright install chromium") from None
+        raise RnError('rn capture needs playwright (extra "capture"): uv tool install "renoise-kit[all]" && playwright install chromium') from None
     out_dir = Path(out)
     out_dir.mkdir(parents=True, exist_ok=True)
     for stale in out_dir.glob('*.png'):

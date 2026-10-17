@@ -22,7 +22,7 @@ BEAT_CLEAR = 0.15  # autocorrelation of the onset envelope at the beat period, 0
 def _short_term_curve(wav: Path) -> list[dict]:
     """Short-term (3 s) loudness every CURVE_STEP seconds from ebur128's frame log (it logs every 0.1 s)."""
     result = subprocess.run(['ffmpeg', '-hide_banner', '-nostdin', '-i', str(wav), '-af', 'ebur128',
-                             '-f', 'null', '-'], capture_output=True, text=True)
+                             '-f', 'null', '-'], capture_output=True, text=True, encoding='utf-8', errors='replace')
     curve, next_t = [], 0.0
     for match in re.finditer(r't:\s*([\d.]+)\s.*?M:\s*(-?[\d.]+|-inf)\s+S:\s*(-?[\d.]+|-inf)', result.stderr):
         t = float(match.group(1))
@@ -82,7 +82,7 @@ def _transcribe(wav: Path, *, language: str | None, model: str) -> dict:
     try:
         from faster_whisper import WhisperModel
     except ImportError:
-        raise RnError("--transcribe needs faster-whisper (extra \"transcribe\"): uv tool install 'renoise-kit[all]'")
+        raise RnError('--transcribe needs faster-whisper (extra "transcribe"): uv tool install "renoise-kit[all]"')
     import numpy as np
     # Decode here and pass samples: faster-whisper's own file decoding goes through PyAV, whose API it does not pin
     # (av 16 dropped the `metadata_errors` argument it passes).

@@ -18,7 +18,7 @@ def rn(*args: str) -> int:
 def qa_result(tmp_path: Path, *args: str) -> dict:
     report = tmp_path / 'qa.json'
     rn('qa', *args, '--json', report)
-    return json.loads(report.read_text())
+    return json.loads(report.read_text(encoding='utf-8'))
 
 
 def checks(result: dict) -> dict:
@@ -59,12 +59,12 @@ def test_sheet_pages_fit_budget(media, tmp_path):
     out = tmp_path / 'sheet.jpg'
     report = tmp_path / 'sheet.json'
     assert rn('sheet', media / 'ramp.mp4', '--every', 1, '-o', out, '--json', report) == 0
-    pages = json.loads(report.read_text())['pages']
+    pages = json.loads(report.read_text(encoding='utf-8'))['pages']
     assert len(pages) == 3  # 60 frames, 24 per page
     assert pages[0]['indices'][:3] == [0, 1, 2] and pages[-1]['indices'][-1] == 59
     assert all(Path(p['path']).stat().st_size <= 125 * 1024 for p in pages)
     assert rn('sheet', media / 'ramp.mp4', '--indices', '3,40', '-o', tmp_path / 'two.jpg', '--json', report) == 0
-    assert json.loads(report.read_text())['pages'][0]['indices'] == [3, 40]
+    assert json.loads(report.read_text(encoding='utf-8'))['pages'][0]['indices'] == [3, 40]
 
 
 def test_assemble_cut_is_frame_exact(media, tmp_path):
@@ -183,7 +183,7 @@ def test_dry_run_prints_timeline(media, capsys):
 
 @pytest.mark.skipif(not has_filter('subtitles'), reason='ffmpeg built without libass')
 def test_assemble_burns_subtitles(media, tmp_path):
-    (media / 'caps.srt').write_text('1\n00:00:00,000 --> 00:00:01,000\nHELLO\n')
+    (media / 'caps.srt').write_text('1\n00:00:00,000 --> 00:00:01,000\nHELLO\n', encoding='utf-8')
     edl = write_edl(media, {'output': {'width': 320, 'height': 240, 'fps': 24}, 'tracks': [{'clips': [{'color': '#000000', 'duration': 1}]}],
                             'subtitles': {'file': 'caps.srt', 'force_style': 'Fontsize=40'}}, 'subs.json')
     out = tmp_path / 'subs.mp4'
@@ -217,9 +217,10 @@ def test_qa_flags_black_and_frozen_runs(media, tmp_path):
 
 
 def luma(video: Path, index: int, crop: str = 'iw:ih:0:0') -> float:
-    out = subprocess.run(['ffprobe', '-v', 'error', '-f', 'lavfi', f"movie='{video}',select='eq(n\\,{index})',crop={crop},signalstats",
+    # By name from its folder: a Windows drive colon would need escaping inside the filter graph.
+    out = subprocess.run(['ffprobe', '-v', 'error', '-f', 'lavfi', f"movie='{video.name}',select='eq(n\\,{index})',crop={crop},signalstats",
                           '-show_entries', 'frame_tags=lavfi.signalstats.YAVG', '-of', 'csv=p=0'],
-                         capture_output=True, text=True, check=True).stdout.split()
+                         capture_output=True, text=True, check=True, cwd=video.parent).stdout.split()
     return float(out[0])
 
 
@@ -301,7 +302,7 @@ def test_color_overlay_fills_missing_dimension(media, tmp_path):
      'force_style'),
 ])
 def test_rejects_unsafe_fields(media, tmp_path, capsys, edl_patch, message):
-    (media / 'style.srt').write_text('1\n00:00:00,000 --> 00:00:01,000\nx\n')
+    (media / 'style.srt').write_text('1\n00:00:00,000 --> 00:00:01,000\nx\n', encoding='utf-8')
     edl = write_edl(media, {'output': {'width': 320, 'height': 240, 'fps': 24}, **edl_patch}, 'unsafe.json')
     assert rn('assemble', edl, '-o', tmp_path / 'x.mp4') == 1
     assert message in capsys.readouterr().err

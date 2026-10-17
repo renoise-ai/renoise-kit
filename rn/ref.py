@@ -44,7 +44,7 @@ def ref_command(path: str, *, out: str | None, every: int, transcribe: bool, lan
         'listen': listen,
         'cut_sync': cut_sync(cuts['cuts'], listen['onsets'] if listen else [], Fraction(cuts['fps'])),
     }
-    (folder / 'ref.json').write_text(json.dumps(result, indent=1, ensure_ascii=False, default=str))
+    (folder / 'ref.json').write_text(json.dumps(result, indent=1, ensure_ascii=False, default=str), encoding='utf-8')
     return result
 
 

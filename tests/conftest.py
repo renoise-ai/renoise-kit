@@ -43,7 +43,7 @@ def media(tmp_path_factory) -> Path:
 
 def write_edl(directory: Path, edl: dict, name: str = 'edit.json') -> Path:
     path = directory / name
-    path.write_text(json.dumps(edl))
+    path.write_text(json.dumps(edl), encoding='utf-8')
     return path
 
 

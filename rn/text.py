@@ -21,7 +21,7 @@ def languages() -> list[str]:
     if not shutil.which('tesseract'):
         raise RnError('tesseract not found: brew install tesseract (ffmpeg-full brings it), apt install tesseract-ocr '
                       '(+ tesseract-ocr-chi-sim for Chinese)')
-    listed = subprocess.run(['tesseract', '--list-langs'], capture_output=True, text=True).stdout.split()
+    listed = subprocess.run(['tesseract', '--list-langs'], capture_output=True, text=True, encoding='utf-8', errors='replace').stdout.split()
     return [lang for lang in listed if not lang.startswith('List') and lang != 'osd']
 
 
@@ -36,7 +36,7 @@ def _join(words: list[str]) -> str:
 
 def _read(png: Path, lang: str, min_conf: float) -> list[dict]:
     """Words grouped into lines (tesseract's block/paragraph/line numbers), each with its bounding box."""
-    tsv = subprocess.run(['tesseract', str(png), '-', '-l', lang, '--psm', '11', 'tsv'], capture_output=True, text=True)
+    tsv = subprocess.run(['tesseract', str(png), '-', '-l', lang, '--psm', '11', 'tsv'], capture_output=True, text=True, encoding='utf-8', errors='replace')
     if tsv.returncode != 0:
         raise RnError(f'tesseract failed: {tsv.stderr.strip().splitlines()[-1:]}')
     lines: dict[tuple, dict] = {}
