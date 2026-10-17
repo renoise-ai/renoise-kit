@@ -560,9 +560,14 @@ def assemble_command(edl_path: str, out: str, *, dry_run: bool, keep: bool, prev
 
 
 def finish_command(source: str, out: str, *, lufs: float | None, true_peak: float, crf: int, preset: str, copy_video: bool,
-                   height: int | None = None) -> dict:
-    """Any video -> the delivery standard: H.264 High yuv420p bt709, moov first, LUFS target, encoded TP <= limit."""
+                   height: int | None = None, audio: str | None = None, audio_offset: float = 0.0) -> dict:
+    """Any video -> the delivery standard: H.264 High yuv420p bt709, moov first, LUFS target, encoded TP <= limit.
+    `audio`: take the sound from this file instead (e.g. a renderer's separate WAV mix); `audio_offset`: seconds to move
+    the sound later (negative: earlier, cutting its head), e.g. to undo an encoder delay a renderer left in."""
     info = probe(source, exact=True)
+    sound = audio or source
+    if audio and not probe(audio)['audio']:
+        raise RnError(f'--audio {audio}: no audio stream')
     video = info['video']
     if not video or video['still']:
         raise RnError(f'{source}: not a video')
@@ -584,10 +589,12 @@ def finish_command(source: str, out: str, *, lufs: float | None, true_peak: floa
                  '-fps_mode', 'passthrough', '-an', '-y', str(encoded)])
         loudness = None
         m4a = None
-        if info['audio']:
+        if audio or info['audio']:
             wav = work / 'mix.wav'
             seconds = float(frames / Fraction(video['fps']))
-            run(['ffmpeg', '-i', source, '-map', '0:a:0', '-af', f'aresample={SR},apad,atrim=end={seconds:.6f}', '-ac', '2',
+            shift = (f'atrim=start={-audio_offset:.6f},asetpts=PTS-STARTPTS,' if audio_offset < 0 else
+                     f'adelay=delays={round(audio_offset * 1000)}:all=1,' if audio_offset > 0 else '')
+            run(['ffmpeg', '-i', sound, '-map', '0:a:0', '-af', f'{shift}aresample={SR},apad,atrim=end={seconds:.6f}', '-ac', '2',
                  '-c:a', 'pcm_f32le', '-y', str(wav)])
             m4a = work / 'audio.m4a'
             loudness = audio_mod.finish_audio(wav, m4a, lufs=lufs, true_peak=true_peak)

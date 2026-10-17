@@ -135,11 +135,48 @@ def _save_under(sheet, path: Path, max_kb: int) -> int:
         image = image.resize((int(image.width * 0.85), int(image.height * 0.85)), Image.LANCZOS)
 
 
+IMAGES = ('.png', '.jpg', '.jpeg', '.webp')  # what a folder sheet tiles
+
+
+def _folder_sheet(folder: Path, *, out: str | None, several: bool, width: int, columns: int, max_kb: int) -> list[dict]:
+    """A folder of stills (renders of chosen frames, generated keyframes) as labelled pages, in natural name order
+    (f792 before f1062)."""
+    import re
+    from PIL import Image, ImageOps
+    natural = lambda f: [int(part) if part.isdigit() else part for part in re.split(r'(\d+)', f.name)]  # noqa: E731
+    files = sorted((f for f in folder.iterdir() if f.suffix.lower() in IMAGES), key=natural)
+    if not files:
+        raise RnError(f'{folder}: no .png/.jpg/.webp images')
+    base = Path(out) if out else Path('sheets') / f'{folder.name}.jpg'
+    if several and out:
+        base = Path(out).with_name(f'{Path(out).stem}-{folder.name}{Path(out).suffix or ".jpg"}')
+    base.parent.mkdir(parents=True, exist_ok=True)
+    thumbs = []
+    for f in files:
+        with Image.open(f) as image:
+            image = image.convert('RGB')
+            thumbs.append(image.resize((width, max(1, round(image.height * width / image.width))), Image.LANCZOS))
+    tile_h = max(t.height for t in thumbs)
+    thumbs = [ImageOps.pad(t, (width, tile_h)) for t in thumbs]
+    pages = []
+    page_count = math.ceil(len(files) / MAX_PER_PAGE)
+    for page in range(page_count):
+        part = slice(page * MAX_PER_PAGE, (page + 1) * MAX_PER_PAGE)
+        target = base if page_count == 1 else base.with_name(f'{base.stem}-p{page + 1}{base.suffix or ".jpg"}')
+        names = [f.name for f in files[part]]
+        size = _save_under(_compose([], Fraction(1), columns, f'{folder.name}  {len(files)} images', thumbs[part], names), target, max_kb)
+        pages.append({'path': str(target), 'source': str(folder), 'files': names, 'indices': list(range(len(names))), 'bytes': size})
+    return pages
+
+
 def sheet_command(paths: list[str], *, out: str | None, every: int | None, rate: float | None, indices: list[int] | None,
                   seconds: list[float] | None, count: int | None, width: int, columns: int, max_kb: int,
                   around: list[float] | None = None, span: int = 3, diff: bool = False) -> dict:
     pages = []
     for path in paths:
+        if Path(path).is_dir():
+            pages += _folder_sheet(Path(path), out=out, several=len(paths) > 1, width=width, columns=columns, max_kb=max_kb)
+            continue
         info = probe(path)
         if not info['video'] or info['video']['still']:
             raise RnError(f'{path}: not a video')
