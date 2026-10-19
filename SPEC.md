@@ -1,8 +1,8 @@
 # renoise-kit：剪辑底层 CLI `rn`
 
-> 状态：v0.5.1（2026-10-17）：§3.1 的通用原语全部实现。v0.2.0–v0.3.4 在 Renoise 主仓库 `packages/media-sandbox/kit` 随沙箱模板发布；v0.4.0 起拆为独立仓库与 PyPI 包 `renoise-kit`（命令仍为 `rn`），沙箱模板固定一个版本安装，集成见主仓库 `spec/mcp/03-media-kit.md`。v0.4.0 新增：`rn compare`、`rn assemble --preview`、`rn qa` 的 dead_air / level_jumps / fixed_frame_rate 检查、成片写 `fixed_frame_rate_flag=1`、本地安装（按功能的 extras、人脸模型首次使用时下载并校验、缺 libass 时提前报错）。
+> 状态：v0.6.0（2026-10-19）：§3.1 的通用原语全部实现。v0.2.0–v0.3.4 在 Renoise 主仓库 `packages/media-sandbox/kit` 随沙箱模板发布；v0.4.0 起拆为独立仓库与 PyPI 包 `renoise-kit`（命令仍为 `rn`），沙箱模板固定一个版本安装，集成见主仓库 `spec/mcp/03-media-kit.md`。v0.4.0 新增：`rn compare`、`rn assemble --preview`、`rn qa` 的 dead_air / level_jumps / fixed_frame_rate 检查、成片写 `fixed_frame_rate_flag=1`、本地安装（按功能的 extras、人脸模型首次使用时下载并校验、缺 libass 时提前报错）。
 >
-> 未发布（分支 `feat/edit-json-v2`）：edit.json 第 2 版：位置与外观进 `style`，用 CSS 属性名和单位；keys 的 `x` / `y` 改为 `left` / `top`（像素）；
+> v0.6.0（2026-10-19）：edit.json 第 2 版：位置与外观进 `style`，用 CSS 属性名和单位；keys 的 `x` / `y` 改为 `left` / `top`（像素）；
 > 第 1 版加载时自动升级，`rn edit FILE upgrade` 改写文件；共享 schema `schema/edit.schema.json` 与一致性用例 `schema/fixtures/`，见 §4.1。
 >
 > v0.5.1（2026-10-17）：Windows 支持：文本一律 UTF-8、拼接列表与长滤镜图可移植、没有 fontconfig 时直接读系统字体目录、字幕在 Windows 上用微软雅黑；CI 加 Windows。
