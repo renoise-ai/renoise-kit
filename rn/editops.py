@@ -11,7 +11,7 @@ import os
 from fractions import Fraction
 from pathlib import Path
 
-from .edl import Clip, load
+from .edl import Clip, load, upgrade
 from .ff import RnError
 
 
@@ -236,8 +236,17 @@ def move_op(path: Path, ref: str, before: str | None, after: str | None, track: 
     return {'op': 'move', 'clip': ref, 'timeline': _write_checked(path, raw)}
 
 
+def upgrade_op(path: Path) -> dict:
+    """Rewrites a version-1 edit under version-2 names ("style", keys left / top); the timeline stays the same."""
+    raw = _read(path)
+    if raw.get('version') == 2:
+        raise RnError(f'{path.name} is already version 2')
+    return {'op': 'upgrade', 'timeline': _write_checked(path, upgrade(raw))}
+
+
 def summary_lines(result: dict) -> list[str]:
-    head = {'ids': lambda r: f'ids added: {", ".join(r["added"]) or "none (every clip has one)"}',
+    head = {'upgrade': lambda r: 'upgraded to version 2',
+            'ids': lambda r: f'ids added: {", ".join(r["added"]) or "none (every clip has one)"}',
             'set': lambda r: f'set {r["clip"]}',
             'split': lambda r: f'split {r["clip"]} into {r["into"][0]} + {r["into"][1]}',
             'delete': lambda r: f'deleted {r["clip"]}' + (' (lifted: gap kept)' if r['lift'] else ''),

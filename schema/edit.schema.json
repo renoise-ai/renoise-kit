@@ -1,0 +1,326 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/renoise-ai/renoise-kit/schema/edit.schema.json",
+  "title": "edit.json version 2",
+  "description": "A cut as data: tracks of clips and audio items. The first track plays back to back (it ripples); later tracks are overlays placed in time (\"at\") and space (\"style\"). Placement and look use CSS property names and units. Fields marked \"x-rn-only\": true are rn extensions that other hosts may not render: a host that renders only the rest previews what rn delivers. Cross-field rules this schema cannot state (anchors naming earlier ids, unique ids, transitions fitting their clips) are checked by rn (rn assemble --dry-run) and listed in SPEC.md section 4.",
+  "type": "object",
+  "required": ["version", "output", "tracks"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {"const": 2},
+    "note": {"type": "string"},
+    "output": {"$ref": "#/$defs/output"},
+    "tracks": {
+      "type": "array",
+      "minItems": 1,
+      "prefixItems": [{"$ref": "#/$defs/mainTrack"}],
+      "items": {"$ref": "#/$defs/overlayTrack"}
+    },
+    "audio": {"type": "array", "items": {"$ref": "#/$defs/audioItem"}},
+    "markers": {
+      "description": "Named times on the output timeline, for anchors.",
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/timelineTime"}
+    },
+    "subtitles": {
+      "x-rn-only": true,
+      "description": "Burned in last, with libass.",
+      "type": "object",
+      "required": ["file"],
+      "additionalProperties": false,
+      "properties": {
+        "file": {"type": "string", "pattern": "\\.(ass|ssa|srt)$"},
+        "force_style": {"type": "string", "pattern": "^[^'\\\\]*$"}
+      }
+    },
+    "mix": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lufs": {"x-rn-only": true, "description": "Delivery loudness; null keeps levels as mixed.", "oneOf": [{"type": "number", "minimum": -40, "maximum": -5}, {"type": "null"}]},
+        "true_peak": {"x-rn-only": true, "type": "number", "minimum": -9, "maximum": 0},
+        "duck_db": {"description": "dB music drops under voice.", "type": "number", "minimum": 0},
+        "cut_fade": {"description": "Seconds each side of a hard cut in the main track's own sound fades.", "type": "number", "minimum": 0, "maximum": 0.25}
+      }
+    },
+    "accept": {
+      "x-rn-only": true,
+      "description": "rn qa warnings judged intended. Other hosts ignore it.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["check"],
+        "properties": {"check": {"type": "string"}, "at": {"$ref": "#/$defs/seconds"}, "note": {"type": "string"}}
+      }
+    }
+  },
+  "$defs": {
+    "seconds": {"type": "number", "minimum": 0},
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"},
+    "ease": {
+      "description": "The curve into a key: u is 0..1 between two keys. in u^2, out 1-(1-u)^2, inout their join, in3/out3/inout3 the cubic ones, hold keeps the earlier value.",
+      "enum": ["linear", "in", "out", "inout", "in3", "out3", "inout3", "hold"]
+    },
+    "length": {
+      "description": "px as a number or \"90px\", or a share of the frame: \"50%\" of its width (left, width) or height (top, height).",
+      "oneOf": [{"type": "number"}, {"type": "string", "pattern": "^-?\\d+(\\.\\d+)?(px|%)$"}]
+    },
+    "degrees": {"oneOf": [{"type": "number"}, {"type": "string", "pattern": "^-?\\d+(\\.\\d+)?deg$"}]},
+    "objectFit": {"description": "How a picture fills its box (the frame on the main track).", "enum": ["cover", "contain", "fill"]},
+    "sourcePosition": {
+      "description": "A point in the source: seconds, a frame of it, or a shot found by rn cuts.",
+      "oneOf": [
+        {"$ref": "#/$defs/seconds"},
+        {"type": "object", "required": ["frame"], "additionalProperties": false, "properties": {"frame": {"type": "integer", "minimum": 0}}},
+        {"type": "object", "required": ["time"], "additionalProperties": false, "properties": {"time": {"$ref": "#/$defs/seconds"}}},
+        {"x-rn-only": true, "type": "object", "required": ["shot"], "additionalProperties": false,
+         "properties": {"shot": {"type": "integer", "minimum": 0}, "offset": {"type": "number"}}}
+      ]
+    },
+    "timelineTime": {
+      "oneOf": [
+        {"$ref": "#/$defs/seconds"},
+        {"type": "object", "required": ["frame"], "additionalProperties": false, "properties": {"frame": {"type": "integer", "minimum": 0}}},
+        {"type": "object", "required": ["time"], "additionalProperties": false, "properties": {"time": {"$ref": "#/$defs/seconds"}}}
+      ]
+    },
+    "anchor": {
+      "description": "Seconds on the output timeline, or an anchor plus \"offset\" seconds. clip / clip_end: a main-track clip by index or id as laid out, or an earlier overlay by id.",
+      "oneOf": [
+        {"$ref": "#/$defs/seconds"},
+        {"type": "object", "required": ["clip"], "additionalProperties": false,
+         "properties": {"clip": {"oneOf": [{"type": "integer", "minimum": 0}, {"$ref": "#/$defs/id"}]}, "offset": {"type": "number"}}},
+        {"type": "object", "required": ["clip_end"], "additionalProperties": false,
+         "properties": {"clip_end": {"oneOf": [{"type": "integer", "minimum": 0}, {"$ref": "#/$defs/id"}]}, "offset": {"type": "number"}}},
+        {"type": "object", "required": ["marker"], "additionalProperties": false,
+         "properties": {"marker": {"type": "string"}, "offset": {"type": "number"}}},
+        {"type": "object", "required": ["frame"], "additionalProperties": false,
+         "properties": {"frame": {"type": "integer", "minimum": 0}, "offset": {"type": "number"}}},
+        {"type": "object", "required": ["time"], "additionalProperties": false,
+         "properties": {"time": {"$ref": "#/$defs/seconds"}, "offset": {"type": "number"}}},
+        {"x-rn-only": true, "description": "A beat of an rn listen --json result.", "type": "object", "required": ["beat", "listen"],
+         "additionalProperties": false,
+         "properties": {"beat": {"type": "integer", "minimum": 0}, "listen": {"type": "string"}, "offset": {"type": "number"}}},
+        {"x-rn-only": true, "description": "A word of an rn listen --transcribe --json result.", "type": "object", "required": ["word", "listen"],
+         "additionalProperties": false,
+         "properties": {"word": {"type": "integer", "minimum": 0}, "listen": {"type": "string"}, "edge": {"enum": ["start", "end"]},
+                        "offset": {"type": "number"}}}
+      ]
+    },
+    "keyPoints": {
+      "description": "[t, value] or [t, value, ease]: t seconds from the clip's first frame, increasing; held before the first and after the last.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 3,
+        "prefixItems": [{"$ref": "#/$defs/seconds"}, {"type": "number"}, {"$ref": "#/$defs/ease"}]
+      }
+    },
+    "filters": {"x-rn-only": true, "description": "One raw ffmpeg filter chain.", "type": "string", "pattern": "^[^;\\[\\]]+$"},
+    "source": {
+      "description": "Exactly one of src, frames, image, color.",
+      "oneOf": [
+        {"required": ["src"], "properties": {"src": {"description": "A video file. A path ending in .json plays another edit (x-rn-only).", "type": "string"}}},
+        {"required": ["frames"], "properties": {"frames": {"x-rn-only": true, "description": "A numbered image sequence such as title/%05d.png.", "type": "string"}}},
+        {"required": ["image"], "properties": {"image": {"type": "string"}}},
+        {"required": ["color"], "properties": {"color": {"description": "#rrggbb or a colour name.", "type": "string"}}}
+      ]
+    },
+    "fps": {"x-rn-only": true, "description": "Frame rate of an image sequence.", "oneOf": [{"type": "number", "exclusiveMinimum": 0}, {"type": "string", "pattern": "^\\d+(/\\d+)?$"}]},
+    "duration": {"type": "number", "exclusiveMinimum": 0},
+    "speed": {"type": "number", "minimum": 0.1, "maximum": 8},
+    "mainClip": {
+      "type": "object",
+      "allOf": [{"$ref": "#/$defs/source"}],
+      "not": {"anyOf": [{"required": ["duration", "out"]}, {"required": ["speed", "keys"], "properties": {"keys": {"required": ["speed"]}}}]},
+      "unevaluatedProperties": false,
+      "properties": {
+        "src": true, "frames": true, "image": true, "color": true,
+        "fps": {"$ref": "#/$defs/fps"},
+        "in": {"$ref": "#/$defs/sourcePosition"},
+        "out": {"$ref": "#/$defs/sourcePosition"},
+        "duration": {"$ref": "#/$defs/duration"},
+        "speed": {"$ref": "#/$defs/speed"},
+        "id": {"$ref": "#/$defs/id"},
+        "meta": true,
+        "note": {"type": "string"},
+        "vf": {"$ref": "#/$defs/filters"},
+        "af": {"$ref": "#/$defs/filters"},
+        "audio": {"description": "Play the clip's own sound (default true).", "type": "boolean"},
+        "gain_db": {"type": "number"},
+        "ranges": {
+          "description": "Spans of one source played back to back; replaces in / out / duration / keys.",
+          "type": "array", "minItems": 1,
+          "items": {"type": "array", "prefixItems": [{"$ref": "#/$defs/sourcePosition"}, {"$ref": "#/$defs/sourcePosition"}], "minItems": 2, "maxItems": 2}
+        },
+        "transition": {
+          "description": "Overlap with the previous clip. fade, dissolve, fadeblack and fadewhite are portable; the other ffmpeg xfade names are x-rn-only.",
+          "type": "object",
+          "required": ["type"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {"type": "string"},
+            "duration": {"type": "number", "exclusiveMinimum": 0}
+          }
+        },
+        "style": {
+          "description": "The main track fills the frame: only how it fits and moves.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "object-fit": {"$ref": "#/$defs/objectFit"},
+            "left": {"$ref": "#/$defs/length"},
+            "top": {"$ref": "#/$defs/length"},
+            "scale": {"type": "number", "exclusiveMinimum": 0},
+            "rotate": {"$ref": "#/$defs/degrees"}
+          }
+        },
+        "keys": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "scale": {"$ref": "#/$defs/keyPoints"},
+            "left": {"$ref": "#/$defs/keyPoints", "description": "px the frame moves right"},
+            "top": {"$ref": "#/$defs/keyPoints", "description": "px the frame moves down"},
+            "rotate": {"$ref": "#/$defs/keyPoints"},
+            "speed": {"$ref": "#/$defs/keyPoints"},
+            "gain_db": {"$ref": "#/$defs/keyPoints"}
+          }
+        }
+      }
+    },
+    "overlayClip": {
+      "type": "object",
+      "allOf": [{"$ref": "#/$defs/source"}],
+      "not": {"anyOf": [{"required": ["duration", "out"]}, {"required": ["until", "duration"]}, {"required": ["until", "out"]}]},
+      "unevaluatedProperties": false,
+      "properties": {
+        "src": true, "frames": true, "image": true, "color": true,
+        "fps": {"$ref": "#/$defs/fps"},
+        "in": {"$ref": "#/$defs/sourcePosition"},
+        "out": {"$ref": "#/$defs/sourcePosition"},
+        "duration": {"$ref": "#/$defs/duration"},
+        "speed": {"$ref": "#/$defs/speed"},
+        "id": {"$ref": "#/$defs/id"},
+        "meta": true,
+        "note": {"type": "string"},
+        "vf": {"$ref": "#/$defs/filters"},
+        "at": {"$ref": "#/$defs/anchor"},
+        "until": {"$ref": "#/$defs/anchor"},
+        "pivot": {"description": "This second of the source lands on \"at\".", "$ref": "#/$defs/seconds"},
+        "fade_in": {"$ref": "#/$defs/seconds"},
+        "fade_out": {"$ref": "#/$defs/seconds"},
+        "style": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "left": {"$ref": "#/$defs/length"},
+            "top": {"$ref": "#/$defs/length"},
+            "width": {"$ref": "#/$defs/length"},
+            "height": {"$ref": "#/$defs/length"},
+            "opacity": {"type": "number", "minimum": 0, "maximum": 1},
+            "scale": {"type": "number", "exclusiveMinimum": 0},
+            "rotate": {"$ref": "#/$defs/degrees"},
+            "object-fit": {"$ref": "#/$defs/objectFit"},
+            "mix-blend-mode": {
+              "anyOf": [
+                {"enum": ["normal", "multiply", "screen", "overlay", "darken", "lighten", "color-dodge", "color-burn", "hard-light",
+                          "soft-light", "difference", "exclusion", "plus-lighter"]},
+                {"x-rn-only": true, "enum": ["linearlight", "vividlight", "pinlight", "average", "negation", "phoenix"]}
+              ]
+            }
+          }
+        },
+        "keys": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "scale": {"$ref": "#/$defs/keyPoints"},
+            "left": {"$ref": "#/$defs/keyPoints"},
+            "top": {"$ref": "#/$defs/keyPoints"},
+            "rotate": {"$ref": "#/$defs/keyPoints"},
+            "opacity": {"$ref": "#/$defs/keyPoints"},
+            "speed": {"$ref": "#/$defs/keyPoints"}
+          }
+        },
+        "mask": {
+          "x-rn-only": true,
+          "description": "A full-frame matte multiplying the overlay's alpha (any clip source, e.g. from rn matte).",
+          "type": "object",
+          "allOf": [{"$ref": "#/$defs/source"}],
+          "unevaluatedProperties": false,
+          "properties": {
+            "src": true, "frames": true, "image": true, "color": true,
+            "fps": {"$ref": "#/$defs/fps"},
+            "in": {"$ref": "#/$defs/sourcePosition"},
+            "out": {"$ref": "#/$defs/sourcePosition"},
+            "duration": {"$ref": "#/$defs/duration"},
+            "speed": {"$ref": "#/$defs/speed"},
+            "at": {"$ref": "#/$defs/anchor"},
+            "until": {"$ref": "#/$defs/anchor"},
+            "mode": {"enum": ["luma", "alpha"]},
+            "invert": {"type": "boolean"},
+            "style": {"type": "object", "additionalProperties": false, "properties": {"object-fit": {"$ref": "#/$defs/objectFit"}}},
+            "note": {"type": "string"}
+          }
+        }
+      }
+    },
+    "mainTrack": {
+      "type": "object",
+      "required": ["clips"],
+      "additionalProperties": false,
+      "properties": {
+        "clips": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/mainClip"}},
+        "id": {"$ref": "#/$defs/id"}, "meta": true, "note": {"type": "string"}
+      }
+    },
+    "overlayTrack": {
+      "type": "object",
+      "required": ["clips"],
+      "additionalProperties": false,
+      "properties": {
+        "clips": {"type": "array", "items": {"$ref": "#/$defs/overlayClip"}},
+        "id": {"$ref": "#/$defs/id"}, "meta": true, "note": {"type": "string"}
+      }
+    },
+    "audioItem": {
+      "type": "object",
+      "required": ["src"],
+      "additionalProperties": false,
+      "not": {"required": ["duration", "out"]},
+      "properties": {
+        "src": {"type": "string"},
+        "role": {"enum": ["music", "voice", "sfx"]},
+        "at": {"$ref": "#/$defs/anchor"},
+        "in": {"$ref": "#/$defs/seconds"},
+        "out": {"type": "number", "exclusiveMinimum": 0},
+        "duration": {"type": "number", "exclusiveMinimum": 0},
+        "gain_db": {"type": "number"},
+        "fade_in": {"$ref": "#/$defs/seconds"},
+        "fade_out": {"$ref": "#/$defs/seconds"},
+        "pivot": {"$ref": "#/$defs/seconds"},
+        "af": {"$ref": "#/$defs/filters"},
+        "keys": {"type": "object", "additionalProperties": false, "minProperties": 1, "properties": {"gain_db": {"$ref": "#/$defs/keyPoints"}}},
+        "id": {"$ref": "#/$defs/id"}, "meta": true, "note": {"type": "string"}
+      }
+    },
+    "output": {
+      "type": "object",
+      "required": ["width", "height"],
+      "additionalProperties": false,
+      "properties": {
+        "width": {"type": "integer", "minimum": 2, "multipleOf": 2},
+        "height": {"type": "integer", "minimum": 2, "multipleOf": 2},
+        "fps": {"description": "1 to 120; a number or a ratio like \"30000/1001\".", "oneOf": [{"type": "number", "minimum": 1, "maximum": 120}, {"type": "string", "pattern": "^\\d+(/\\d+)?$"}]},
+        "background": {"type": "string"},
+        "crf": {"x-rn-only": true, "type": "integer", "minimum": 0},
+        "preset": {"x-rn-only": true, "type": "string"}
+      }
+    }
+  }
+}

@@ -23,14 +23,26 @@ XFADE = {
     'vuslice', 'vdslice', 'hblur', 'squeezeh', 'squeezev', 'zoomin', 'coverleft', 'coverright', 'coverup', 'coverdown',
     'revealleft', 'revealright', 'revealup', 'revealdown',
 }
-FITS = {'cover', 'contain', 'stretch'}
 EASES = {'linear', 'in', 'out', 'inout', 'in3', 'out3', 'inout3', 'hold'}
-KEYS_MAIN = {'scale', 'x', 'y', 'rotate', 'speed', 'gain_db'}
-KEYS_OVERLAY = {'scale', 'x', 'y', 'rotate', 'opacity', 'speed'}
+# Version 2 names keyed properties as CSS does: left / top in px. Inside, rn keeps x / y (main track: fractions of the frame).
+KEYS_MAIN = {'scale', 'left', 'top', 'rotate', 'speed', 'gain_db'}
+KEYS_OVERLAY = {'scale', 'left', 'top', 'rotate', 'opacity', 'speed'}
 KEYS_AUDIO = {'gain_db'}
-# ffmpeg blend modes, computed in RGB; "add" is accepted for "addition".
-BLENDS = {'normal', 'addition', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'difference', 'exclusion', 'softlight',
-          'hardlight', 'colordodge', 'colorburn', 'linearlight', 'vividlight', 'pinlight', 'average', 'negation', 'phoenix'}
+# "style" holds placement and look under CSS property names, so a model's CSS habits apply.
+STYLE_MAIN = {'object-fit', 'left', 'top', 'scale', 'rotate'}
+STYLE_OVERLAY = STYLE_MAIN | {'width', 'height', 'opacity', 'mix-blend-mode'}
+CSS_FITS = {'cover': 'cover', 'contain': 'contain', 'fill': 'stretch'}
+# CSS mix-blend-mode -> ffmpeg blend (computed in RGB). The ffmpeg-only modes after them are rn's own: other hosts of the
+# format may not render them (edit.schema.json marks them x-rn-only).
+CSS_BLENDS = {'normal': 'normal', 'multiply': 'multiply', 'screen': 'screen', 'overlay': 'overlay', 'darken': 'darken',
+              'lighten': 'lighten', 'color-dodge': 'colordodge', 'color-burn': 'colorburn', 'hard-light': 'hardlight',
+              'soft-light': 'softlight', 'difference': 'difference', 'exclusion': 'exclusion', 'plus-lighter': 'addition'}
+RN_BLENDS = {'linearlight', 'vividlight', 'pinlight', 'average', 'negation', 'phoenix'}
+# Version 1 fields and where version 2 keeps them.
+V1_FIELDS = {'x': 'style.left', 'y': 'style.top', 'w': 'style.width', 'h': 'style.height', 'opacity': 'style.opacity',
+             'blend': 'style["mix-blend-mode"]', 'fit': 'style["object-fit"]'}
+_LENGTH = re.compile(r'^(-?\d+(?:\.\d+)?)(px|%)$')
+_DEGREES = re.compile(r'^(-?\d+(?:\.\d+)?)deg$')
 _GRAPH_BREAKERS = re.compile(r'[;\[\]]')
 # The same curves as assemble's ffmpeg expressions (assemble._EASE), for what rn computes itself (speed ramps).
 EASE_FN = {
@@ -178,9 +190,9 @@ class Edit:
         }
 
 
-def _num(value, where: str, *, minimum: float | None = None, positive: bool = False) -> float:
+def _num(value, where: str, *, minimum: float | None = None, positive: bool = False, what: str = 'a number of seconds') -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise RnError(f'{where}: expected a number of seconds, got {json.dumps(value)}')
+        raise RnError(f'{where}: expected {what}, got {json.dumps(value)}')
     if positive and value <= 0:
         raise RnError(f'{where}: must be > 0')
     if minimum is not None and value < minimum:
@@ -340,6 +352,55 @@ def _keys(raw, where: str, allowed: set[str]) -> dict | None:
     return keys
 
 
+def _length(value, where: str, frame: int) -> float:
+    """px as a number or "90px", or a percentage of the frame's width (left, width) or height (top, height)."""
+    match = _LENGTH.match(value.strip()) if isinstance(value, str) else None
+    if match:
+        number = float(match.group(1))
+        return number * frame / 100 if match.group(2) == '%' else number
+    return _num(value, where, what='px as a number or "90px", or a share of the frame like "50%"')
+
+
+def _style(raw, where: str, overlay: bool, size: tuple[int, int]) -> dict:
+    """Placement and look under CSS names: left / top / width / height (px), opacity, scale, rotate (degrees),
+    object-fit (cover | contain | fill), mix-blend-mode. Returned in rn's own terms (x, y, w, h, fit, blend)."""
+    if raw is None:
+        return {}
+    where = f'{where}.style'
+    if not isinstance(raw, dict):
+        raise RnError(f'{where}: {{"left": 90, "top": "70%", "width": 900, "opacity": 0.8, "mix-blend-mode": "screen"}}')
+    allowed = STYLE_OVERLAY if overlay else STYLE_MAIN
+    unknown = set(raw) - allowed
+    if unknown:
+        hint = '' if overlay else '; main-track clips fill the frame: put a sized or see-through clip on another track'
+        raise RnError(f'{where}: {sorted(unknown)} not supported here (supported: {sorted(allowed)}){hint}')
+    look = {}
+    if 'object-fit' in raw:
+        if raw['object-fit'] not in CSS_FITS:
+            raise RnError(f'{where}.object-fit: one of {sorted(CSS_FITS)}')
+        look['fit'] = CSS_FITS[raw['object-fit']]
+    for css, key, frame in (('left', 'x', size[0]), ('top', 'y', size[1]), ('width', 'w', size[0]), ('height', 'h', size[1])):
+        if css in raw:
+            look[key] = _length(raw[css], f'{where}.{css}', frame)
+            if key in ('w', 'h') and look[key] <= 0:
+                raise RnError(f'{where}.{css}: must be > 0')
+    if 'opacity' in raw:
+        look['opacity'] = _num(raw['opacity'], f'{where}.opacity', minimum=0, what='a number between 0 and 1')
+        if look['opacity'] > 1:
+            raise RnError(f'{where}.opacity: between 0 and 1')
+    if 'scale' in raw:
+        look['scale'] = _num(raw['scale'], f'{where}.scale', positive=True, what='a number (1 = own size)')
+    if 'rotate' in raw:
+        match = _DEGREES.match(raw['rotate'].strip()) if isinstance(raw['rotate'], str) else None
+        look['rotate'] = float(match.group(1)) if match else _num(raw['rotate'], f'{where}.rotate', what='degrees as a number or "5deg"')
+    if 'mix-blend-mode' in raw:
+        mode = raw['mix-blend-mode']
+        if mode not in CSS_BLENDS and mode not in RN_BLENDS:
+            raise RnError(f'{where}.mix-blend-mode: one of {sorted(CSS_BLENDS)} (rn also renders {sorted(RN_BLENDS)})')
+        look['blend'] = CSS_BLENDS.get(mode, mode)
+    return look
+
+
 def _sequence(edit_dir: Path, pattern, where: str) -> tuple[Path, int, int, tuple[int, int]]:
     """A numbered image sequence (printf pattern like "title/%05d.png") -> (pattern path, first number, count, size)."""
     if not isinstance(pattern, str) or not _SEQ.search(pattern):
@@ -476,7 +537,8 @@ def _placeholder(raw: dict, where: str, edit_dir: Path, size: tuple[int, int], w
     card = _card(edit_dir, size, [raw.get('id') or Path(value).name, *([str(label)] if label else []), f'missing: {value}'])
     warnings.append(f'{where}: {value} is missing; placeholder card for {seconds}s')
     keep = {k: v for k, v in raw.items() if k not in ('src', 'frames', 'image', 'fps', 'in', 'out', 'speed', 'audio', 'gain_db', 'duration', 'until')}
-    return {**keep, 'image': str(card), 'duration': seconds, 'fit': raw.get('fit', 'contain')}
+    style = raw.get('style') if isinstance(raw.get('style'), dict) else {}
+    return {**keep, 'image': str(card), 'duration': seconds, 'style': {'object-fit': 'contain', **style}}
 
 
 def _clip(raw: dict, where: str, edit_dir: Path, fps: Fraction, *, overlay: bool, warnings: list[str],
@@ -502,20 +564,28 @@ def _clip(raw: dict, where: str, edit_dir: Path, fps: Fraction, *, overlay: bool
             raw = {**raw, 'duration': until - at_s}
     elif 'until' in raw:
         raise RnError(f'{where}.until: main-track clips play back to back; "until" is for overlays')
-    fit = raw.get('fit', 'cover')
-    if fit not in FITS:
-        raise RnError(f'{where}.fit: one of {sorted(FITS)}')
+    look = _style(raw.get('style'), where, overlay, size)
     speed = _num(raw.get('speed', 1.0), f'{where}.speed', positive=True)
     if not 0.1 <= speed <= 8:
         raise RnError(f'{where}.speed: keep between 0.1 and 8')
     gain = _num(raw.get('gain_db', 0.0), f'{where}.gain_db')
-    clip = Clip(where=where, kind='video', source=None, color=None, start_s=0.0, speed=speed, frames=0, fit=fit,
+    clip = Clip(where=where, kind='video', source=None, color=None, start_s=0.0, speed=speed, frames=0, fit=look.get('fit', 'cover'),
                 audio=bool(raw.get('audio', not overlay)), gain_db=gain)
     clip.id, clip.meta = _ident(raw, where)
     clip.vf, clip.af = _filters(raw, 'vf', where), _filters(raw, 'af', where)
     if overlay and clip.af:
         raise RnError(f'{where}.af: overlays are silent; filter their sound in "audio"')
     clip.keys = _keys(raw.get('keys'), f'{where}.keys', KEYS_OVERLAY if overlay else KEYS_MAIN)
+    # A still style value is a key held for the whole clip; a main-track move is a fraction of the frame inside rn.
+    still = {p: look[p] for p in ('scale', 'rotate', *(() if overlay else ('x', 'y'))) if p in look}
+    for css, key in (('left', 'x'), ('top', 'y'), ('scale', 'scale'), ('rotate', 'rotate')):
+        if key in still and clip.keys and css in clip.keys:
+            raise RnError(f'{where}: give style.{css} or keys.{css}, not both')
+        if key in still:
+            clip.keys = {**(clip.keys or {}), css: [(0.0, still[key], 'linear')]}
+        if clip.keys and css in clip.keys and css != key:
+            frame = size[0] if key == 'x' else size[1]
+            clip.keys[key] = [(t, v if overlay else v / frame, ease) for t, v, ease in clip.keys.pop(css)]
     ramp = (clip.keys or {}).get('speed')
     if ramp and 'speed' in raw:
         raise RnError(f'{where}: give "speed" or keys.speed, not both')
@@ -626,29 +696,20 @@ def _clip(raw: dict, where: str, edit_dir: Path, fps: Fraction, *, overlay: bool
             at_s = 0.0
     if overlay:
         clip.timeline_start = _frames(at_s, fps)
-        clip.x = int(_num(raw.get('x', 0), f'{where}.x'))
-        clip.y = int(_num(raw.get('y', 0), f'{where}.y'))
-        clip.w = int(_num(raw['w'], f'{where}.w', positive=True)) if 'w' in raw else None
-        clip.h = int(_num(raw['h'], f'{where}.h', positive=True)) if 'h' in raw else None
-        clip.opacity = _num(raw.get('opacity', 1.0), f'{where}.opacity', minimum=0)
-        if clip.opacity > 1:
-            raise RnError(f'{where}.opacity: between 0 and 1')
+        clip.x, clip.y = round(look.get('x', 0)), round(look.get('y', 0))
+        clip.w, clip.h = (round(look[k]) if k in look else None for k in ('w', 'h'))
+        clip.opacity = look.get('opacity', 1.0)
+        clip.blend = look.get('blend')
         clip.fade_in = _num(raw.get('fade_in', 0), f'{where}.fade_in', minimum=0)
         clip.fade_out = _num(raw.get('fade_out', 0), f'{where}.fade_out', minimum=0)
         if 'transition' in raw:
             raise RnError(f'{where}.transition: transitions are for the first (main) track; use fade_in / fade_out on overlays')
         if 'audio' in raw or 'gain_db' in raw:
             raise RnError(f'{where}: overlay clips are silent; add their sound to "audio" with "at" (role "sfx")')
-        blend = raw.get('blend')
-        if blend is not None:
-            blend = {'add': 'addition'}.get(blend, blend)
-            if blend not in BLENDS:
-                raise RnError(f'{where}.blend: one of {sorted(BLENDS | {"add"})}')
-            clip.blend = blend
         if 'mask' in raw:
             clip.mask, clip.mask_mode, clip.mask_invert = _mask(raw['mask'], where, clip, edit_dir, fps, warnings, timeline, size)
     else:
-        for key in ('at', 'x', 'y', 'w', 'h', 'opacity', 'fade_in', 'fade_out', 'blend', 'mask'):
+        for key in ('at', 'fade_in', 'fade_out', 'mask'):
             if key in raw:
                 raise RnError(f'{where}.{key}: main-track clips play back to back; put positioned clips on another track')
         transition = raw.get('transition')
@@ -660,13 +721,20 @@ def _clip(raw: dict, where: str, edit_dir: Path, fps: Fraction, *, overlay: bool
     if clip.keys and 'gain_db' in clip.keys and not (clip.audio and clip.has_audio):
         raise RnError(f'{where}.keys.gain_db: the clip plays no sound of its own')
     if clip.keys and overlay and ('scale' in clip.keys or 'rotate' in clip.keys) and clip.kind == 'color' and not (clip.w and clip.h):
-        raise RnError(f'{where}.keys: give a colour overlay "w" and "h" to scale or rotate it')
-    unknown = set(raw) - {'src', 'frames', 'fps', 'image', 'color', 'in', 'out', 'duration', 'until', 'speed', 'fit', 'audio', 'gain_db',
-                          'at', 'x', 'y', 'w', 'h', 'opacity', 'fade_in', 'fade_out', 'transition', 'keys', 'note', 'id', 'meta',
-                          'pivot', 'vf', 'af', 'blend', 'mask'}
+        raise RnError(f'{where}: give a colour overlay style.width and style.height to scale or rotate it')
+    unknown = set(raw) - {'src', 'frames', 'fps', 'image', 'color', 'in', 'out', 'duration', 'until', 'speed', 'audio', 'gain_db',
+                          'at', 'style', 'fade_in', 'fade_out', 'transition', 'keys', 'note', 'id', 'meta', 'pivot', 'vf', 'af', 'mask'}
+    _reject_unknown(unknown, where)
+    return clip
+
+
+def _reject_unknown(unknown: set[str], where: str) -> None:
+    old = sorted(unknown & set(V1_FIELDS))
+    if old:
+        raise RnError(f'{where}: {", ".join(f"{k} is now {V1_FIELDS[k]}" for k in old)} (edit.json version 2; '
+                      '"rn edit FILE upgrade" rewrites a version-1 file)')
     if unknown:
         raise RnError(f'{where}: unknown field(s) {sorted(unknown)}')
-    return clip
 
 
 def _mask(raw, where: str, layer: Clip, edit_dir: Path, fps: Fraction, warnings: list[str], timeline: Timeline,
@@ -679,14 +747,14 @@ def _mask(raw, where: str, layer: Clip, edit_dir: Path, fps: Fraction, warnings:
     mode, invert = raw.get('mode', 'luma'), raw.get('invert', False)
     if mode not in ('luma', 'alpha') or not isinstance(invert, bool):
         raise RnError(f'{where}: "mode" luma or alpha, "invert" true or false')
-    placed = {'x', 'y', 'w', 'h', 'blend', 'mask', 'opacity'} & set(raw)
-    if placed:
-        raise RnError(f'{where}: a mask covers the whole frame; {sorted(placed)} do not apply')
+    style = raw.get('style') or {}
+    if 'mask' in raw or not isinstance(style, dict) or set(style) - {'object-fit'}:
+        raise RnError(f'{where}: a mask covers the whole frame; only style["object-fit"] applies (default fill)')
     matte = {k: v for k, v in raw.items() if k not in ('mode', 'invert')}
     matte.setdefault('at', float(layer.timeline_start / fps))
     if not {'duration', 'out', 'until'} & set(matte):
         matte['duration'] = float(layer.frames / fps)
-    matte.setdefault('fit', 'stretch')
+    matte['style'] = {'object-fit': 'fill', **style}
     clip = _clip(matte, where, edit_dir, fps, overlay=True, warnings=warnings, timeline=timeline, size=size)
     clip.w, clip.h = size
     return clip, mode, invert
@@ -768,8 +836,53 @@ def _expand_ranges(clips: list) -> tuple[list[tuple[str, dict]], dict[str, tuple
     return pieces, groups
 
 
+def _upgrade_clip(clip, frame: tuple[float, float] | None) -> None:
+    """In place: a version-1 clip's placement and look into "style"; keys x / y into left / top in px. frame: the
+    output size for main-track keys, whose x / y were fractions of it (None when the output size is not a number)."""
+    if not isinstance(clip, dict) or 'style' in clip:
+        return  # not a clip, or already mixed with version 2: the parser names what is wrong
+    style = {}
+    for old, new in (('x', 'left'), ('y', 'top'), ('w', 'width'), ('h', 'height'), ('opacity', 'opacity')):
+        if old in clip:
+            style[new] = clip.pop(old)
+    if 'fit' in clip:
+        style['object-fit'] = {'stretch': 'fill'}.get(clip['fit'], clip['fit'])
+        del clip['fit']
+    if 'blend' in clip:
+        css = {ff: css for css, ff in CSS_BLENDS.items()} | {'add': 'plus-lighter'}
+        style['mix-blend-mode'] = css.get(clip['blend'], clip['blend'])
+        del clip['blend']
+    if style:
+        clip['style'] = style
+    keys = clip.get('keys')
+    if isinstance(keys, dict):
+        for old, new, side in (('x', 'left', 0), ('y', 'top', 1)):
+            points = keys.pop(old, None)
+            if points is not None:
+                if frame and isinstance(points, list):
+                    points = [[p[0], p[1] * frame[side], *p[2:]] if isinstance(p, list) and len(p) > 1
+                              and isinstance(p[1], (int, float)) else p for p in points]
+                keys[new] = points
+    _upgrade_clip(clip.get('mask'), None)
+
+
+def upgrade(raw: dict) -> dict:
+    """A version-1 edit (no "version") in version-2 terms, as a new dict: placement and look move into "style" under CSS
+    names, and keys x / y become left / top in px (main-track x / y were fractions of the frame)."""
+    raw = json.loads(json.dumps(raw))
+    output = raw.get('output') if isinstance(raw.get('output'), dict) else {}
+    size = (output.get('width'), output.get('height'))
+    frame = size if all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in size) else None
+    tracks = raw.get('tracks') if isinstance(raw.get('tracks'), list) else []
+    for t, track in enumerate(tracks):
+        for clip in (track.get('clips') if isinstance(track, dict) and isinstance(track.get('clips'), list) else []):
+            _upgrade_clip(clip, frame if t == 0 else None)
+    return {'version': 2, **{k: v for k, v in raw.items() if k != 'version'}}
+
+
 def load(path: str | Path, *, placeholders: bool = False, _stack: tuple[Path, ...] = ()) -> Edit:
-    """Parses and lays out an EDL. placeholders: a missing source becomes a card for its time span instead of an error."""
+    """Parses and lays out an EDL. placeholders: a missing source becomes a card for its time span instead of an error.
+    A version-1 edit (no "version") is upgraded on the way in."""
     path = Path(path).resolve()
     stack = (*_stack, path)
     try:
@@ -778,6 +891,13 @@ def load(path: str | Path, *, placeholders: bool = False, _stack: tuple[Path, ..
         raise RnError(f'no such file: {path}') from None
     except json.JSONDecodeError as error:
         raise RnError(f'{path}: invalid JSON: {error}') from None
+    if not isinstance(raw, dict):
+        raise RnError(f'{path}: expected a JSON object')
+    version = raw.get('version', 1)
+    if version == 1:
+        raw = upgrade(raw)
+    elif version != 2:
+        raise RnError('version: 2 (or 1 / absent for the old field names, upgraded on load)')
     edit_dir = path.parent
     output = raw.get('output') or {}
     width = int(_num(output.get('width'), 'output.width', positive=True))

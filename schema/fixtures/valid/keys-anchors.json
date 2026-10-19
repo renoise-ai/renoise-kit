@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "output": {"width": 1920, "height": 1080, "fps": "30000/1001"},
+  "markers": {"drop": 2.5},
+  "tracks": [
+    {"clips": [
+      {"id": "c1", "color": "#102030", "duration": 2, "keys": {"scale": [[0, 1], [2, 1.1, "out"]], "left": [[0, 0], [2, -48]]}},
+      {"id": "c2", "color": "#304050", "duration": 2, "transition": {"type": "fade", "duration": 0.4}}
+    ]},
+    {"clips": [
+      {"id": "title", "color": "#ffffff", "at": {"clip": "c2", "offset": 0.2}, "until": {"clip_end": "c2"},
+       "style": {"left": 160, "top": 880, "width": 1600, "height": 120},
+       "keys": {"opacity": [[0, 0], [0.3, 1]], "top": [[0, 920], [0.3, 880, "out3"]]}},
+      {"color": "#ff0000", "at": {"marker": "drop"}, "duration": 0.5, "style": {"width": 100, "height": 100, "scale": 1.2}}
+    ]}
+  ],
+  "mix": {"duck_db": 8, "cut_fade": 0.01}
+}

@@ -215,20 +215,21 @@ def _parser() -> argparse.ArgumentParser:
                    'ducking, LUFS target and encoded true peak <= limit. Output: H.264 High yuv420p bt709, moov first.\n'
                    'The EDL handles the mechanical assembly; render anything creative with your own code (rn capture for\n'
                    'HTML/canvas, numpy + rn.fx, Manim, Blender) to a PNG sequence or alpha clip and place it in the EDL.\n\n'
-                   'edit.json (paths relative to it; times in seconds; {"frame": n} also works for in/out;\n'
-                   '# marks notes below, not JSON; a "note" field is allowed on any clip):\n'
+                   'edit.json version 2 (paths relative to it; times in seconds; # marks notes below, not JSON; a "note"\n'
+                   'field is allowed anywhere; schema: schema/edit.schema.json in the renoise-kit repository):\n'
                    '{\n'
+                   '  "version": 2,\n'
                    '  "output": {"width": 1080, "height": 1920, "fps": 30, "background": "#000000", "crf": 18},\n'
                    '  "tracks": [\n'
                    '    {"clips": [                                  # track 0 = main track, clips back to back\n'
-                   '      {"src": "s1.mp4", "in": 0.4, "out": 3.2, "fit": "cover"},\n'
+                   '      {"src": "s1.mp4", "in": 0.4, "out": 3.2},\n'
                    '      {"src": "s2.mp4", "in": {"frame": 6}, "duration": 2.5, "speed": 0.5, "audio": false,\n'
                    '       "transition": {"type": "fade", "duration": 0.4}},   # any xfade name: dissolve, wipeleft, slideup...\n'
-                   '      {"image": "card.png", "duration": 1.5, "fit": "contain"},\n'
+                   '      {"image": "card.png", "duration": 1.5, "style": {"object-fit": "contain"}},\n'
                    '      {"color": "#000000", "duration": 0.5}]},\n'
-                   '    {"clips": [                                  # later tracks = overlays, positioned in time and space\n'
-                   '      {"image": "title.png", "at": 0.5, "duration": 2, "x": 90, "y": 1400, "w": 900,\n'
-                   '       "opacity": 1, "fade_in": 0.2, "fade_out": 0.2}]}],\n'
+                   '    {"clips": [                                  # later tracks = overlays, placed in time and space\n'
+                   '      {"image": "title.png", "at": 0.5, "duration": 2, "fade_in": 0.2, "fade_out": 0.2,\n'
+                   '       "style": {"left": 90, "top": "73%", "width": 900, "opacity": 0.9, "mix-blend-mode": "screen"}}]},\n'
                    '    {"clips": [{"frames": "title/%05d.png", "fps": 30, "at": {"clip": 1, "offset": 0.2},\n'
                    '                "until": {"clip_end": 1}, "keys": {"scale": [[0, 0.9], [0.3, 1, "out3"]], "opacity": [[0, 0], [0.2, 1]]}}]}],\n'
                    '  "markers": {"drop": 4.5},                                   # named times for anchors\n'
@@ -237,21 +238,27 @@ def _parser() -> argparse.ArgumentParser:
                    '  "subtitles": {"file": "captions.ass"},\n'
                    '  "mix": {"lufs": -14, "true_peak": -1.0, "duck_db": 10}            # duck music under voice\n'
                    '}\n'
+                   '"style" uses CSS names: overlays left/top/width/height (px: 90 or "90px"; "50%" of the frame), opacity,\n'
+                   'scale, rotate (degrees: 5 or "5deg"), object-fit (cover | contain | fill), mix-blend-mode (normal multiply\n'
+                   'screen overlay darken lighten color-dodge color-burn hard-light soft-light difference exclusion\n'
+                   'plus-lighter); the main track fills the frame: object-fit, left/top, scale, rotate.\n'
                    'Positions: in/out take seconds, {"frame": n} or {"shot": n, "offset": s} (shots from rn cuts).\n'
                    'Overlay "at"/"until" and audio "at" take seconds or an anchor + "offset": {"clip": i or "id"},\n'
                    '{"clip_end": i or "id"} (main-track clip as laid out, or an earlier overlay by id), {"marker": name},\n'
                    '{"frame": n}, {"beat": n, "listen": f.json}, {"word": n, "listen": f.json, "edge": "start"|"end"}.\n'
-                   'Keys [t, value, ease?] (t from the clip start; eases linear in out inout in3 out3 inout3 hold):\n'
-                   'main track scale/x/y/rotate (x, y as fractions of the frame), speed (a ramp; drops the clip\'s sound),\n'
-                   'gain_db; overlays scale/x/y/rotate/opacity/speed (x, y in px, about the layer centre); audio gain_db.\n'
-                   'Keep main-track scale >= 1: edges smear.\n'
+                   'Keys [t, value, ease?] (t from the clip start; eases linear in out inout in3 out3 inout3 hold), the\n'
+                   'moving form of a style value: main track scale/left/top/rotate (left, top: px the frame moves), speed\n'
+                   '(a ramp; drops the clip\'s sound), gain_db; overlays scale/left/top/rotate/opacity/speed (scale and rotate\n'
+                   'about the layer centre); audio gain_db. Keep main-track scale >= 1: edges smear.\n'
                    'Any clip or audio item: "id" (anchors, rn edit), "meta" (anything, kept as is), "vf" / "af" (one raw\n'
                    'ffmpeg filter chain, e.g. "eq=saturation=1.2,unsharp"; af on main-track clips and audio).\n'
                    'Main track: "ranges": [[in, out], ...] plays spans of one source back to back; "src": "part.json"\n'
-                   'plays another EDL. Overlays: "blend": screen|multiply|add|overlay|... ; "mask": {"frames"|"image"|"src":\n'
-                   '..., "mode": "luma"|"alpha", "invert": bool} (full frame, e.g. from rn matte). Overlays and audio:\n'
-                   '"pivot": s puts that point of the source (a hit, a downbeat) on "at". "mix": {"cut_fade": 0.01} fades\n'
-                   'every hard cut\'s own sound. "accept": [{"check", "at", "note"}] waives qa warnings judged intended.')
+                   'plays another edit. Overlays: "mask": {"frames"|"image"|"src": ..., "mode": "luma"|"alpha", "invert": bool}\n'
+                   '(full frame, e.g. from rn matte). Overlays and audio: "pivot": s puts that point of the source (a hit, a\n'
+                   'downbeat) on "at". "mix": {"cut_fade": 0.01} fades every hard cut\'s own sound. "accept": [{"check", "at",\n'
+                   '"note"}] waives qa warnings judged intended. A file without "version" uses the version-1 names (x, y, w,\n'
+                   'h, fit, blend; main-track keys x/y as fractions of the frame) and is upgraded on load; rn edit FILE\n'
+                   'upgrade rewrites it.')
     assemble.add_argument('edl')
     assemble.add_argument('-o', '--out', default='out.mp4')
     assemble.add_argument('--dry-run', action='store_true', help='validate and print the timeline without rendering')
@@ -278,6 +285,7 @@ def _parser() -> argparse.ArgumentParser:
     edit.add_argument('edl')
     ops = edit.add_subparsers(dest='op', required=True, metavar='op')
     ops.add_parser('ids', help='give every clip and audio item without an id one (c1.. main, o1.. overlays, a1.. audio)')
+    ops.add_parser('upgrade', help='rewrite a version-1 edit.json under version-2 names (style, keys left/top)')
     op_set = ops.add_parser('set', help='set fields: key=value (JSON when it parses), dotted keys reach into objects')
     op_set.add_argument('ref')
     op_set.add_argument('assignments', nargs='*', metavar='key=value')
@@ -443,6 +451,8 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
         path = Path(args.edl)
         if args.op == 'ids':
             result = editops.ids_op(path)
+        elif args.op == 'upgrade':
+            result = editops.upgrade_op(path)
         elif args.op == 'set':
             result = editops.set_op(path, args.ref, args.assignments, args.unset)
         elif args.op == 'split':

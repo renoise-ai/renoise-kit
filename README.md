@@ -79,16 +79,17 @@ window.renderFrame = i => {
 
 ```json
 {
+  "version": 2,
   "output": {"width": 1080, "height": 1920, "fps": 30},
   "tracks": [
     {"clips": [
       {"id": "open", "src": "shots/s1.mp4", "in": 0.4, "out": 3.2},
       {"id": "hero", "src": "shots/s2.mp4", "ranges": [[0, 1.5], [2.5, 4]],
        "transition": {"type": "fade", "duration": 0.3}},
-      {"id": "end", "image": "card.png", "duration": 1.5, "fit": "contain"}
+      {"id": "end", "image": "card.png", "duration": 1.5, "style": {"object-fit": "contain"}}
     ]},
     {"clips": [
-      {"id": "title", "frames": "title/%05d.png", "fps": 30, "y": 1500,
+      {"id": "title", "frames": "title/%05d.png", "fps": 30, "style": {"top": 1500},
        "at": {"clip": "hero", "offset": 0.2}, "until": {"clip_end": "hero"}}
     ]}
   ],
@@ -174,7 +175,7 @@ rn edit edit.json delete end --lift
 
 | Command | What it gives |
 |---|---|
-| `rn edit EDL ids\|set\|split\|delete\|insert\|move` | Changes an EDL by clip id. Each step is checked against the whole timeline before the file is written |
+| `rn edit EDL ids\|set\|split\|delete\|insert\|move\|upgrade` | Changes an EDL by clip id. Each step is checked against the whole timeline before the file is written |
 | `rn assemble EDL -o OUT [--preview] [--range A-B] [--placeholders]` | Renders the EDL frame-exactly. `--placeholders` turns missing shots into labelled cards |
 
 **Check and deliver**
@@ -188,8 +189,14 @@ rn edit edit.json delete end --lift
 
 ## The EDL in one screen
 
+- **Version.** `"version": 2`. A file without it uses the version-1 names (`x`, `y`, `w`, `h`, `fit`, `blend`) and is
+  upgraded on load; `rn edit FILE upgrade` rewrites it.
 - **Tracks.** `tracks[0]` is the main track: its clips play back to back. Later tracks are overlays, placed with `at`
-  in time and with `x / y / w / h` in space.
+  in time and with `style` in space.
+- **Style.** Placement and look under CSS names and units: `left`, `top`, `width`, `height` (px, `"90px"`, or `"50%"`
+  of the frame), `opacity`, `scale`, `rotate` (degrees), `object-fit` (`cover`, `contain`, `fill`) and
+  `mix-blend-mode` (the CSS modes). The main track fills the frame, so it takes only `object-fit`, `left`, `top`,
+  `scale` and `rotate`.
 - **Audio items.** Items in `audio` are placed with `at`. `role` is `music`, `voice` or `sfx`; music ducks under voice
   when `mix.duck_db` is set.
 - **One time grid.** `output.fps` is the only clock. A clip of N seconds is exactly `round(N × fps)` frames.
@@ -203,14 +210,17 @@ rn edit edit.json delete end --lift
   - `{"beat": n, "listen": file}` and `{"word": n, "listen": file}`
 
   `pivot` places a point inside the source on the anchor instead of the source's start.
-- **Keys.** Written as `[t, value, ease]`. Overlays animate `scale`, `x`, `y`, `rotate`, `opacity` and `speed`; the
-  main track `scale`, `x`, `y`, `rotate`, `speed` and `gain_db`; audio items `gain_db`.
-- **Compositing.** `blend` takes `screen`, `multiply`, `add` and other blend modes. `mask` takes a full-frame matte, as
-  luma or alpha, optionally inverted. `vf` and `af` insert one raw ffmpeg filter chain.
+- **Keys.** Written as `[t, value, ease]`: the moving form of a style value. Overlays animate `scale`, `left`, `top`,
+  `rotate`, `opacity` and `speed`; the main track `scale`, `left`, `top`, `rotate`, `speed` and `gain_db`; audio items
+  `gain_db`.
+- **Compositing.** `mask` takes a full-frame matte, as luma or alpha, optionally inverted. `vf` and `af` insert one raw
+  ffmpeg filter chain.
 - **Bookkeeping.** `id` and `meta` go on anything; `meta` is kept as given. `accept` waives qa warnings judged
   intended.
 
-The full schema is in `rn assemble --help` and [SPEC.md](SPEC.md) §4.
+The full schema is [schema/edit.schema.json](schema/edit.schema.json), with `rn assemble --help` and [SPEC.md](SPEC.md)
+§4. Fields it marks `x-rn-only` (raw filters, masks, image sequences, nested edits, beat and word anchors, delivery
+loudness, subtitles) are rn's own; another program that renders the rest of the format previews what rn delivers.
 
 ## Conventions
 

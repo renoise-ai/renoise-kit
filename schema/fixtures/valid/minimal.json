@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "output": {"width": 1080, "height": 1920, "fps": 30},
+  "tracks": [
+    {"clips": [
+      {"color": "#203040", "duration": 1.5},
+      {"color": "#405060", "duration": 1}
+    ]}
+  ]
+}
