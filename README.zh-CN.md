@@ -70,16 +70,17 @@ window.renderFrame = i => {
 
 ```json
 {
+  "version": 2,
   "output": {"width": 1080, "height": 1920, "fps": 30},
   "tracks": [
     {"clips": [
       {"id": "open", "src": "shots/s1.mp4", "in": 0.4, "out": 3.2},
       {"id": "hero", "src": "shots/s2.mp4", "ranges": [[0, 1.5], [2.5, 4]],
        "transition": {"type": "fade", "duration": 0.3}},
-      {"id": "end", "image": "card.png", "duration": 1.5, "fit": "contain"}
+      {"id": "end", "image": "card.png", "duration": 1.5, "style": {"object-fit": "contain"}}
     ]},
     {"clips": [
-      {"id": "title", "frames": "title/%05d.png", "fps": 30, "y": 1500,
+      {"id": "title", "frames": "title/%05d.png", "fps": 30, "style": {"top": 1500},
        "at": {"clip": "hero", "offset": 0.2}, "until": {"clip_end": "hero"}}
     ]}
   ],
@@ -161,7 +162,7 @@ rn edit edit.json delete end --lift
 
 | 命令 | 作用 |
 |---|---|
-| `rn edit EDL ids\|set\|split\|delete\|insert\|move` | 按 clip id 修改 EDL，每一步都先校验整条时间线，通过了才写入文件 |
+| `rn edit EDL ids\|set\|split\|delete\|insert\|move\|upgrade` | 按 clip id 修改 EDL，每一步都先校验整条时间线，通过了才写入文件 |
 | `rn assemble EDL -o OUT [--preview] [--range A-B] [--placeholders]` | 帧精确地渲染 EDL；`--placeholders` 会把还没生成的镜头渲染成带说明的卡片 |
 
 **验与交付**
@@ -175,7 +176,9 @@ rn edit edit.json delete end --lift
 
 ## 一屏看懂 EDL
 
-- **轨道**：`tracks[0]` 是主轨，片段首尾相接地播放。其余轨道都是叠加层，用 `at` 定时间，用 `x / y / w / h` 定画面位置。
+- **版本**：`"version": 2`。没有写版本的文件按第 1 版的字段名（`x`、`y`、`w`、`h`、`fit`、`blend`）读取，加载时自动升级；`rn edit FILE upgrade` 会把文件本身改写成第 2 版。
+- **轨道**：`tracks[0]` 是主轨，片段首尾相接地播放。其余轨道都是叠加层，用 `at` 定时间，用 `style` 定画面位置。
+- **样式**：位置和外观都用 CSS 的属性名和单位：`left`、`top`、`width`、`height`（像素，可以写 `"90px"`，也可以写画面的百分比 `"50%"`）、`opacity`、`scale`、`rotate`（度）、`object-fit`（`cover`、`contain`、`fill`）、`mix-blend-mode`（CSS 的混合模式）。主轨铺满画面，所以只能用 `object-fit`、`left`、`top`、`scale`、`rotate`。
 - **音频项**：`audio` 里的每一项用 `at` 定位。`role` 可以是 `music`、`voice` 或 `sfx`；设置了 `mix.duck_db` 时，配乐会在人声处自动压低。
 - **唯一时间网格**：`output.fps` 是唯一的时钟。一个 N 秒的片段严格等于 `round(N × fps)` 帧。
 - **素材来源**：每个片段的来源是以下之一：`src`（视频，或者另一个 `.json` EDL，即嵌套）、`frames`（编号 PNG 序列，保留透明通道）、`image`、`color`。
@@ -186,11 +189,11 @@ rn edit edit.json delete end --lift
   - `{"beat": n, "listen": 文件}`、`{"word": n, "listen": 文件}`
 
   `pivot` 让素材内部的某一点（而不是素材开头）对齐到锚点。
-- **关键帧**：写作 `[t, 值, 缓动]`。叠加层可以动 `scale`、`x`、`y`、`rotate`、`opacity`、`speed`；主轨可以动 `scale`、`x`、`y`、`rotate`、`speed`、`gain_db`；音频项可以动 `gain_db`。
-- **合成**：`blend` 可选 `screen`、`multiply`、`add` 等混合模式。`mask` 接收一张全画幅遮罩，可按亮度或 alpha 取用，也可以反相。`vf` 和 `af` 可以插入一条原始 ffmpeg 滤镜链。
+- **关键帧**：写作 `[t, 值, 缓动]`，是样式值随时间变化的写法。叠加层可以动 `scale`、`left`、`top`、`rotate`、`opacity`、`speed`；主轨可以动 `scale`、`left`、`top`、`rotate`、`speed`、`gain_db`；音频项可以动 `gain_db`。
+- **合成**：`mask` 接收一张全画幅遮罩，可按亮度或 alpha 取用，也可以反相。`vf` 和 `af` 可以插入一条原始 ffmpeg 滤镜链。
 - **标记与豁免**：任何元素都可以带 `id` 和 `meta`，`meta` 原样保留不做解释。`accept` 用来豁免判断为有意为之的 qa 警告。
 
-完整字段见 `rn assemble --help` 和 [SPEC.md](SPEC.md) §4。
+完整字段见 [schema/edit.schema.json](schema/edit.schema.json)，以及 `rn assemble --help` 和 [SPEC.md](SPEC.md) §4。schema 里标了 `x-rn-only` 的字段（原始滤镜、遮罩、图像序列、嵌套、拍点和字词锚点、交付响度、字幕）是 rn 自己的扩展；其他程序只要渲染其余部分，预览出来的就是 rn 交付的结果。
 
 ## 约定
 

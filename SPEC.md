@@ -2,6 +2,9 @@
 
 > 状态：v0.5.1（2026-10-17）：§3.1 的通用原语全部实现。v0.2.0–v0.3.4 在 Renoise 主仓库 `packages/media-sandbox/kit` 随沙箱模板发布；v0.4.0 起拆为独立仓库与 PyPI 包 `renoise-kit`（命令仍为 `rn`），沙箱模板固定一个版本安装，集成见主仓库 `spec/mcp/03-media-kit.md`。v0.4.0 新增：`rn compare`、`rn assemble --preview`、`rn qa` 的 dead_air / level_jumps / fixed_frame_rate 检查、成片写 `fixed_frame_rate_flag=1`、本地安装（按功能的 extras、人脸模型首次使用时下载并校验、缺 libass 时提前报错）。
 >
+> 未发布（分支 `feat/edit-json-v2`）：edit.json 第 2 版：位置与外观进 `style`，用 CSS 属性名和单位；keys 的 `x` / `y` 改为 `left` / `top`（像素）；
+> 第 1 版加载时自动升级，`rn edit FILE upgrade` 改写文件；共享 schema `schema/edit.schema.json` 与一致性用例 `schema/fixtures/`，见 §4.1。
+>
 > v0.5.1（2026-10-17）：Windows 支持：文本一律 UTF-8、拼接列表与长滤镜图可移植、没有 fontconfig 时直接读系统字体目录、字幕在 Windows 上用微软雅黑；CI 加 Windows。
 >
 > v0.5.0：`id` / `meta`、`rn edit`、slot 增量缓存、嵌套 EDL、缺失素材占位（批 1）；`ranges`、变速曲线、`pivot`、`--range`、`mix.cut_fade`（批 2）；`blend`、`mask`、`vf` / `af`、`keys.gain_db`（批 3）；`rn signal`、`rn align`、`rn matte`、`rn text`、`rn export`、qa 的 `clicks` 与 `accept`、`finish --height`（批 4）。numpy 成为核心依赖。
@@ -115,21 +118,23 @@ headless 的 opencv-python，会和 faces 的 headless 版冲突，Linux 上还�
 
 ## 4. EDL（`edit.json`）
 
-`assemble`、`qa --edl`、后续 `export` 共用。
+`assemble`、`qa --edl`、`export`、`edit` 共用。以下按第 2 版书写；第 1 版的字段名见 §4.1。
 
 ```json
 {
+  "version": 2,
   "output": { "width": 1080, "height": 1920, "fps": 30 },
   "tracks": [
     { "clips": [
       { "src": "s1.mp4", "in": 0.4, "out": 3.2 },
       { "src": "s2.mp4", "in": { "frame": 6 }, "duration": 2.5, "speed": 0.5,
         "transition": { "type": "fade", "duration": 0.4 } },
-      { "image": "card.png", "duration": 1.5, "fit": "contain" },
+      { "image": "card.png", "duration": 1.5, "style": { "object-fit": "contain" } },
       { "color": "#000000", "duration": 0.5 }
     ]},
     { "clips": [
-      { "image": "title.png", "at": 0.5, "duration": 2, "x": 90, "y": 1400, "w": 900, "fade_in": 0.2, "fade_out": 0.2 }
+      { "image": "title.png", "at": 0.5, "duration": 2, "style": { "left": 90, "top": 1400, "width": 900 },
+        "fade_in": 0.2, "fade_out": 0.2 }
     ]}
   ],
   "audio": [
@@ -145,8 +150,8 @@ headless 的 opencv-python，会和 faces 的 headless 版冲突，Linux 上还�
 
 - `output.fps` 是唯一时间网格。每个片段的上屏帧数 = `round((out - in) / speed × fps)`（或 `round(duration × fps)`），渲染后严格等于这个数。`out` 超出源末尾时截到末尾并 warning；`duration` 要求的长度超出源时用最后一帧补齐并 warning。
 - **第 1 条轨道是主轨**：片段首尾相接，不留空。`transition` 写在后一个片段上，表示与前一个片段交叠的转场（xfade 名称，如 `fade`、`dissolve`、`wipeleft`、`slideup`、`circleopen`），主轨总长减去交叠部分。
-- **其余轨道是叠加层**：片段用 `at` 定位在时间线上，用 `x / y / w / h` 定位在画面上（只给 `w` 或 `h` 时按比例缩放），可选 `opacity`、`fade_in`、`fade_out`。PNG / ProRes 4444 / VP9·VP8（WebM `alpha_mode=1`，自动改用 libvpx 解码）的透明通道保留。纯色叠加层缺省的宽或高取画面尺寸。叠加层不带声音：要声音就放进 `audio[]` 并用 `at` 对齐。
-- `fit`：`cover`（默认，裁切铺满）、`contain`（留边，用 `output.background`）、`stretch`。
+- **其余轨道是叠加层**：片段用 `at` 定位在时间线上，用 `style` 的 `left / top / width / height` 定位在画面上（只给 `width` 或 `height` 时按比例缩放），可选 `opacity`、`fade_in`、`fade_out`。PNG / ProRes 4444 / VP9·VP8（WebM `alpha_mode=1`，自动改用 libvpx 解码）的透明通道保留。纯色叠加层缺省的宽或高取画面尺寸。叠加层不带声音：要声音就放进 `audio[]` 并用 `at` 对齐。
+- `style["object-fit"]`：`cover`（默认，裁切铺满）、`contain`（留边，用 `output.background`）、`fill`（拉伸）。
 - 片段自带的音频默认保留（`"audio": false` 关闭，`"gain_db"` 调整），并跟随转场做交叉淡化。
 - `audio[]`：外部音频，`at` / `in` / `out` / `gain_db` / `fade_in` / `fade_out`；`role` 为 `music`、`voice`、`sfx`。设置 `mix.duck_db` 时，`music` 在 `voice` 出现的地方自动压低。
 - `subtitles`：`.ass` 或 `.srt`，最后一步烧录；可选 `force_style`。
@@ -162,8 +167,8 @@ v0.3.0 新增：
   `{"frame": n}`、`{"beat": n, "listen": "music.json"}`、`{"word": n, "listen": "vo.json", "edge": "start"|"end"}`。beat / word 的时间相对被分析的文件，
   音频不是从 0 开始放时用 `offset` 补上。`until` 与 `duration` / `out` 互斥。
 - **关键帧** `"keys": {"属性": [[t, 值], [t, 值, "缓动"], ...]}`：t 为相对片段首帧的秒数，首个关键帧之前保持首值、末个之后保持末值，缓动写在终点关键帧上。
-  主轨：`scale`、`x`、`y`（画面宽高的比例）、`rotate`（度），以画面中心为原点；用 ffmpeg `perspective` 逐帧变换（亚像素、cubic 插值），
-  画面外采样会复制边缘像素，所以主轨 `scale` 保持 ≥ 1。叠加层：`scale`、`rotate`（绕图层中心）、`x`、`y`（像素，图层左上角，覆盖静态 x/y）、
+  主轨：`scale`、`left`、`top`（画面移动的像素）、`rotate`（度），以画面中心为原点；用 ffmpeg `perspective` 逐帧变换（亚像素、cubic 插值），
+  画面外采样会复制边缘像素，所以主轨 `scale` 保持 ≥ 1。叠加层：`scale`、`rotate`（绕图层中心）、`left`、`top`（像素，图层左上角，覆盖静态值）、
   `opacity`（与静态 opacity、淡入淡出相乘）；移动的图层先放到带透明边距的画布上再变换，避免边缘复制。
 
 v0.5.0 新增：
@@ -176,7 +181,8 @@ v0.5.0 新增：
 - **变速曲线** `keys.speed`：输出时间为横轴，值 0.1–8；源时间为其积分，渲染时用反函数的分段线性（≤ 64 段）映射；`out` 给定时帧数由
   积分求得。去掉片段自带声音（atempo 不能随时间变）并给 warning。
 - **`pivot`**（叠加层、音频项）：源内某一秒落在 `at` 上（静帧 / 纯色为片段内秒数）；落到 0 之前的部分被裁掉。不与 `until` 或变速曲线同用。
-- **`blend`**（叠加层）：ffmpeg blend 模式（`add` = addition），在 RGB 里计算，进出都显式按 BT.709 limited 转换；`normal` 与普通叠加逐像素一致。
+- **`style["mix-blend-mode"]`**（叠加层）：CSS 混合模式，映射到 ffmpeg blend（`plus-lighter` = addition），在 RGB 里计算，进出都显式按
+  BT.709 limited 转换；`normal` 与普通叠加逐像素一致。ffmpeg 独有的 linearlight / vividlight / pinlight / average / negation / phoenix 也可用，属于 rn 扩展。
 - **`mask`**（叠加层）：任意片段源作全画幅遮罩（拉伸到画面），`mode` luma（白 = 保留）或 alpha，`invert` 可选；时间默认与叠加层相同，
   也可写自己的 `at` / `in` / `duration`；遮罩没有帧的时间里叠加层不被遮。
 - **`vf` / `af`**：一条原始 ffmpeg 滤镜链（不允许 `;` `[` `]`，接不到图的其他部分）。主轨在适配尺寸后、帧数定格前；叠加层在缩放后；
@@ -185,6 +191,47 @@ v0.5.0 新增：
 - **`mix.cut_fade`**：主轨硬切处，两侧片段自带声音各淡出 / 淡入这么多秒（≤ 0.25；有转场的剪点已有交叉淡化，不再加）。
 - **`accept`**（顶层）：`[{"check": "dead_air", "at": 12.5, "note": "..."}]`，`at` 落在某条发现的区间内即豁免该条，无 `at` 豁免整项 WARN；
   FAIL 不能豁免。`rn qa --accept CHECK[@T]` 同义。
+
+### 4.1 第 2 版与共享 schema
+
+**为什么**：edit.json 要成为 agent（sandbox 里用 rn）和人（Web 时间线编辑器）共同编辑的同一份剪辑文档，两边各自解析、各自渲染。
+第 1 版自造了一套小 CSS（`x / y / w / h`、`fit`、`blend`，主轨与叠加层单位还不一样），模型要先读 `--help` 才会写；第 2 版把位置与外观
+改用 CSS 的属性名和单位，模型和 Web 端都能直接沿用已有的认知。剪辑层面的东西（波纹主轨、锚点、`pivot`、keys、`ranges`）CSS 没有，保留 rn 的写法。
+
+**改动**：
+
+| 第 1 版 | 第 2 版 |
+|---|---|
+| 无 `version` | `"version": 2`（必填） |
+| `x` / `y` / `w` / `h`（叠加层，像素） | `style.left` / `top` / `width` / `height`：像素数字、`"90px"`，或画面的百分比 `"50%"` |
+| `opacity` | `style.opacity` |
+| `fit`: cover / contain / stretch | `style["object-fit"]`: cover / contain / fill |
+| `blend`（ffmpeg 名，`add`） | `style["mix-blend-mode"]`（CSS 名，`plus-lighter`；ffmpeg 独有的几种保留为 rn 扩展） |
+| keys `x` / `y`（主轨：画面比例；叠加层：像素） | keys `left` / `top`，一律像素 |
+| — | `style.scale` / `style.rotate`（`5` 或 `"5deg"`）：静态值，等于整段保持的 key；与同名 key 同时给出报错 |
+
+主轨铺满画面，`style` 只接受 `object-fit`、`left`、`top`、`scale`、`rotate`。
+
+**兼容**：没有 `version`（或为 1）的文件在加载时升级为第 2 版（`edl.upgrade`），渲染结果不变；文件本身不改，`rn edit FILE upgrade` 才改写。
+在第 2 版文件里写了第 1 版字段时，报错直接给出新名字（`x is now style.left`）。
+
+**共享 schema**：`schema/edit.schema.json`（JSON Schema 2020-12）是给其他宿主（Web 时间线编辑器等）的契约。标了 `"x-rn-only": true` 的是
+rn 扩展：`vf` / `af`、`mask`、图像序列 `frames`、嵌套 `.json`、`{"shot"}` 位置、`beat` / `word` 锚点、`subtitles`、`mix.lufs` / `true_peak`、
+`output.crf` / `preset`、ffmpeg 独有的混合模式与转场（可移植的转场只有 fade / dissolve / fadeblack / fadewhite）。其余部分是**可移植核心**：
+另一个宿主只要渲染这部分，预览就等于 rn 的成片。进入共享文档的 rn 扩展效果，应先由 rn 烘焙成素材。
+
+schema 表达不了的跨字段规则由 rn 检查：锚点只能指向之前出现的 id、id 全局唯一、转场不能长于相邻片段、`ranges` 与 `in` / `out` 互斥等。
+
+**一致性用例**：`schema/fixtures/valid/*.json` 必须同时通过 schema 与 rn；`invalid/*.json` 每个只有一处错，必须同时被两者拒绝
+（`tests/test_edit_v2.py`）。其他宿主引入同一批用例，各自断言。用例只用纯色片段，不依赖媒体文件。
+
+**待与 Web 时间线（youmeng PR 1030）对齐**：
+
+1. 轨道顺序：rn 是 `tracks[0]` 主轨在最下、越往后越靠上；v3 TimelineDocument 是数组第一个在最上。
+2. 音频：rn 是顶层 `audio[]`（可重叠，带 `role`）；v3 是 absolute 音轨。
+3. 轨道标记：v3 有 `muted` / `locked`，rn 还没有；`locked` 是人与 agent 协作的边界，`rn edit` 应拒绝改锁定轨道。
+4. 素材引用：rn 用相对路径；Web 端用 material id。需要约定一种引用写法（例如 `material:<id>`），由宿主解析成文件。
+5. 存储：时间线作为项目下独立的、带版本的对象，而不是画布快照的一部分。
 
 ## 5. 输出与混音标准（`assemble` 保证，`qa` 检查）
 

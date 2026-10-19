@@ -23,7 +23,7 @@ all = ["renoise-kit[listen,transcribe,faces,capture,captions,fonts,matte,export]
 # uv run pytest. faster-whisper and rembg are left out (large models); their tests skip, as OCR does without tesseract.
 [dependency-groups]
 dev = ["pytest", "librosa", "matplotlib", "opencv-python-headless>=4.8", "pysubs2", "playwright", "fonttools", "opentimelineio",
-       "otio-fcpx-xml-adapter", "otio-fcp-adapter"]
+       "otio-fcpx-xml-adapter", "otio-fcp-adapter", "jsonschema"]
 
 [project.urls]
 Homepage = "https://renoise.ai"

@@ -2116,6 +2116,7 @@ transcribe = [
 [package.dev-dependencies]
 dev = [
     { name = "fonttools" },
+    { name = "jsonschema" },
     { name = "librosa", version = "0.11.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "librosa", version = "1.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "matplotlib" },
@@ -2152,6 +2153,7 @@ provides-extras = ["listen", "transcribe", "faces", "capture", "captions", "font
 [package.metadata.requires-dev]
 dev = [
     { name = "fonttools" },
+    { name = "jsonschema" },
     { name = "librosa" },
     { name = "matplotlib" },
     { name = "opencv-python-headless", specifier = ">=4.8" },

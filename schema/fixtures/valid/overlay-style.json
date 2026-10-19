@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "output": {"width": 1080, "height": 1920, "fps": 30, "background": "#000000"},
+  "tracks": [
+    {"clips": [{"color": "#203040", "duration": 3, "style": {"object-fit": "contain"}}]},
+    {"clips": [
+      {"color": "#ffffff", "at": 0.5, "duration": 2, "fade_in": 0.2, "fade_out": 0.2,
+       "style": {"left": "10%", "top": 1400, "width": "80%", "height": "200px", "opacity": 0.8, "rotate": "-3deg",
+                 "mix-blend-mode": "screen"}}
+    ]}
+  ]
+}
