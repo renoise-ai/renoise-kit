@@ -435,7 +435,8 @@ def cache_dir(edit_dir: Path) -> Path:
     return Path(os.environ.get('RN_CACHE') or edit_dir / '.rn-cache')
 
 
-_FILTER_FILE = re.compile(r"(?<=[=:])(file|filename)=([^:,']+)")
+# file=look.cube or file='C\:/dir/look.cube' (quoted at graph level so a Windows drive colon survives both parsers)
+_FILTER_FILE = re.compile(r"(?<=[=:])(file|filename)=(?:'([^']*)'|([^:,']+))")
 
 
 def _filters(raw: dict, key: str, where: str, edit_dir: Path | None = None) -> str | None:
@@ -452,17 +453,20 @@ def _filters(raw: dict, key: str, where: str, edit_dir: Path | None = None) -> s
         return value
 
     def absolute(match: re.Match) -> str:
-        path = Path(match.group(2))
+        path = Path((match.group(2) if match.group(2) is not None else match.group(3)).replace('\\:', ':'))
         if not path.is_absolute() and (edit_dir / path).exists():
             path = (edit_dir / path).resolve()
-        # Option-level escaping: a Windows drive colon would end the option value.
-        return f'{match.group(1)}=' + path.as_posix().replace(':', '\\:') if path.is_absolute() else match.group(0)
+        if not path.is_absolute():
+            return match.group(0)
+        # Two parsers read it: the graph keeps a single-quoted span as is, then the filter's option parser turns \: back
+        # into the colon of a Windows drive (C:/...), which would otherwise end the option value.
+        return f"{match.group(1)}='" + path.as_posix().replace(':', '\\:') + "'"
     return _FILTER_FILE.sub(absolute, value)
 
 
 def filter_files(chain: str | None) -> list[Path]:
     """Existing files a raw filter chain reads (lut3d=file=...), so a changed LUT renders the slot again."""
-    found = [Path(m.group(2).replace('\\:', ':')) for m in _FILTER_FILE.finditer(chain or '')]
+    found = [Path((m.group(2) if m.group(2) is not None else m.group(3)).replace('\\:', ':')) for m in _FILTER_FILE.finditer(chain or '')]
     return [f for f in found if f.is_file()]
 
 

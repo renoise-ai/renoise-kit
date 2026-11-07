@@ -1,4 +1,5 @@
 """v0.7.0: rn look (tone and colour as numbers, against references) and rn grade (a .cube LUT toward references)."""
+from pathlib import Path
 import json
 
 import numpy as np
@@ -9,6 +10,11 @@ from PIL import Image
 from rn.cli import main
 from rn.edl import load
 
+
+
+def lut3d(path) -> str:
+    """lut3d on a file by absolute path, quoted so a Windows drive colon survives the graph and option parsers."""
+    return "lut3d=file='" + Path(path).as_posix().replace(':', '\\:') + "'"
 
 def rn(*args) -> int:
     return main([str(a) for a in args])
@@ -91,7 +97,7 @@ def test_grade_writes_a_lut_that_ffmpeg_applies_and_moves_the_clip_toward_the_re
     assert Image.open(preview).size == (320, 240)
     assert 'lut3d=file=src.cube' in capsys.readouterr().out
     graded = tmp_path / 'graded.mp4'
-    ffmpeg('-i', str(clips / 'src.mp4'), '-vf', f'lut3d=file={cube}', '-c:v', 'libx264', '-qp', '0', '-pix_fmt', 'yuv444p', str(graded))
+    ffmpeg('-i', str(clips / 'src.mp4'), '-vf', lut3d(cube), '-c:v', 'libx264', '-qp', '0', '-pix_fmt', 'yuv444p', str(graded))
     before = look(capsys, clips / 'src.mp4', '--ref', clips / 'ref.mp4', tmp_path / 'b.json')['inputs'][0]['vs_ref']['distance']
     after = look(capsys, graded, '--ref', clips / 'ref.mp4', tmp_path / 'a.json')['inputs'][0]['vs_ref']['distance']
     assert after < before / 2
