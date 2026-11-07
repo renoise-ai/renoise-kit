@@ -30,6 +30,10 @@ Per shot, from up to 12 sampled frames and 20 frame pairs (frames touching a tra
   speed    the frame-to-frame change per quarter of the shot, the fastest quarter over the slowest (speed ramps and slow
            motion show here) and the longest run of identical frames inside it (a hold or freeze frame), in seconds
   faces    with --faces: in how many of up to 4 sampled frames a face covers 2%+ of the picture, and the largest face
+
+With --beats, each boundary against the nearest beat of the file's own sound (rn listen's beat tracker) or of an rn
+listen --json result (music laid under a recut): offset in seconds and frames, and for the whole video the share of
+boundaries within one and two frames of a beat next to what cuts at random would score.
 """
 from __future__ import annotations
 
@@ -650,8 +654,32 @@ def _measure(job: tuple) -> dict:
     }
 
 
+def _beat_offsets(shots: list[dict], beats: dict, fps: float, source: str) -> dict:
+    """Each boundary against the nearest beat: its offset in seconds and frames (negative: the cut comes before the
+    beat), and for the whole video how many boundaries land within one and within two frames of a beat. A dissolve's or
+    wipe's boundary is its middle."""
+    times = np.array(beats.get('times') or [], dtype=float)
+    offsets = []
+    for shot in shots[1:]:
+        if not len(times):
+            break
+        nearest = float(times[np.argmin(np.abs(times - shot['start']))])
+        offset = shot['start'] - nearest
+        shot['beat'] = {'nearest_s': round(nearest, 3), 'offset_s': round(offset, 3), 'offset_frames': round(offset * fps, 2)}
+        offsets.append(abs(offset) * fps)
+    within = lambda frames: round(sum(o <= frames for o in offsets) / len(offsets), 3) if offsets else None  # noqa: E731
+    # what cuts placed at random would score, from the beat interval: the share to read the two above against
+    gap = float(np.median(np.diff(times))) * fps if len(times) > 1 else None
+    chance = lambda frames: round(min(1.0, (2 * frames + 1) / gap), 3) if gap else None  # noqa: E731
+    return {'source': source, 'bpm': beats.get('bpm'), 'clear': beats.get('clear'), 'count': len(times),
+            'boundaries': len(offsets), 'within_1_frame': within(1.0), 'within_2_frames': within(2.0),
+            'chance_within_1_frame': chance(1), 'chance_within_2_frames': chance(2),
+            'median_offset_frames': round(float(np.median(offsets)), 2) if offsets else None}
+
+
 def shots_command(path: str, *, min_shot: float = 0.35, threshold: float = 0.30, jobs: int | None = None,
-                  sheet: str | None = None, max_kb: int = 125, faces: bool = False, face_model: str | None = None) -> dict:
+                  sheet: str | None = None, max_kb: int = 125, faces: bool = False, face_model: str | None = None,
+                  beats: str | None = None) -> dict:
     import cv2  # noqa: F401  (extra "shots"; a missing module fails here, before any decoding, with the install hint)
 
     info = probe(path)
@@ -695,8 +723,22 @@ def shots_command(path: str, *, min_shot: float = 0.35, threshold: float = 0.30,
             frames = s['transition'].get('frames')
             shot['transition'] = {**s['transition'], 'seconds': round(frames / fps, 3) if frames else None}
         shots.append({**shot, **m})
+    beat_info = None
+    if beats:
+        # the file's own sound, or the beats of another file's rn listen --json (music laid under a different cut)
+        if beats == 'audio':
+            from .listen import beats_of
+            beat_info = _beat_offsets(shots, beats_of(path), fps, 'audio')
+        else:
+            import json
+            try:
+                grid = json.loads(Path(beats).read_text(encoding='utf-8'))['beats']
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                raise RnError(f'--beats {beats}: not an rn listen --json result ({error})') from None
+            beat_info = _beat_offsets(shots, grid, fps, beats)
     result = {'path': path, 'fps': str(fps_frac), 'frames': n, 'size': list(display), 'workers': workers, 'shots': shots,
-              'transitions': {t: sum(1 for s in shots if s['transition_in'] == t) for t in ('cut', 'flash', 'dissolve', 'fade', 'wipe')}}
+              'transitions': {t: sum(1 for s in shots if s['transition_in'] == t) for t in ('cut', 'flash', 'dissolve', 'fade', 'wipe')},
+              **({'beats': beat_info} if beat_info else {})}
     if sheet:
         from .frames import sheet_command
         # first, middle and last frame of every shot, one row per shot
@@ -723,6 +765,12 @@ def summary_lines(result: dict) -> list[str]:
                      f'in={entry(s)}  still {s["still"]["identical_pairs"]:.0%}  '
                      f'rigid {m["rigid_fit"]:.2f} zoom {m["zoom_per_s"] * 100:+.1f}%/s pan {m["pan_px_per_s"]:.0f}px/s  '
                      f'flat {tx["flat_blocks"]:.0%} colours {tx["palette95"]} edges {tx["straight_edges"]:.0%} noise {tx["noise_sigma"]:.2f}')
+    if result.get('beats'):
+        b = result['beats']
+        lines.append(f'beats ({b["source"]}): {b["count"]} at {b["bpm"]} bpm{"" if b["clear"] else " (no clear pulse)"}; '
+                     + (f'{b["within_1_frame"]:.0%} of {b["boundaries"]} boundaries within 1 frame of a beat, '
+                        f'{b["within_2_frames"]:.0%} within 2 (random cuts: {b["chance_within_1_frame"]:.0%}, '
+                        f'{b["chance_within_2_frames"]:.0%}), median {b["median_offset_frames"]} frames' if b['boundaries'] else 'no boundaries'))
     lines += [f'sheet {page["path"]}' for page in result.get('sheet', [])]
     lines.append('numbers only: what a shot is and how to remake it is yours to judge (look at --sheet)')
     return lines

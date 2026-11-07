@@ -52,7 +52,7 @@ def _silences(samples, rate: int) -> list[dict]:
     return ranges
 
 
-def _beats(samples, rate: int, onset_env, hop: int = 512) -> dict:
+def _beats(samples, rate: int, onset_env, hop: int = 512, limit: int | None = MAX_EVENTS) -> dict:
     import librosa
     import numpy as np
 
@@ -75,7 +75,7 @@ def _beats(samples, rate: int, onset_env, hop: int = 512) -> dict:
     alternatives = [{'bpm': round(value, 1), 'strength': round(strength(value), 3)} for value in (bpm / 2, bpm * 2)]
     times = librosa.frames_to_time(frames, sr=rate, hop_length=hop)
     return {'bpm': round(bpm, 1), 'strength': round(strength(bpm), 3), 'alternatives': alternatives,
-            'times': [round(float(t), 3) for t in times[:MAX_EVENTS]], 'clear': strength(bpm) >= BEAT_CLEAR}
+            'times': [round(float(t), 3) for t in times[:limit]], 'clear': strength(bpm) >= BEAT_CLEAR}
 
 
 def _transcribe(wav: Path, *, language: str | None, model: str) -> dict:
@@ -143,6 +143,21 @@ def _draw(result: dict, samples, rate: int, onset_times: list[float]):
     plt.close(fig)
     buffer.seek(0)
     return Image.open(buffer).convert('RGB')
+
+
+def beats_of(path: str) -> dict:
+    """The beat grid of a file's sound, as rn listen tracks it, every beat kept: {bpm, strength, alternatives, times,
+    clear}. For rn shots --beats."""
+    import librosa
+
+    if not probe(path)['audio']:
+        raise RnError(f'{path}: no audio stream to take beats from')
+    with tempfile.TemporaryDirectory() as tmp:
+        wav = Path(tmp) / 'audio.wav'
+        run(['ffmpeg', '-i', path, '-vn', '-ac', '1', '-ar', str(ANALYSIS_RATE), '-y', str(wav)])
+        samples, rate = librosa.load(str(wav), sr=None, mono=True)
+        onset_env = librosa.onset.onset_strength(y=samples, sr=rate, hop_length=512)
+        return _beats(samples, rate, onset_env, limit=None)
 
 
 def listen_command(path: str, *, out: str | None, transcribe: bool, language: str | None, model: str, max_kb: int = DEFAULT_MAX_KB) -> dict:

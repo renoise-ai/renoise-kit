@@ -206,3 +206,48 @@ def test_shots_measures_speed_inside_a_shot(tmp_path):
     first, *_, last = speeds['ramp']['change_per_quarter']
     assert first > 2.5 * last and speeds['ramp']['ramp'] >= 2.5 and speeds['ramp']['longest_hold_s'] < 0.5
     assert speeds['hold']['change_per_quarter'][-1] < 0.1 and speeds['hold']['longest_hold_s'] == pytest.approx(1.4, abs=0.15)
+
+
+@pytest.fixture(scope='module')
+def click_films(tmp_path_factory):
+    """Four 1 s pictures cut at 1, 2 and 3 s over a click every 0.5 s (120 bpm): on the beat, and with the clicks
+    shifted by a quarter second, between the beats."""
+    root = tmp_path_factory.mktemp('beats')
+    pictures = ['testsrc2', 'smptebars', 'mandelbrot', 'rgbtestsrc']
+    films = {}
+    for name, shift in (('on', 0.0), ('off', 0.25)):
+        film = root / f'{name}.mp4'
+        inputs = [arg for src in pictures for arg in ('-f', 'lavfi', '-t', '1', '-i', f'{src}=s=320x240:r=24')]
+        ffmpeg(*inputs, '-f', 'lavfi', '-t', '4', '-i', f"aevalsrc='if(lt(mod(t+{shift},0.5),0.02),sin(2*PI*1500*t),0)':s=44100",
+               '-filter_complex', '[0:v][1:v][2:v][3:v]concat=n=4:v=1[v]', '-map', '[v]', '-map', '4:a',
+               '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', str(film))
+        films[name] = film
+    return films
+
+
+def test_shots_beats_puts_each_cut_against_the_music(click_films, tmp_path):
+    pytest.importorskip('librosa')
+    results = {}
+    for name, film in click_films.items():
+        report = tmp_path / f'{name}.json'
+        assert rn('shots', film, '--json', report, '--jobs', 1, '--beats') == 0
+        results[name] = json.loads(report.read_text(encoding='utf-8'))
+    on, off = results['on'], results['off']
+    assert on['beats']['bpm'] == pytest.approx(120, rel=0.1) and on['beats']['boundaries'] == 3
+    assert on['beats']['within_1_frame'] == 1.0 and on['beats']['chance_within_1_frame'] == pytest.approx(0.25, abs=0.05)
+    assert off['beats']['within_2_frames'] == 0.0
+    assert all(abs(abs(s['beat']['offset_s']) - 0.25) < 0.05 for s in off['shots'][1:]), 'a quarter second off the beat'
+
+
+def test_shots_beats_reads_another_files_beat_grid(click_films, tmp_path):
+    """Music for a recut: the beats of an rn listen --json result, written here by hand."""
+    grid = tmp_path / 'music.json'
+    grid.write_text(json.dumps({'beats': {'bpm': 60.0, 'clear': True, 'times': [0.0, 1.04, 2.0, 3.1]}}), encoding='utf-8')
+    report = tmp_path / 'shots.json'
+    assert rn('shots', click_films['on'], '--json', report, '--jobs', 1, '--beats', grid) == 0
+    result = json.loads(report.read_text(encoding='utf-8'))
+    assert [s['beat']['offset_frames'] for s in result['shots'][1:]] == pytest.approx([-0.96, 0.0, -2.4], abs=0.05)
+    assert result['beats']['source'] == str(grid) and result['beats']['within_1_frame'] == pytest.approx(2 / 3, abs=0.01)
+    bad = tmp_path / 'bad.json'
+    bad.write_text('{}', encoding='utf-8')
+    assert rn('shots', click_films['on'], '--beats', bad) != 0

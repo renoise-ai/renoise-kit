@@ -142,6 +142,9 @@ def _parser() -> argparse.ArgumentParser:
     shots.add_argument('--faces', action='store_true',
                        help='also per shot: in how many sampled frames a face covers 2%%+ of the picture (YuNet, as rn faces)')
     shots.add_argument('--face-model', metavar='ONNX', help='YuNet model (default: as rn faces finds it)')
+    shots.add_argument('--beats', nargs='?', const='audio', metavar='LISTEN.json',
+                       help='each boundary against the nearest beat: of the file\'s own sound, or of an rn listen --json result '
+                            '(music for a recut); needs the "listen" extra for the file\'s own sound')
 
     listen = add('listen', 'audio as facts + one picture (you cannot hear)',
                  'Loudness (integrated, true peak, short-term curve), silences, onsets, tempo with half/double\n'
@@ -524,7 +527,7 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
     if command == 'shots':
         from .shots import shots_command, summary_lines
         result = shots_command(args.file, min_shot=args.min_shot, threshold=args.threshold, jobs=args.jobs, sheet=args.sheet,
-                               max_kb=args.max_kb, faces=args.faces, face_model=args.face_model)
+                               max_kb=args.max_kb, faces=args.faces, face_model=args.face_model, beats=args.beats)
     elif command == 'listen':
         from .listen import listen_command, summary_lines
         result = listen_command(args.file, out=args.out, transcribe=args.transcribe, language=args.language, model=args.model, max_kb=args.max_kb)
