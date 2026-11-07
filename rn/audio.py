@@ -65,6 +65,32 @@ VIDEO_ENCODE = ['-c:v', 'libx264', '-profile:v', 'high', '-pix_fmt', 'yuv420p',
 # fixed_frame_rate_flag=1 in the SPS: with 0, some players and platforms time frames from the VUI tick and show a
 # 30 fps film at half its length (promo-video, 2026-09-29). Only for constant-rate input: x264 then ignores timestamps.
 CFR_VUI = ['-x264-params', 'force-cfr=1']
+AUTO_MBPS = 12.0  # max_mbps "auto" at 1080x1920, 30 fps; scaled by pixels x fps, at least MIN_AUTO_MBPS
+MIN_AUTO_MBPS = 1.0
+
+
+def vbv(max_mbps, width: int, height: int, fps) -> tuple[list[str], float | None]:
+    """A bitrate ceiling on the CRF encode: VBV maxrate = bufsize = the cap, so clean shots keep CRF quality and grain or
+    noise stops at the cap (a minute of grainy 1080x1920 can otherwise reach 100 Mb/s). A clip of T seconds can average
+    up to cap x (1 + 1/T): the encoder may spend the first buffer. Returns the ffmpeg flags and the cap in Mb/s."""
+    if max_mbps is None:
+        return [], None
+    cap = max(MIN_AUTO_MBPS, AUTO_MBPS * width * height * float(fps) / (1080 * 1920 * 30)) if max_mbps == 'auto' else float(max_mbps)
+    kbit = round(cap * 1000)
+    return ['-maxrate', f'{kbit}k', '-bufsize', f'{kbit}k'], round(cap, 2)
+
+
+def max_mbps_value(value, where: str):
+    """'auto' or a number of Mb/s > 0 (CLI text or JSON)."""
+    if value in (None, 'auto'):
+        return value
+    try:
+        number = float(value) if not isinstance(value, bool) else None
+    except (TypeError, ValueError):
+        number = None
+    if number is None or number <= 0:
+        raise RnError(f'{where}: "auto" or Mb/s > 0, e.g. 12')
+    return number
 
 
 def mux(video: Path, audio_m4a: Path | None, out: Path, *, frames: int) -> None:

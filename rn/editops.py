@@ -3,6 +3,7 @@ whole edit out again (as rn assemble --dry-run would) and only then written back
 
 `rn edit EDL batch` runs several operations as one and writes the file once, only if every step passes.
 `rn edit EDL hits` places one sound effect at many points (cuts, beats, given seconds) as audio items.
+`rn edit EDL silences` cuts a clip's long pauses out, as measured by rn listen, by writing its "ranges".
 
 The main track always plays back to back, so removing or trimming a clip there ripples everything after it; overlays and
 audio anchored by clip id ({"clip": "id"}) follow, ones placed at fixed seconds do not.
@@ -359,6 +360,73 @@ def hits_op(path: Path, sfx: str, at: str, *, listen: str | None = None, offset:
             'hits': placed, 'skipped': skipped, 'warnings': warnings, 'timeline': summary}
 
 
+def silences_op(path: Path, ref: str, listen: str, *, min_silence: float = 0.5, pad: float = 0.1, keep_gap: float = 0.0) -> dict:
+    """Cuts a main-track clip's long silences out by writing its "ranges": the spans of its source between the silences
+    of `listen` (rn listen SOURCE --json, or rn listen SOURCE --speech --json) that last at least `min_silence` (silence
+    before the first word or after the last is cut at any length, leaving the pad). `pad`
+    seconds stay next to the speech on each side of a cut; `keep_gap` seconds of each removed pause stay in all (half on
+    each side, at least the pads). Only inside the clip's own in/out (or its existing ranges, so it can run again)."""
+    if min_silence <= 0 or pad < 0 or keep_gap < 0:
+        raise RnError('--min must be > 0; --pad and --keep-gap >= 0')
+    raw = _read(path)
+    key, items, index = _locate(raw, ref)
+    if key != 'tracks[0]':
+        raise RnError(f'{ref}: silences are cut on the main track (ranges play back to back there)')
+    original = items[index]
+    if 'keys' in original:
+        raise RnError(f'{ref}: has "keys", which ranges replace; remove them first')
+    listen = _edl_relative(path, listen, '--listen ')
+    try:
+        data = json.loads((path.parent / listen).read_text(encoding='utf-8-sig'))
+    except json.JSONDecodeError as error:
+        raise RnError(f'--listen {listen}: not JSON ({error}); write it with rn listen SOURCE --json') from None
+    silences = data.get('silences') if isinstance(data, dict) else None
+    if not isinstance(silences, list):
+        raise RnError(f'--listen {listen}: no "silences" (rn listen SOURCE --speech --json {Path(listen).name} writes them)')
+    warnings = []
+    edit = load(path)
+    if 'ranges' in original:
+        spans = [(float(a), float(b)) for a, b in original['ranges']]
+        fps = edit.fps
+    else:
+        clip, fps = _parsed(path, key, index)
+        if clip.kind not in ('video', 'edit'):
+            raise RnError(f'{ref}: a {clip.kind} clip has no sound to cut silences from')
+        spans = [(clip.start_s, clip.start_s + float(clip.frames / fps) * clip.speed)]
+        if original.get('src') and isinstance(data.get('path'), str) and Path(data['path']).name != Path(original['src']).name:
+            warnings.append(f'{Path(listen).name} measured {Path(data["path"]).name}, the clip plays {Path(original["src"]).name}')
+    half = max(pad, keep_gap / 2)
+    cuts = []
+    for silence in silences:
+        start, end = float(silence['start']), float(silence['end'])
+        head, foot = start <= spans[0][0] + 1e-6, end >= spans[-1][1] - 1e-6
+        if end - start < min_silence and not (head or foot):  # dead air before the first word or after the last always goes
+            continue
+        lead, tail = start + half, end - half
+        if head:  # only the pad stays before the first word
+            lead, tail = spans[0][0], end - pad
+        if foot:
+            lead, tail = start + pad, spans[-1][1]
+        if tail > lead:
+            cuts.append((lead, tail))
+    frame = float(1 / fps)
+    kept = []
+    for a, b in spans:
+        pieces = [(a, b)]
+        for lead, tail in cuts:
+            pieces = [part for x, y in pieces for part in ((x, min(y, lead)), (max(x, tail), y)) if part[1] - part[0] > 0]
+        kept += [(x, y) for x, y in pieces if y - x >= frame]  # under a frame would play nothing
+    if not kept:
+        raise RnError(f'{ref}: every second of the clip is in a silence of {Path(listen).name}; nothing left to play')
+    before, after = sum(b - a for a, b in spans), sum(b - a for a, b in kept)
+    for field in ('in', 'out', 'duration'):
+        original.pop(field, None)
+    original['ranges'] = [[round(a, 6), round(b, 6)] for a, b in kept]
+    summary = _write_checked(path, raw)
+    return {'op': 'silences', 'clip': ref, 'listen': listen, 'ranges': original['ranges'], 'spans': len(kept),
+            'removed': round(before - after, 3), 'kept': round(after, 3), 'warnings': warnings, 'timeline': summary}
+
+
 def batch_op(path: Path, steps: list[str], apply) -> dict:
     """Several operations as one: each is applied and checked in turn on a working copy next to the EDL (so relative
     paths resolve the same), which replaces the EDL only after the last step passes. A failing step writes nothing.
@@ -392,6 +460,7 @@ def summary_lines(result: dict) -> list[str]:
             'move': lambda r: f'moved {r["clip"]}',
             'hits': lambda r: f'added {len(r["added"])} x {Path(r["src"]).name} at {r["at"]}: '
                               + (r['added'][0] if len(r['added']) == 1 else f'{r["added"][0]}..{r["added"][-1]}'),
+            'silences': lambda r: f'{r["clip"]}: cut {r["removed"]}s of silence, {r["spans"]} spans play ({r["kept"]}s)',
             'batch': lambda r: f'{len(r["steps"])} steps: ' + '; '.join(r['steps'])}[result['op']](result)
     out = result['timeline']['output']
     lines = [head]
@@ -403,6 +472,9 @@ def summary_lines(result: dict) -> list[str]:
         if skipped:
             reasons = '; '.join(dict.fromkeys(s['reason'] for s in skipped))
             lines.append(f'  not placed, {reasons}: ' + listed([f'{s["hit"]} ({s["time"]:g}s)' for s in skipped]))
+        lines += [f'warning: {w}' for w in result['warnings']]
+    if result['op'] == 'silences':
+        lines.append('  ranges ' + ', '.join(f'{a:g}-{b:g}' for a, b in result['ranges'][:12]) + (' ...' if len(result['ranges']) > 12 else ''))
         lines += [f'warning: {w}' for w in result['warnings']]
     lines.append(f'timeline {out["width"]}x{out["height"]} {out["fps"]}fps  {out["frames"]} frames  {out["duration"]}s')
     lines += [f'  {c["id"] or c["where"]}: frames {c["start_frame"]}..{c["start_frame"] + c["frames"] - 1}' for c in result['timeline']['base']]

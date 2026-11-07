@@ -167,6 +167,7 @@ EOF
 | `rn cuts FILE [--sheet JPG]` | Shot boundaries by decoded frame, plus weaker "suspects" to check |
 | `rn shots FILE [--jobs N] [--sheet JPG] [--faces] [--beats [LISTEN.json]]` | Every shot, dissolves, fades and straight wipes included (with how many frames each takes and a wipe's direction), and what its picture does as numbers: still frames, 24→30 repeat cadence, how well one zoom / pan of the whole frame explains it, texture (flat blocks, colours, straight edges, noise, soft gradients, vivid colour), and with `--faces` how often a face fills the picture, with `--beats` how each cut sits against the music's beats. Numbers only, no labels |
 | `rn listen FILE [--transcribe]` | Loudness, silences, onsets, tempo with half/double candidates, beat times, Whisper word times, one picture |
+| `rn listen FILE... --speech [--expect TEXT\|@FILE] [--transcribe]` | Voice takes: where the speech starts and ends inside the file, its length, the pauses in it; with `--expect` the words per second, and with `--transcribe` `match: ok\|mismatch` against the intended text and where it differs |
 | `rn signal FILE [-o PNG]` | Per-frame luma, motion, saturation, loudness, low/mid/high bands, onset strength; flash frames, clicks |
 | `rn align A B` | Where recording B sits inside A, by sound: offset, `match`, `distinct` |
 | `rn faces FILE` | Face boxes and landmarks per frame (measurement only) |
@@ -191,6 +192,7 @@ EOF
 | `rn edit EDL ids\|set\|split\|delete\|insert\|move\|upgrade` | Changes an EDL by clip id. Each step is checked against the whole timeline before the file is written |
 | `rn edit EDL batch ["OP ..." ...]` | Several of those operations as one, from arguments or one per line on stdin; written once, nothing on a failure |
 | `rn edit EDL hits SFX --at cuts\|beats\|T1,T2,..` | One sound effect as an audio item at many points: every main-track cut (anchored to the clip's id, so it follows later edits), every beat of an `rn listen --json` result, or given seconds. `--offset`, `--pivot` (the whoosh's peak on the point), `--gain`, `--every N`. The sound can come from `rn assets get` |
+| `rn edit EDL silences CLIP --listen L.json [--min S] [--pad S] [--keep-gap S]` | Cuts a talking clip's long pauses (and the dead air before the first and after the last word) out of it as `ranges`, from `rn listen` of its source |
 | `rn assemble EDL -o OUT [--preview] [--range A-B] [--placeholders]` | Renders the EDL frame-exactly. `--placeholders` turns missing shots into labelled cards |
 | `rn schema [--path]` | The edit.json JSON Schema shipped with rn, printed (or where the file is) |
 
@@ -201,6 +203,7 @@ EOF
 | `rn qa FILE [--edl EDL] [--accept CHECK[@T]]` | Delivery checks. Format: frames, fps, size, codec, color, faststart, fixed frame rate. Sound: A/V length, loudness, true peak, dead air, level jumps, clicks. Picture: black, frozen, bars. `--placeholders` reads the EDL as `rn assemble --placeholders` does |
 | `rn compare A B [--cuts] [--shots] [--video sbs.mp4]` | Two videos at the same times on one sheet, cut timing paired, with `--shots` each shot paired with its transition (with its measured frames, wipe side or fade colour) and camera move, optional side-by-side video |
 | `rn finish FILE -o OUT [--height N]` | Brings any video to the delivery standard; `--height` makes a scaled copy |
+| `rn finish ... --max-mbps N\|auto` | A bitrate ceiling on the CRF encode (also EDL `output.max_mbps`): clean shots keep their quality, grain stops at the cap |
 | `rn export EDL -o cut.otio\|.fcpxml\|.xml [--srt]` | The edit as a project for Final Cut, Premiere, Resolve or any OTIO tool |
 
 **This machine**
