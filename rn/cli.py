@@ -1,5 +1,5 @@
-"""rn: Renoise media kit. Measure (probe, frame, sheet, cuts, shots, listen, faces, ref, signal, align, text, matte), render
-(capture, fx, fonts, assets, captions), edit and assemble an EDL frame-exactly, compare, finish, QA and export. It measures
+"""rn: Renoise media kit. Measure (probe, frame, sheet, cuts, shots, listen, faces, ref, signal, align, text, matte, look), render
+(capture, fx, fonts, assets, captions, grade), edit and assemble an EDL frame-exactly, compare, finish, QA and export. It measures
 and guarantees the mechanics; every creative decision stays yours. rn doctor says what this machine can run; rn schema
 prints the edit.json schema.
 
@@ -252,6 +252,40 @@ def _parser() -> argparse.ArgumentParser:
     text.add_argument('--lang', help='tesseract languages, e.g. eng+chi_sim (default: those installed of eng, chi_sim, chi_tra, jpn, kor)')
     text.add_argument('--min-conf', type=float, default=50, help='drop words below this confidence (0-100)')
 
+    look = add('look', 'tone and colour as numbers: black/mid/white L*, zone casts, chroma, clipping; vs references',
+               'Per input (an image, a folder of stills, or a video sampled at --seconds / --count frames, default 8; with\n'
+               '--shots the middle frame of every shot of one video): L* black / mid / white (p2 / p50 / p98) and contrast, the\n'
+               'mean a*/b* cast in shadows, mids and highlights (L* < 33, 33-66, > 66), mean chroma, the share of crushed and\n'
+               'blown pixels (flagged above 1%). With --ref the references are pooled, and each input gets its differences, a\n'
+               'distance (tone + cast + chroma / 2; lower is closer), dE76 of the mean Lab and a verdict: close (<= --tolerance),\n'
+               'noticeable (<= 3x) or far. Generated shots from different calls drift in grade: measure them against one\n'
+               'reference, then rn grade the far ones. Examples:\n'
+               '  rn look gen/*.mp4 --ref ref/hero.png\n'
+               '  rn look ref.mp4 --shots ref-shots.json       # the source look shot by shot (rn shots ref.mp4 --json ref-shots.json)')
+    look.add_argument('files', nargs='+', help='images, folders of stills or videos')
+    look.add_argument('--ref', nargs='+', metavar='REF', help='reference images, folders or videos (pooled)')
+    look_times = look.add_mutually_exclusive_group()
+    look_times.add_argument('--seconds', type=_numbers(float), metavar='T1,T2,..', help='video frames on screen at these times')
+    look_times.add_argument('--count', type=int, metavar='N', help='N evenly spaced video frames (default 8)')
+    look_times.add_argument('--shots', metavar='SHOTS.json', help='rn shots --json result of the one input: its middle frame per shot')
+    look.add_argument('--tolerance', type=float, default=4.0, help='distance still called "close" (default 4)')
+
+    grade = add('grade', 'a .cube LUT that moves a clip\'s tone and colour toward references',
+                'Fits one per-pixel transform from frames pooled across SRC and the references (no flicker): an L* tone curve\n'
+                'through matched percentiles, chroma scaled by the ratio of mean chroma (0.5-2x), and each zone\'s mean a*/b*\n'
+                'moved to the reference\'s with soft zone weights; --strength blends it with the original. Writes a .cube\n'
+                '(sRGB in and out) and reports the distance to the references before and after (as rn look). Apply it in an\n'
+                'EDL on the clip: "vf": "lut3d=file=look.cube" (a path relative to the EDL, like every path there), or\n'
+                'ffmpeg -vf lut3d=file=look.cube. Check the result with rn look on the graded render. Example:\n'
+                '  rn grade gen/s3.mp4 --ref ref/hero.png -o looks/s3.cube --preview sheets/s3-graded.png')
+    grade.add_argument('src', help='image, folder of stills or video to grade')
+    grade.add_argument('--ref', nargs='+', required=True, metavar='REF', help='reference images, folders or videos (pooled)')
+    grade.add_argument('-o', '--out', required=True, help='.cube path')
+    grade.add_argument('--strength', type=float, default=1.0, help='0..1 blend with the original (default 1)')
+    grade.add_argument('--size', type=int, default=33, help='LUT points per axis (default 33)')
+    grade.add_argument('--count', type=int, metavar='N', help='frames sampled per video (default 12)')
+    grade.add_argument('--preview', metavar='PNG', help='SRC\'s first sample graded through the LUT by ffmpeg')
+
     export = add('export', 'the EDL as an editable project: .otio, .fcpxml (Final Cut), .xml (Premiere, Resolve)',
                  'Cuts, trims, speed, transitions, nested edits, overlay and audio timing carry over, media by absolute path.\n'
                  'Position/size, keys, blend, masks, raw filters and gain curves are kept as "rn" metadata and listed.')
@@ -494,7 +528,7 @@ def _print_summary(command: str, result: dict) -> None:
               f'{len(result["checks"]) - result["failed"] - result["warnings"]} passed  ({result["path"]})')
 
 
-SUMMARIZED = {'cuts', 'shots', 'listen', 'faces', 'ref', 'capture', 'fx', 'fonts', 'assets', 'captions', 'compare', 'edit', 'signal', 'align',
+SUMMARIZED = {'look', 'grade', 'cuts', 'shots', 'listen', 'faces', 'ref', 'capture', 'fx', 'fonts', 'assets', 'captions', 'compare', 'edit', 'signal', 'align',
               'matte', 'text', 'export', 'doctor', 'schema'}
 NO_FFMPEG = {'doctor', 'schema'}  # they work without ffmpeg on PATH: doctor reports it missing
 # The pip extra that brings a command's optional Python modules (the media sandbox has them all).
@@ -623,6 +657,14 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
     elif command == 'text':
         from .text import summary_lines, text_command
         result = text_command(args.file, every=args.every, lang=args.lang, min_conf=args.min_conf)
+    elif command == 'look':
+        from .look import look_command, summary_lines
+        result = look_command(args.files, refs=args.ref, seconds=args.seconds, count=args.count, shots=args.shots, tolerance=args.tolerance)
+    elif command == 'grade':
+        from .look import grade_command, grade_summary_lines
+        result = grade_command(args.src, args.ref, out=args.out, strength=args.strength, size=args.size, count=args.count,
+                               preview=args.preview)
+        return result, grade_summary_lines(result)
     elif command == 'export':
         from .export import export_command, summary_lines
         result = export_command(args.edl, args.out, srt=args.srt)

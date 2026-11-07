@@ -23,7 +23,7 @@ from pathlib import Path
 
 from . import __version__
 from . import audio as audio_mod
-from .edl import Clip, Edit, cache_dir, load, source_offsets
+from .edl import Clip, Edit, cache_dir, filter_files, load, source_offsets
 from .ff import RnError, ff_color, has_filter, probe, run, source_matrix, to_bt709
 
 SR = audio_mod.SAMPLE_RATE
@@ -447,7 +447,8 @@ def _slot_key(clip: Clip, edit: Edit, part: str) -> str:
     params = {k: v for k, v in dataclasses.asdict(clip).items()
               if k not in ('where', 'timeline_start', 'id', 'meta', 'transition', 'transition_frames')}
     material = [__version__, part, edit.width, edit.height, str(edit.fps), edit.background, params,
-                _files(clip.source, clip.kind == 'sequence')]
+                _files(clip.source, clip.kind == 'sequence'),
+                [(str(f), f.stat().st_size, f.stat().st_mtime_ns) for f in filter_files(clip.vf) + filter_files(clip.af)]]
     return hashlib.sha256(json.dumps(material, default=str, sort_keys=True).encode()).hexdigest()[:24]
 
 

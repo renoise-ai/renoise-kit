@@ -434,15 +434,35 @@ def cache_dir(edit_dir: Path) -> Path:
     return Path(os.environ.get('RN_CACHE') or edit_dir / '.rn-cache')
 
 
-def _filters(raw: dict, key: str, where: str) -> str | None:
+_FILTER_FILE = re.compile(r"(?<=[=:])(file|filename)=([^:,']+)")
+
+
+def _filters(raw: dict, key: str, where: str, edit_dir: Path | None = None) -> str | None:
     """A raw ffmpeg filter chain ("eq=saturation=1.2,unsharp"): any filter, but one linear chain, so it cannot reach
-    into the rest of the graph."""
+    into the rest of the graph. A file option (lut3d=file=look.cube, ...:filename=...) names a file relative to the EDL,
+    like every other path in it; it is written into the graph as an absolute path, since overlays render from a temporary
+    folder."""
     value = raw.get(key)
     if value is None:
         return None
     if not isinstance(value, str) or not value.strip() or _GRAPH_BREAKERS.search(value):
         raise RnError(f'{where}.{key}: one ffmpeg filter chain like "eq=saturation=1.2,unsharp" (no ; [ ])')
-    return value
+    if edit_dir is None:
+        return value
+
+    def absolute(match: re.Match) -> str:
+        path = Path(match.group(2))
+        if not path.is_absolute() and (edit_dir / path).exists():
+            path = (edit_dir / path).resolve()
+        # Option-level escaping: a Windows drive colon would end the option value.
+        return f'{match.group(1)}=' + path.as_posix().replace(':', '\\:') if path.is_absolute() else match.group(0)
+    return _FILTER_FILE.sub(absolute, value)
+
+
+def filter_files(chain: str | None) -> list[Path]:
+    """Existing files a raw filter chain reads (lut3d=file=...), so a changed LUT renders the slot again."""
+    found = [Path(m.group(2).replace('\\:', ':')) for m in _FILTER_FILE.finditer(chain or '')]
+    return [f for f in found if f.is_file()]
 
 
 def _ident(raw: dict, where: str) -> tuple[str | None, object]:
@@ -575,7 +595,7 @@ def _clip(raw: dict, where: str, edit_dir: Path, fps: Fraction, *, overlay: bool
     clip = Clip(where=where, kind='video', source=None, color=None, start_s=0.0, speed=speed, frames=0, fit=look.get('fit', 'cover'),
                 audio=bool(raw.get('audio', not overlay)), gain_db=gain)
     clip.id, clip.meta = _ident(raw, where)
-    clip.vf, clip.af = _filters(raw, 'vf', where), _filters(raw, 'af', where)
+    clip.vf, clip.af = _filters(raw, 'vf', where, edit_dir), _filters(raw, 'af', where, edit_dir)
     if overlay and clip.af:
         raise RnError(f'{where}.af: overlays are silent; filter their sound in "audio"')
     clip.keys = _keys(raw.get('keys'), f'{where}.keys', KEYS_OVERLAY if overlay else KEYS_MAIN)
@@ -806,7 +826,7 @@ def _audio(raw: dict, where: str, edit_dir: Path, timeline: Timeline) -> AudioIt
                      duration=duration, gain_db=_num(raw.get('gain_db', 0), f'{where}.gain_db'),
                      fade_in=_num(raw.get('fade_in', 0), f'{where}.fade_in', minimum=0),
                      fade_out=_num(raw.get('fade_out', 0), f'{where}.fade_out', minimum=0), id=ident, meta=meta,
-                     af=_filters(raw, 'af', where), keys=_keys(raw.get('keys'), f'{where}.keys', KEYS_AUDIO))
+                     af=_filters(raw, 'af', where, edit_dir), keys=_keys(raw.get('keys'), f'{where}.keys', KEYS_AUDIO))
 
 
 def _expand_ranges(clips: list) -> tuple[list[tuple[str, dict]], dict[str, tuple[int, int]]]:

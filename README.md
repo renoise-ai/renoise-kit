@@ -173,6 +173,7 @@ EOF
 | `rn text FILE` | On-screen text lines, their boxes and when they are on screen (tesseract; a line read again within 2 s at the same place is the same appearance, with how many reads and their mean confidence); per line, as first read, the text, background and outline colours (`#rrggbb`, outline null when there is none) and the text height |
 | `rn matte FILE -o DIR` | Subject alpha per frame as grey PNGs, ready to use as an EDL `mask`; `--cutout` for RGBA |
 | `rn ref FILE` | A reference breakdown: shots, sound, cut-to-beat sync, every frame on sheets, and a reading guide |
+| `rn look FILE... [--ref REF...] [--shots SHOTS.json]` | Tone and colour as numbers: L* black / mid / white, contrast, the a\*/b\* cast in shadows, mids and highlights, chroma, crushed and blown shares (flagged above 1%). Against `--ref`: the differences, one distance and a verdict (close / noticeable / far, `--tolerance` moves it). Per shot with `--shots` |
 
 **Render**
 
@@ -180,6 +181,7 @@ EOF
 |---|---|
 | `rn capture page.html -o DIR --frames N --size WxH` | An HTML page rendered frame by frame (`window.renderFrame(i)`) to RGBA PNGs, sharded across Chromiums |
 | `rn fx [--source]` | The effects library (grain, vignette, leak, flash, glitch, ...) as readable source for pages and numpy |
+| `rn grade SRC --ref REF... -o look.cube [--strength S] [--preview PNG]` | A `.cube` LUT that moves a clip's tone curve, chroma and zone casts toward the references, fitted on frames across the whole clip (no flicker); apply it with `"vf": "lut3d=file=look.cube"` (path relative to the EDL). Reports the distance before and after |
 | `rn captions WORDS.json --size WxH -o caps.ass` | Your script aligned to Whisper timing; CJK chunking, balanced lines, safe areas, kept off faces |
 | `rn fonts [--script ja]` | Installed families with the weights that really exist, and the scripts they cover |
 | `rn assets search\|get` | Licensed SFX and overlay footage, checked against sha256 |
