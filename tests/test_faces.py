@@ -10,6 +10,8 @@ import numpy as np  # noqa: E402
 
 from rn.faces import DEFAULT_MODEL, faces_command, summary_lines  # noqa: E402
 from rn.ff import RnError  # noqa: E402
+from rn.agent import PROOF_KB, proof
+from types import SimpleNamespace
 
 MODEL_URL = 'https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx'
 LENA_URL = 'https://raw.githubusercontent.com/opencv/opencv/4.x/samples/data/lena.jpg'
@@ -107,3 +109,43 @@ def test_default_model_is_fetched_once_and_checked(lena_clip, model, tmp_path, m
     monkeypatch.setattr(faces, 'MODEL_SHA256', hashlib.sha256(Path(model).read_bytes()).hexdigest())
     assert faces_command(str(lena_clip), every=10)['summary']['with_faces'] > 0
     assert (tmp_path / 'home' / '.cache' / 'rn' / 'face_detection_yunet_2023mar.onnx').is_file()
+
+
+@pytest.fixture(scope='session')
+def portrait_clip(request, tmp_path_factory) -> Path:
+    """The portrait at the canvas's full height, held still for 2 s: its face covers several percent of the picture."""
+    cache = Path(request.config.cache.mkdir('rn-faces'))
+    lena = cv2.resize(cv2.imread(str(fetch(cache, LENA_URL, 'lena.jpg'))), (CANVAS_H, CANVAS_H))
+    canvas = np.full((CANVAS_H, CANVAS_W, 3), 128, np.uint8)
+    x = (CANVAS_W - CANVAS_H) // 2
+    canvas[:, x:x + CANVAS_H] = lena
+    folder = tmp_path_factory.mktemp('portrait')
+    cv2.imwrite(str(folder / 'portrait.png'), canvas)
+    clip = folder / 'portrait.mp4'
+    subprocess.run(['ffmpeg', '-hide_banner', '-v', 'error', '-nostdin', '-loop', '1', '-framerate', '10', '-t', '2',
+                    '-i', str(folder / 'portrait.png'), '-c:v', 'libx264', '-crf', '12', '-pix_fmt', 'yuv420p', '-y', str(clip)],
+                   check=True)
+    return clip
+
+
+def test_shots_counts_frames_with_a_large_face(portrait_clip, lena_clip, model):
+    """rn shots --faces: the same detector as rn faces, per shot. A face counts when it covers 2%+ of the picture: the
+    full-height portrait's does in every checked frame; the small sliding one's (about 1.5%) does not."""
+    from rn.shots import FACE_MIN_AREA, shots_command
+
+    faces = shots_command(str(portrait_clip), jobs=1, faces=True, face_model=model)['shots'][0]['faces']
+    assert faces['checked'] >= 2 and faces['frames_with_face'] == 1.0 and faces['largest_area'] >= FACE_MIN_AREA
+    small = shots_command(str(lena_clip), jobs=1, faces=True, face_model=model)['shots'][0]['faces']
+    assert small['frames_with_face'] == 0.0 and small['largest_area'] < FACE_MIN_AREA
+
+
+def test_track_and_reframe_render(lena_clip, model, tmp_path):
+    out = tmp_path / 'vertical.mp4'
+    result = faces_command(str(lena_clip), model=model, reframe_size=(270, 480), out=str(out))
+    assert result['track_summary']['tracked'] >= FRAMES * 0.8
+    assert result['reframe']['render']['frames'] == FRAMES
+    xs = [k[1] for k in result['reframe']['keys']]
+    assert xs[-1] - xs[0] > 200  # the window follows the image across
+    assert any('reframe 270x480' in line for line in summary_lines(result))
+    shown = proof(SimpleNamespace(command='faces', file=str(lena_clip), no_proof=False), result)
+    assert shown == str(tmp_path / 'vertical.proof.jpg') and Path(shown).stat().st_size <= PROOF_KB * 1024

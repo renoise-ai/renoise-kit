@@ -96,9 +96,12 @@ def test_package_builds_with_readme_and_extras(tmp_path):
     subprocess.run(['uv', 'build', '--wheel', '--out-dir', str(tmp_path), str(kit)], check=True, capture_output=True)
     wheel = next(tmp_path.glob('renoise_kit-*.whl'))
     import zipfile
-    metadata = next(n for n in zipfile.ZipFile(wheel).namelist() if n.endswith('METADATA'))
+    names = zipfile.ZipFile(wheel).namelist()
+    metadata = next(n for n in names if n.endswith('METADATA'))
     text = zipfile.ZipFile(wheel).read(metadata).decode()
     assert 'Provides-Extra: all' in text and 'Provides-Extra: faces' in text and '# renoise-kit' in text
+    # Package data an installed rn reads: rn schema, rn ref's guide, rn capture / rn fx.
+    assert {'rn/edit.schema.json', 'rn/ref_guide.md', 'rn/fx/fx.js'} <= set(names)
 
 
 def test_outputs_declare_a_fixed_frame_rate(media, tmp_path):

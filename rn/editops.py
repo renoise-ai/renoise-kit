@@ -1,6 +1,11 @@
 """rn edit: change an EDL by operations on clip ids instead of rewriting its JSON. Each operation is checked by laying the
 whole edit out again (as rn assemble --dry-run would) and only then written back, so a bad step never lands.
 
+`rn edit EDL batch` runs several operations as one and writes the file once, only if every step passes.
+`rn edit EDL hits` places one sound effect at many points (cuts, beats, given seconds) as audio items.
+`rn edit EDL silences` cuts a clip's long pauses out, as measured by rn listen, by writing its "ranges".
+`rn edit EDL snap` moves cuts onto beats by rolling edits.
+
 The main track always plays back to back, so removing or trimming a clip there ripples everything after it; overlays and
 audio anchored by clip id ({"clip": "id"}) follow, ones placed at fixed seconds do not.
 """
@@ -8,11 +13,12 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from fractions import Fraction
 from pathlib import Path
 
-from .edl import Clip, load, upgrade
-from .ff import RnError
+from .edl import ID, Clip, load, upgrade
+from .ff import RnError, probe
 
 
 def _read(path: Path) -> dict:
@@ -25,11 +31,12 @@ def _read(path: Path) -> dict:
 
 
 def _write_checked(path: Path, raw: dict) -> dict:
-    """Lays the edited JSON out next to the original (relative paths resolve the same), then replaces it."""
+    """Lays the edited JSON out next to the original (relative paths resolve the same), then replaces it. A source not
+    made yet is a placeholder (as rn assemble --placeholders), listed as a warning: an edit is built before its media."""
     trial = path.with_name(f'.{path.stem}.rn-edit.json')
     trial.write_text(json.dumps(raw, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
     try:
-        summary = load(trial).summary()
+        summary = load(trial, placeholders=True).summary()
     except RnError:
         trial.unlink()
         raise
@@ -71,7 +78,7 @@ def _fresh(raw: dict, base: str) -> str:
 
 
 def _parsed(path: Path, key: str, index: int) -> tuple[Clip, Fraction]:
-    edit = load(path)
+    edit = load(path, placeholders=True)
     where = f'{key}.clips[{index}]'
     clip = next((c for c in edit.base + edit.overlays if c.where == where), None)
     if clip is None:
@@ -244,6 +251,445 @@ def upgrade_op(path: Path) -> dict:
     return {'op': 'upgrade', 'timeline': _write_checked(path, upgrade(raw))}
 
 
+def _edl_relative(path: Path, given: str, flag: str) -> str:
+    """A file named on the command line (relative to the current folder) as the edit refers to it: relative to the
+    EDL's folder. A path that exists only relative to the EDL is kept as given."""
+    here = Path(given).expanduser()
+    if here.is_file():
+        try:
+            return Path(os.path.relpath(os.path.abspath(here), os.path.abspath(path.parent))).as_posix()
+        except ValueError:  # another drive (Windows)
+            return Path(os.path.abspath(here)).as_posix()
+    if (path.parent / here).is_file():
+        return here.as_posix()
+    raise RnError(f'{flag}{given}: no such file (relative to the current folder or to {path.name})')
+
+
+def _beat_times(path: Path, listen: str) -> tuple[list[float], bool]:
+    try:
+        data = json.loads((path.parent / listen).read_text(encoding='utf-8-sig'))
+    except json.JSONDecodeError as error:
+        raise RnError(f'--listen {listen}: not JSON ({error}); write it with rn listen --json') from None
+    beats = data.get('beats') if isinstance(data, dict) else None
+    times = beats.get('times') if isinstance(beats, dict) else None
+    if not times:
+        raise RnError(f'--listen {listen}: no beats.times (rn listen MUSIC --json {Path(listen).name} writes them)')
+    if not isinstance(times, list) or not all(isinstance(t, (int, float)) and not isinstance(t, bool) for t in times):
+        raise RnError(f'--listen {listen}: beats.times is not a list of seconds')
+    return [float(t) for t in times], bool(beats.get('clear', True))
+
+
+def hits_op(path: Path, sfx: str, at: str, *, listen: str | None = None, offset: float = 0.0, pivot: float | None = None,
+            gain: float | None = None, every: int = 1, prefix: str = 'sfx') -> dict:
+    """One sound effect as an audio item (role sfx) at each hit point: every main-track cut (each clip's start but the
+    first's), every beat of a rn listen result, or given seconds; --every N keeps the 1st, (N+1)th, ... of them.
+    Cuts and beats are written as anchors ({"clip": id}, or {"clip": i} for a clip without an id; {"beat": n, "listen":
+    f}), so the items follow later edits; given seconds stay put. offset moves every hit point (negative: earlier) and
+    goes into the anchor; pivot puts that second of the sound (a whoosh's peak) on the point. A point before 0 s or at or
+    after the end of the main track is not placed and is listed under "skipped"."""
+    if every < 1:
+        raise RnError('--every: 1 or more')
+    if not ID.match(f'{prefix}1'):
+        raise RnError(f'--id-prefix {prefix}: letters, digits, "_", "-" and "." (starting with a letter or digit)')
+    raw = _read(path)
+    pivot_from = 'given' if pivot is not None else None
+    if not Path(sfx).expanduser().is_file() and not (path.parent / sfx).is_file():
+        from . import pack
+        if pack.is_pack_id(sfx):  # an rn pack sound: copied next to the edit so it stays self-contained; its peak on each point
+            item = pack.find(sfx)
+            if item['kind'] != 'sfx':
+                raise RnError(f'{sfx}: a {item["kind"]}, not a sound (rn pack list --kind sfx)')
+            local = path.parent / 'sfx' / (item['id'].replace('/', '-') + '.ogg')
+            local.parent.mkdir(parents=True, exist_ok=True)
+            if not local.exists():
+                shutil.copyfile(pack.path_of(item['id']), local)
+            sfx = str(local)
+            if pivot is None:
+                pivot, pivot_from = item['peak'], 'pack peak'
+    src = _edl_relative(path, sfx, '')
+    edit = load(path, placeholders=True)
+    info = probe(path.parent / src)
+    if not info['audio']:
+        raise RnError(f'{sfx}: has no audio stream')
+    if pivot is not None:
+        length = info['audio']['duration'] or info['duration'] or 0
+        if not 0 <= pivot < length:
+            raise RnError(f'--pivot {pivot}: a second inside {Path(src).name} (0..{length:.3f})')
+    if at == 'beats' and listen is None:
+        raise RnError('--at beats needs --listen LISTEN.json (a rn listen --json result)')
+    if at != 'beats' and listen is not None:
+        raise RnError('--listen goes with --at beats')
+    warnings, points = [], []  # points: (label, anchor or None for plain seconds, seconds)
+    if at == 'cuts':
+        for i, clip in enumerate(edit.base[1:], 1):
+            points.append((clip.id or f'clip {i}', {'clip': clip.id or i}, float(clip.timeline_start / edit.fps)))
+        if not points:
+            raise RnError('--at cuts: the main track has one clip, so no cuts')
+    elif at == 'beats':
+        listen = _edl_relative(path, listen, '--listen ')
+        times, clear = _beat_times(path, listen)
+        if not clear:
+            warnings.append(f'{Path(listen).name}: no clear pulse (beats.clear is false)')
+        points = [(f'beat {n}', {'beat': n, 'listen': listen}, t) for n, t in enumerate(times)]
+    else:
+        try:
+            given = [float(part) for part in at.split(',') if part.strip()]
+        except ValueError:
+            raise RnError(f'--at {at}: cuts, beats, or seconds like 1.2,3.5') from None
+        if not given or any(t < 0 for t in given):
+            raise RnError(f'--at {at}: cuts, beats, or seconds >= 0 like 1.2,3.5')
+        points = [(f'{t:g}s', None, t) for t in given]
+    if any(isinstance(anchor, dict) and isinstance(anchor.get('clip'), int) for _, anchor, _ in points[::every]):
+        warnings.append('clips without an id are anchored by index ({"clip": i}), which points at another clip once one is '
+                        'added or removed before it; rn edit EDL ids gives every clip one')
+
+    taken = _all_ids(raw) | {c.id for c in edit.base + edit.overlays if c.id}
+    n, items, placed, skipped = 1, [], [], []
+    for label, anchor, seconds in points[::every]:
+        point = seconds + offset
+        if not 0 <= point < edit.duration:
+            where = 'before 0 s' if point < 0 else f'at or after the end of the main track ({edit.duration:.3f}s)'
+            skipped.append({'hit': label, 'time': round(point, 4), 'reason': where})
+            continue
+        while f'{prefix}{n}' in taken:
+            n += 1
+        ident = f'{prefix}{n}'
+        taken.add(ident)
+        if anchor is None:
+            position = round(point, 6)
+        else:
+            position = {**anchor, 'offset': offset} if offset else anchor
+        item = {'id': ident, 'src': src, 'role': 'sfx', 'at': position}
+        if pivot is not None:
+            item['pivot'] = pivot
+        if gain is not None:
+            item['gain_db'] = gain
+        items.append(item)
+        placed.append({'id': ident, 'hit': label, 'time': round(point, 4)})
+    if not items:
+        raise RnError(f'no hit lands inside the main track (0..{edit.duration:.3f}s): '
+                      + ', '.join(f'{s["hit"]} at {s["time"]}s' for s in skipped[:8]) + ('...' if len(skipped) > 8 else ''))
+    audio = raw.get('audio') or []
+    audio.extend(items)
+    raw['audio'] = audio
+    summary = _write_checked(path, raw)
+    return {'op': 'hits', 'src': src, 'at': at if at in ('cuts', 'beats') else 'times', 'added': [p['id'] for p in placed],
+            'pivot': pivot, 'pivot_from': pivot_from, 'hits': placed, 'skipped': skipped, 'warnings': warnings, 'timeline': summary}
+
+
+def _overlap(shot: dict) -> tuple[int, int, str] | None:
+    """A dissolve or wipe rn shots measured, as an xfade overlap: (first source frame, frames, xfade type). A dissolve is
+    made as xfade "fade" (the smooth mix; xfade's "dissolve" is a pixel-noise effect)."""
+    t = shot.get('transition') or {}
+    if shot.get('transition_in') not in ('dissolve', 'wipe') or not t.get('frames') or t.get('start_frame') is None:
+        return None
+    edge = t.get('edge')
+    return int(t['start_frame']), int(t['frames']), f'wipe{edge}' if edge in ('left', 'right', 'up', 'down') else 'fade'
+
+
+def init_op(path: Path, from_shots: str, *, size: str | None = None, fps: str | None = None, src: str | None = None,
+            slots: str = 'gen', force: bool = False) -> dict:
+    """A new edit whose main track is the reference's shots (an rn shots --json result), frame for frame: one clip per
+    shot (s01, s02, ...), each lasting what its shot lasts. Dissolves and wipes are made again as xfade overlaps of their
+    measured frames (the clip before runs on through the transition, the clip after starts where it starts), so the
+    total length is the reference's; a fade through black or white is the clip before fading out (and holding) and the
+    clip after fading in, as measured. Without --src each clip's source is <slots>/<id>.mp4, not made yet: a placeholder
+    card until it exists. With --src every clip is that shot of the reference itself (its sound as one audio item):
+    a rebuild to check the skeleton against the reference. meta keeps what the shot measured (times, transition,
+    keyframe, camera, speed) for whoever fills the slot."""
+    if path.exists() and not force:
+        raise RnError(f'{path} exists; --force replaces it')
+    try:
+        measured = json.loads(Path(from_shots).read_text(encoding='utf-8-sig'))
+        shots, src_fps, ref_frames = measured['shots'], Fraction(str(measured['fps'])), int(measured['frames'])
+        ref_size = measured['size']
+    except FileNotFoundError:
+        raise RnError(f'--from-shots {from_shots}: no such file') from None
+    except (ValueError, KeyError, TypeError) as error:
+        raise RnError(f'--from-shots {from_shots}: not an rn shots --json result ({error})') from None
+    if not shots:
+        raise RnError(f'--from-shots {from_shots}: no shots')
+    try:
+        out_fps = Fraction(str(fps)) if fps else src_fps
+        width, height = (int(v) for v in size.lower().split('x')) if size else (int(ref_size[0]), int(ref_size[1]))
+    except (ValueError, ZeroDivisionError):
+        raise RnError('--size WxH (e.g. 1080x1920), --fps a number or "30000/1001"') from None
+    width, height = width // 2 * 2, height // 2 * 2
+    path.parent.mkdir(parents=True, exist_ok=True)
+    ref = None
+    if src:
+        ref = _edl_relative(path, src, '--src ')
+        info = probe(path.parent / ref)
+        video = info['video']
+        if not video or abs((video['frames'] or 0) - ref_frames) > 1 or Fraction(video['fps']) != src_fps:
+            raise RnError(f'--src {src}: {video and video["frames"]} frames at {video and video["fps"]} fps; {from_shots} measured '
+                          f'{ref_frames} at {src_fps}: another file')
+
+    # which transitions are made as overlaps: an overlap must be shorter than both clips and clear of the one before
+    overlaps = {k: _overlap(s) for k, s in enumerate(shots) if k and _overlap(s)}
+    dropped = []
+    while True:
+        starts = [overlaps[k][0] if k in overlaps else s['start_frame'] for k, s in enumerate(shots)]
+        ends = [sum(overlaps[k + 1][:2]) if k + 1 in overlaps else (shots[k + 1]['start_frame'] if k + 1 < len(shots) else ref_frames)
+                for k in range(len(shots))]
+        bad = next((k for k, (lo, n, _) in overlaps.items()
+                    if n > min(ends[k - 1] - starts[k - 1], ends[k] - starts[k]) - 1
+                    or n + (overlaps[k - 1][1] if k - 1 in overlaps else 0) > ends[k - 1] - starts[k - 1]), None)
+        if bad is None:
+            break
+        dropped.append(f's{bad + 1:02d}')
+        del overlaps[bad]
+
+    def at(frame: int) -> int:  # a reference frame on the output clock
+        return round(frame * out_fps / src_fps)
+
+    def secs(frames: int) -> float:
+        return round(float(frames / out_fps), 6)
+
+    width_id = max(2, len(str(len(shots))))
+    clips, fades = [], {}
+    for k, shot in enumerate(shots):
+        ident = f's{k + 1:0{width_id}d}'
+        t = shot.get('transition') or {}
+        length = at(ends[k]) - at(starts[k])
+        meta = {'label': f'shot {k}: {shot["start"]:.2f}-{shot["end"]:.2f}s', 'shot': k,
+                'source': {'start': shot['start'], 'end': shot['end'], 'start_frame': shot['start_frame'], 'end_frame': shot['end_frame']},
+                'transition_in': shot.get('transition_in')}
+        for key in ('transition', 'flash_s', 'beat'):
+            if shot.get(key) is not None:
+                meta[key] = shot[key]
+        if shot.get('keyframe', {}).get('path'):
+            kf = Path(shot['keyframe']['path'])
+            meta['keyframe'] = _edl_relative(path, str(kf), '') if kf.is_file() else kf.as_posix()
+        if shot.get('motion'):
+            meta['motion'] = {key: shot['motion'][key] for key in ('rigid_fit', 'zoom_per_s', 'pan_px_per_s', 'pan_dir_deg') if key in shot['motion']}
+        if shot.get('speed'):
+            meta['speed'] = {key: shot['speed'][key] for key in ('ramp', 'longest_hold_s') if key in shot['speed']}
+        if ident in dropped:
+            meta['transition_made'] = 'cut: no room for the overlap next to the transition before it'
+        clip = {'id': ident, **({'src': ref, 'in': {'frame': starts[k]}, 'out': {'frame': ends[k]}, 'audio': False} if ref else
+                                {'src': f'{slots}/{ident}.mp4', 'duration': secs(length)}), 'meta': meta}
+        if k in overlaps:
+            _, n, kind = overlaps[k]
+            clip['transition'] = {'type': kind, 'duration': secs(at(starts[k] + n) - at(starts[k]))}
+        elif shot.get('transition_in') == 'fade' and not ref and t.get('out_frames') is not None:
+            color = t.get('through', 'black')
+            out_n, hold_n, in_n = (secs(at(t.get(key) or 0)) for key in ('out_frames', 'hold_frames', 'in_frames'))
+            before = clips[-1]
+            fades.setdefault(k - 1, []).append(
+                f'fade=t=out:st={max(0.0, float(before["duration"]) - out_n - hold_n):.6g}:d={out_n:.6g}:color={color}')
+            fades.setdefault(k, []).insert(0, f'fade=t=in:st=0:d={in_n:.6g}:color={color}')
+        clips.append(clip)
+    for k, chain in fades.items():  # ponytail: placeholder slots only; with --src the reference's own frames hold the fade
+        clips[k]['vf'] = ','.join(chain)
+    raw = {'version': 2, 'output': {'width': width, 'height': height, 'fps': int(out_fps) if out_fps.denominator == 1 else str(out_fps)},
+           'tracks': [{'clips': clips}],
+           'note': f'the shots of {_edl_relative(path, from_shots, "--from-shots ")} ({ref_frames} frames at {src_fps} fps)'}
+    if ref and info['audio']:
+        raw['audio'] = [{'id': 'reference', 'src': ref, 'role': 'music'}]
+    summary = _write_checked(path, raw)
+    made = {}
+    for clip in clips:
+        kind = clip.get('transition', {}).get('type') or ('fade in' if 'fade=t=in' in clip.get('vf', '') else None)
+        if kind:
+            made[kind] = made.get(kind, 0) + 1
+    return {'op': 'init', 'path': str(path), 'clips': [c['id'] for c in clips], 'transitions': made, 'dropped': dropped,
+            'source': ref or f'{slots}/<id>.mp4', 'timeline': summary}
+
+
+def silences_op(path: Path, ref: str, listen: str, *, min_silence: float = 0.5, pad: float = 0.1, keep_gap: float = 0.0) -> dict:
+    """Cuts a main-track clip's long silences out by writing its "ranges": the spans of its source between the silences
+    of `listen` (rn listen SOURCE --json, or rn listen SOURCE --speech --json) that last at least `min_silence` (silence
+    before the first word or after the last is cut at any length, leaving the pad). `pad`
+    seconds stay next to the speech on each side of a cut; `keep_gap` seconds of each removed pause stay in all (half on
+    each side, at least the pads). Only inside the clip's own in/out (or its existing ranges, so it can run again)."""
+    if min_silence <= 0 or pad < 0 or keep_gap < 0:
+        raise RnError('--min must be > 0; --pad and --keep-gap >= 0')
+    raw = _read(path)
+    key, items, index = _locate(raw, ref)
+    if key != 'tracks[0]':
+        raise RnError(f'{ref}: silences are cut on the main track (ranges play back to back there)')
+    original = items[index]
+    if 'keys' in original:
+        raise RnError(f'{ref}: has "keys", which ranges replace; remove them first')
+    listen = _edl_relative(path, listen, '--listen ')
+    try:
+        data = json.loads((path.parent / listen).read_text(encoding='utf-8-sig'))
+    except json.JSONDecodeError as error:
+        raise RnError(f'--listen {listen}: not JSON ({error}); write it with rn listen SOURCE --json') from None
+    silences = data.get('silences') if isinstance(data, dict) else None
+    if not isinstance(silences, list):
+        raise RnError(f'--listen {listen}: no "silences" (rn listen SOURCE --speech --json {Path(listen).name} writes them)')
+    warnings = []
+    edit = load(path)
+    if 'ranges' in original:
+        spans = [(float(a), float(b)) for a, b in original['ranges']]
+        fps = edit.fps
+    else:
+        clip, fps = _parsed(path, key, index)
+        if clip.kind not in ('video', 'edit'):
+            raise RnError(f'{ref}: a {clip.kind} clip has no sound to cut silences from')
+        spans = [(clip.start_s, clip.start_s + float(clip.frames / fps) * clip.speed)]
+        if original.get('src') and isinstance(data.get('path'), str) and Path(data['path']).name != Path(original['src']).name:
+            warnings.append(f'{Path(listen).name} measured {Path(data["path"]).name}, the clip plays {Path(original["src"]).name}')
+    half = max(pad, keep_gap / 2)
+    cuts = []
+    for silence in silences:
+        start, end = float(silence['start']), float(silence['end'])
+        head, foot = start <= spans[0][0] + 1e-6, end >= spans[-1][1] - 1e-6
+        if end - start < min_silence and not (head or foot):  # dead air before the first word or after the last always goes
+            continue
+        lead, tail = start + half, end - half
+        if head:  # only the pad stays before the first word
+            lead, tail = spans[0][0], end - pad
+        if foot:
+            lead, tail = start + pad, spans[-1][1]
+        if tail > lead:
+            cuts.append((lead, tail))
+    frame = float(1 / fps)
+    kept = []
+    for a, b in spans:
+        pieces = [(a, b)]
+        for lead, tail in cuts:
+            pieces = [part for x, y in pieces for part in ((x, min(y, lead)), (max(x, tail), y)) if part[1] - part[0] > 0]
+        kept += [(x, y) for x, y in pieces if y - x >= frame]  # under a frame would play nothing
+    if not kept:
+        raise RnError(f'{ref}: every second of the clip is in a silence of {Path(listen).name}; nothing left to play')
+    before, after = sum(b - a for a, b in spans), sum(b - a for a, b in kept)
+    for field in ('in', 'out', 'duration'):
+        original.pop(field, None)
+    original['ranges'] = [[round(a, 6), round(b, 6)] for a, b in kept]
+    summary = _write_checked(path, raw)
+    return {'op': 'silences', 'clip': ref, 'listen': listen, 'ranges': original['ranges'], 'spans': len(kept),
+            'removed': round(before - after, 3), 'kept': round(after, 3), 'warnings': warnings, 'timeline': summary}
+
+
+def _roll(raw_a: dict, a: Clip, raw_b: dict, b: Clip, shift_frames: int, fps: Fraction) -> str | None:
+    """A rolling edit: the cut between a and b moves by shift_frames; a ends later (or earlier) and b starts later (or
+    earlier) in its source by the same timeline time, so nothing else on the track moves. Returns why it cannot."""
+    d = Fraction(shift_frames) / fps
+    if a.kind in ('video', 'sequence', 'edit') and 'duration' not in raw_a:
+        raw_a['out'] = round(a.start_s + float(Fraction(a.frames) / fps + d) * a.speed, 6)
+    else:
+        raw_a['duration'] = round(float(Fraction(a.frames) / fps + d), 6)
+    if b.kind in ('video', 'sequence', 'edit'):
+        new_in = b.start_s + float(d) * b.speed
+        if new_in < -1e-9:
+            return f'{b.id or b.where} would start {-new_in:.3f}s before its source begins'
+        raw_b['in'] = round(max(new_in, 0.0), 6)
+        if 'duration' in raw_b:
+            raw_b['duration'] = round(float(Fraction(b.frames) / fps - d), 6)
+    else:
+        raw_b['duration'] = round(float(Fraction(b.frames) / fps - d), 6)
+    return None
+
+
+def snap_op(path: Path, listen: str, *, to: str = 'beats', tolerance: float = 0.2, only: str | None = None,
+            offset: float = 0.0) -> dict:
+    """Moves main-track cuts onto the nearest beat (or downbeat) of a rn listen result by rolling edits: the clip before
+    a cut ends later or earlier and the clip after it starts later or earlier in its own source by the same time, so
+    the rest of the timeline stays where it is. A cut with a transition is snapped by the transition's middle. offset:
+    where the analysed music starts on the timeline. Cuts with no beat within tolerance, or whose clips have no source
+    to spare, stay and are listed with the reason."""
+    if to not in ('beats', 'downbeats'):
+        raise RnError('--to beats or downbeats')
+    if tolerance <= 0:
+        raise RnError('--tolerance: seconds > 0')
+    listen = _edl_relative(path, listen, '--listen ')
+    data = json.loads((path.parent / listen).read_text(encoding='utf-8-sig'))
+    beats = data.get('beats') if isinstance(data, dict) else None
+    times = (beats or {}).get('times' if to == 'beats' else 'downbeats')
+    if not times:
+        raise RnError(f'--listen {listen}: no beats.{"times" if to == "beats" else "downbeats"} '
+                      '(rn listen MUSIC --json writes them; downbeats need rn 0.7+)')
+    grid = sorted(float(t) + offset for t in times)
+    wanted = {part.strip() for part in only.split(',')} if only else None
+    raw = _read(path)
+    clips = (raw.get('tracks') or [{}])[0].get('clips') or []
+    edit = load(path)
+    fps = edit.fps
+    if wanted:
+        unknown = wanted - {c.id for c in edit.base}
+        if unknown:
+            raise RnError(f'--only {", ".join(sorted(unknown))}: no main-track clip with that id')
+    snapped, kept = [], []
+    for i in range(1, len(edit.base)):
+        b = edit.base[i]
+        if wanted and b.id not in wanted:
+            continue
+        label = b.id or f'clip {i}'
+        point = Fraction(b.timeline_start) / fps + Fraction(b.transition_frames, 2) / fps
+        nearest = min(grid, key=lambda t: abs(t - float(point)))
+        shift = nearest - float(point)
+        frames = round(shift * fps)
+        entry = {'cut': label, 'time': round(float(point), 4), 'beat': round(nearest, 4)}
+        if abs(shift) > tolerance:
+            kept.append({**entry, 'reason': f'nearest {to[:-1]} is {shift:+.3f}s away (tolerance {tolerance}s)'})
+            continue
+        if frames == 0:
+            kept.append({**entry, 'reason': 'already on it (within half a frame)'})
+            continue
+        a = edit.base[i - 1]
+        if '.ranges[' in a.where or '.ranges[' in b.where:
+            kept.append({**entry, 'reason': 'a clip with "ranges": trim its spans instead'})
+            continue
+        if (a.keys or {}).get('speed') or (b.keys or {}).get('speed'):
+            kept.append({**entry, 'reason': 'a clip with a speed ramp'})
+            continue
+        index_a, index_b = (int(c.where.split('[')[2].rstrip(']')) for c in (a, b))
+        trial_a, trial_b = dict(clips[index_a]), dict(clips[index_b])
+        why = _roll(trial_a, a, trial_b, b, frames, fps)
+        if why is None:
+            before = clips[index_a], clips[index_b]
+            clips[index_a], clips[index_b] = trial_a, trial_b
+            trial = path.with_name(f'.{path.stem}.rn-snap.json')
+            trial.write_text(json.dumps(raw, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+            try:
+                laid = load(trial)
+                ran_out = [w for w in laid.warnings if w not in edit.warnings and a.where in w]
+                if ran_out:  # the source cannot cover the longer clip (rn would hold its last frame)
+                    why = f'{a.id or a.where} has no source to spare: {ran_out[0]}'
+                else:
+                    edit = laid
+            except RnError as error:
+                why = str(error)
+            finally:
+                trial.unlink(missing_ok=True)
+            if why:
+                clips[index_a], clips[index_b] = before
+        if why:
+            kept.append({**entry, 'reason': why})
+            continue
+        snapped.append({**entry, 'shift': round(frames / float(fps), 4), 'frames': frames,
+                        'off_by': round(float(Fraction(frames) / fps) - shift, 4)})
+    if not snapped:
+        raise RnError('no cut moved: ' + '; '.join(f'{k["cut"]}: {k["reason"]}' for k in kept[:8]))
+    return {'op': 'snap', 'to': to, 'snapped': snapped, 'kept': kept, 'timeline': _write_checked(path, raw)}
+
+
+def batch_op(path: Path, steps: list[str], apply) -> dict:
+    """Several operations as one: each is applied and checked in turn on a working copy next to the EDL (so relative
+    paths resolve the same), which replaces the EDL only after the last step passes. A failing step writes nothing.
+    `apply(path, line)` runs one operation line ("set c3 out=5.5") against a file."""
+    if not steps:
+        raise RnError('batch: no operations')
+    raw = _read(path)
+    work = path.with_name(f'.{path.stem}.rn-batch.json')
+    work.write_text(json.dumps(raw, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+    done = []
+    try:
+        for number, line in enumerate(steps, 1):
+            try:
+                result = apply(work, line)
+            except RnError as error:
+                raise RnError(f'step {number} ({line}): {error}; nothing written') from None
+            done.append(summary_lines(result)[0])
+        os.replace(work, path)
+    finally:
+        work.unlink(missing_ok=True)
+    return {'op': 'batch', 'steps': done, 'timeline': result['timeline']}
+
+
 def summary_lines(result: dict) -> list[str]:
     head = {'upgrade': lambda r: 'upgraded to version 2',
             'ids': lambda r: f'ids added: {", ".join(r["added"]) or "none (every clip has one)"}',
@@ -251,11 +697,41 @@ def summary_lines(result: dict) -> list[str]:
             'split': lambda r: f'split {r["clip"]} into {r["into"][0]} + {r["into"][1]}',
             'delete': lambda r: f'deleted {r["clip"]}' + (' (lifted: gap kept)' if r['lift'] else ''),
             'insert': lambda r: f'inserted {r["clip"] or "clip"}',
-            'move': lambda r: f'moved {r["clip"]}'}[result['op']](result)
+            'move': lambda r: f'moved {r["clip"]}',
+            'hits': lambda r: f'added {len(r["added"])} x {Path(r["src"]).name} at {r["at"]}: '
+                              + (r['added'][0] if len(r['added']) == 1 else f'{r["added"][0]}..{r["added"][-1]}'),
+            'snap': lambda r: f'snapped {len(r["snapped"])} cut(s) to {r["to"]}, {len(r["kept"])} kept',
+            'silences': lambda r: f'{r["clip"]}: cut {r["removed"]}s of silence, {r["spans"]} spans play ({r["kept"]}s)',
+            'batch': lambda r: f'{len(r["steps"])} steps: ' + '; '.join(r['steps']),
+            'init': lambda r: f'created {r["path"]}: {len(r["clips"])} clips from the reference\'s shots, sources {r["source"]}'
+                              + (f'; transitions made: {", ".join(f"{n} {k}" for k, n in r["transitions"].items())}' if r['transitions'] else '')
+                              + (f'; made as cuts (no room): {", ".join(r["dropped"])}' if r['dropped'] else '')}[result['op']](result)
     out = result['timeline']['output']
-    lines = [head, f'timeline {out["width"]}x{out["height"]} {out["fps"]}fps  {out["frames"]} frames  {out["duration"]}s']
+    lines = [head]
+    if result['op'] == 'hits':
+        def listed(entries: list[str]) -> str:
+            return ', '.join(entries[:24]) + (f', ... ({len(entries)} in all; --json lists each)' if len(entries) > 24 else '')
+        lines.append('  hits at ' + listed([f'{h["time"]:g}' for h in result['hits']]) + ' s'
+                     + (f'  (pivot {result["pivot"]:g}s of the sound, {result["pivot_from"]})' if result.get('pivot') is not None else ''))
+        skipped = result['skipped']
+        if skipped:
+            reasons = '; '.join(dict.fromkeys(s['reason'] for s in skipped))
+            lines.append(f'  not placed, {reasons}: ' + listed([f'{s["hit"]} ({s["time"]:g}s)' for s in skipped]))
+        lines += [f'warning: {w}' for w in result['warnings']]
+    if result['op'] == 'silences':
+        lines.append('  ranges ' + ', '.join(f'{a:g}-{b:g}' for a, b in result['ranges'][:12]) + (' ...' if len(result['ranges']) > 12 else ''))
+        lines += [f'warning: {w}' for w in result['warnings']]
+    if result['op'] == 'snap':
+        lines += [f'  {c["cut"]}: {c["time"]}s -> {c["beat"]}s ({c["frames"]:+d} frames)' for c in result['snapped']]
+        lines += [f'  {c["cut"]} stays at {c["time"]}s: {c["reason"]}' for c in result['kept']]
+    lines.append(f'timeline {out["width"]}x{out["height"]} {out["fps"]}fps  {out["frames"]} frames  {out["duration"]}s')
     lines += [f'  {c["id"] or c["where"]}: frames {c["start_frame"]}..{c["start_frame"] + c["frames"] - 1}' for c in result['timeline']['base']]
     lines += [f'  {c["id"] or c["where"]}: overlay frames {c["start_frame"]}..{c["start_frame"] + c["frames"] - 1}'
               for c in result['timeline']['overlays']]
-    lines += [f'warning: {w}' for w in result['timeline']['warnings']]
+    missing = [w for w in result['timeline']['warnings'] if '; placeholder card for ' in w]
+    if missing:
+        names = [w.split(': ', 1)[1].split(' is missing')[0] for w in missing]
+        lines.append(f'not made yet ({len(names)}; placeholder cards in rn assemble --placeholders): '
+                     + ', '.join(names[:12]) + (', ...' if len(names) > 12 else ''))
+    lines += [f'warning: {w}' for w in result['timeline']['warnings'] if w not in missing]
     return lines

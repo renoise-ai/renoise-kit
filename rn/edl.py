@@ -14,6 +14,9 @@ from pathlib import Path
 
 from .ff import HEX_COLOR, RnError, probe, source_matrix
 
+# The format's JSON Schema, shipped as package data (rn schema prints it): the contract for other hosts.
+SCHEMA = Path(__file__).with_name('edit.schema.json')
+
 # ffmpeg xfade transitions (7.x); 'fade' and 'dissolve' cover most edits.
 XFADE = {
     'fade', 'fadeblack', 'fadewhite', 'fadegrays', 'dissolve', 'pixelize', 'distance', 'radial', 'circleopen', 'circleclose',
@@ -172,6 +175,7 @@ class Edit:
     total_frames: int = 0
     cut_fade: float = 0.0  # seconds of fade on each side of a hard cut in the main track's own sound
     accept: list[dict] = field(default_factory=list)  # qa warnings judged intended: {"check", "at"?, "note"?}
+    max_mbps: float | str | None = None  # bitrate ceiling on the final encode: Mb/s or "auto" (audio.vbv)
     warnings: list[str] = field(default_factory=list)
 
     @property
@@ -431,15 +435,39 @@ def cache_dir(edit_dir: Path) -> Path:
     return Path(os.environ.get('RN_CACHE') or edit_dir / '.rn-cache')
 
 
-def _filters(raw: dict, key: str, where: str) -> str | None:
+# file=look.cube or file='C\:/dir/look.cube' (quoted at graph level so a Windows drive colon survives both parsers)
+_FILTER_FILE = re.compile(r"(?<=[=:])(file|filename)=(?:'([^']*)'|([^:,']+))")
+
+
+def _filters(raw: dict, key: str, where: str, edit_dir: Path | None = None) -> str | None:
     """A raw ffmpeg filter chain ("eq=saturation=1.2,unsharp"): any filter, but one linear chain, so it cannot reach
-    into the rest of the graph."""
+    into the rest of the graph. A file option (lut3d=file=look.cube, ...:filename=...) names a file relative to the EDL,
+    like every other path in it; it is written into the graph as an absolute path, since overlays render from a temporary
+    folder."""
     value = raw.get(key)
     if value is None:
         return None
     if not isinstance(value, str) or not value.strip() or _GRAPH_BREAKERS.search(value):
         raise RnError(f'{where}.{key}: one ffmpeg filter chain like "eq=saturation=1.2,unsharp" (no ; [ ])')
-    return value
+    if edit_dir is None:
+        return value
+
+    def absolute(match: re.Match) -> str:
+        path = Path((match.group(2) if match.group(2) is not None else match.group(3)).replace('\\:', ':'))
+        if not path.is_absolute() and (edit_dir / path).exists():
+            path = (edit_dir / path).resolve()
+        if not path.is_absolute():
+            return match.group(0)
+        # Two parsers read it: the graph keeps a single-quoted span as is, then the filter's option parser turns \: back
+        # into the colon of a Windows drive (C:/...), which would otherwise end the option value.
+        return f"{match.group(1)}='" + path.as_posix().replace(':', '\\:') + "'"
+    return _FILTER_FILE.sub(absolute, value)
+
+
+def filter_files(chain: str | None) -> list[Path]:
+    """Existing files a raw filter chain reads (lut3d=file=...), so a changed LUT renders the slot again."""
+    found = [Path((m.group(2) if m.group(2) is not None else m.group(3)).replace('\\:', ':')) for m in _FILTER_FILE.finditer(chain or '')]
+    return [f for f in found if f.is_file()]
 
 
 def _ident(raw: dict, where: str) -> tuple[str | None, object]:
@@ -572,7 +600,7 @@ def _clip(raw: dict, where: str, edit_dir: Path, fps: Fraction, *, overlay: bool
     clip = Clip(where=where, kind='video', source=None, color=None, start_s=0.0, speed=speed, frames=0, fit=look.get('fit', 'cover'),
                 audio=bool(raw.get('audio', not overlay)), gain_db=gain)
     clip.id, clip.meta = _ident(raw, where)
-    clip.vf, clip.af = _filters(raw, 'vf', where), _filters(raw, 'af', where)
+    clip.vf, clip.af = _filters(raw, 'vf', where, edit_dir), _filters(raw, 'af', where, edit_dir)
     if overlay and clip.af:
         raise RnError(f'{where}.af: overlays are silent; filter their sound in "audio"')
     clip.keys = _keys(raw.get('keys'), f'{where}.keys', KEYS_OVERLAY if overlay else KEYS_MAIN)
@@ -803,7 +831,7 @@ def _audio(raw: dict, where: str, edit_dir: Path, timeline: Timeline) -> AudioIt
                      duration=duration, gain_db=_num(raw.get('gain_db', 0), f'{where}.gain_db'),
                      fade_in=_num(raw.get('fade_in', 0), f'{where}.fade_in', minimum=0),
                      fade_out=_num(raw.get('fade_out', 0), f'{where}.fade_out', minimum=0), id=ident, meta=meta,
-                     af=_filters(raw, 'af', where), keys=_keys(raw.get('keys'), f'{where}.keys', KEYS_AUDIO))
+                     af=_filters(raw, 'af', where, edit_dir), keys=_keys(raw.get('keys'), f'{where}.keys', KEYS_AUDIO))
 
 
 def _expand_ranges(clips: list) -> tuple[list[tuple[str, dict]], dict[str, tuple[int, int]]]:
@@ -1004,6 +1032,8 @@ def load(path: str | Path, *, placeholders: bool = False, _stack: tuple[Path, ..
         raise RnError('mix.cut_fade: up to 0.25 s (it removes clicks at hard cuts; longer fades are audio items)')
     crf = int(_num(output.get('crf', 18), 'output.crf', minimum=0))
     preset = output.get('preset', 'medium')
+    from .audio import max_mbps_value
+    max_mbps = max_mbps_value(output.get('max_mbps'), 'output.max_mbps')
     accept = raw.get('accept') or []
     if not isinstance(accept, list) or not all(isinstance(a, dict) and isinstance(a.get('check'), str) for a in accept):
         raise RnError('accept: [{"check": "dead_air", "at": 1.5, "note": "the pause before the drop"}, ...] ("at" optional)')
@@ -1015,7 +1045,7 @@ def load(path: str | Path, *, placeholders: bool = False, _stack: tuple[Path, ..
         raise RnError(f'unknown top-level field(s) {sorted(unknown)}')
     return Edit(path=path, width=width, height=height, fps=fps, background=background, crf=crf, preset=preset, base=base,
                 overlays=overlays, audio=audio, subtitles=subtitles, subtitle_style=style, lufs=lufs, true_peak=true_peak,
-                duck_db=duck, total_frames=total, warnings=warnings, cut_fade=cut_fade, accept=accept)
+                duck_db=duck, total_frames=total, warnings=warnings, cut_fade=cut_fade, accept=accept, max_mbps=max_mbps)
 
 
 def seconds(frames: int, fps: Fraction) -> float:

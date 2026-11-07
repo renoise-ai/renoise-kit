@@ -2109,6 +2109,9 @@ listen = [
 matte = [
     { name = "rembg", extra = ["cpu"] },
 ]
+shots = [
+    { name = "opencv-python-headless" },
+]
 transcribe = [
     { name = "faster-whisper" },
 ]
@@ -2138,6 +2141,7 @@ requires-dist = [
     { name = "matplotlib", marker = "extra == 'listen'" },
     { name = "numpy" },
     { name = "opencv-python-headless", marker = "extra == 'faces'", specifier = ">=4.8" },
+    { name = "opencv-python-headless", marker = "extra == 'shots'", specifier = ">=4.8" },
     { name = "opentimelineio", marker = "extra == 'export'" },
     { name = "otio-fcp-adapter", marker = "extra == 'export'" },
     { name = "otio-fcpx-xml-adapter", marker = "extra == 'export'" },
@@ -2146,9 +2150,9 @@ requires-dist = [
     { name = "pysubs2", marker = "extra == 'captions'" },
     { name = "pysubs2", marker = "extra == 'export'" },
     { name = "rembg", extras = ["cpu"], marker = "extra == 'matte'" },
-    { name = "renoise-kit", extras = ["captions", "capture", "export", "faces", "fonts", "listen", "matte", "transcribe"], marker = "extra == 'all'" },
+    { name = "renoise-kit", extras = ["captions", "capture", "export", "faces", "fonts", "listen", "matte", "shots", "transcribe"], marker = "extra == 'all'" },
 ]
-provides-extras = ["listen", "transcribe", "faces", "capture", "captions", "fonts", "matte", "export", "all"]
+provides-extras = ["listen", "transcribe", "faces", "shots", "capture", "captions", "fonts", "matte", "export", "all"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -19,9 +19,11 @@ def _select_expr(indices: list[int]) -> str:
     return '+'.join(f'eq(n\\,{index})' for index in indices)
 
 
-def extract(path: str | Path, indices: list[int], out_dir: Path, *, width: int | None = None) -> list[tuple[int, Path]]:
+def extract(path: str | Path, indices: list[int], out_dir: Path, *, width: int | None = None,
+            crop: tuple[int, int, int, int] | None = None) -> list[tuple[int, Path]]:
     """Decodes from the start and keeps the frames whose decoded index is listed. Exact by construction:
-    no input seeking (which can land 1-2 frames off on x264) and no timestamp arithmetic.
+    no input seeking (which can land 1-2 frames off on x264) and no timestamp arithmetic. crop is (w, h, x, y) in source
+    pixels, applied before scaling to width.
     ponytail: decode time grows with the source; fine for clips and references up to a few minutes."""
     wanted = sorted(set(i for i in indices if i >= 0))
     if not wanted:
@@ -30,7 +32,8 @@ def extract(path: str | Path, indices: list[int], out_dir: Path, *, width: int |
     for start in range(0, len(wanted), 200):  # keep the select expression a sane length
         chunk = wanted[start:start + 200]
         pattern = out_dir / f'f{start:06d}_%06d.png'
-        filters = f"select='{_select_expr(chunk)}'" + (f',scale={width}:-2:flags=bicubic' if width else '')
+        filters = (f"select='{_select_expr(chunk)}'" + (f',crop={crop[0]}:{crop[1]}:{crop[2]}:{crop[3]}' if crop else '')
+                   + (f',scale={width}:-2:flags=bicubic' if width else ''))
         run(['ffmpeg', '-i', str(path), '-vf', filters, '-fps_mode', 'passthrough', '-frames:v', str(len(chunk)), '-y', str(pattern)])
         produced = sorted(out_dir.glob(f'f{start:06d}_*.png'))
         results.extend(zip(chunk, produced))
@@ -138,7 +141,20 @@ def _save_under(sheet, path: Path, max_kb: int) -> int:
 IMAGES = ('.png', '.jpg', '.jpeg', '.webp')  # what a folder sheet tiles
 
 
-def _folder_sheet(folder: Path, *, out: str | None, several: bool, width: int, columns: int, max_kb: int) -> list[dict]:
+def _check_crop(crop: tuple[int, int, int, int], width: int, height: int, name) -> None:
+    w, h, x, y = crop
+    if w <= 0 or h <= 0 or x < 0 or y < 0 or x + w > width or y + h > height:
+        raise RnError(f'{name}: --crop {w}:{h}:{x}:{y} is outside the {width}x{height} picture')
+
+
+def _crop_image(image, crop: tuple[int, int, int, int], name):
+    _check_crop(crop, *image.size, name)
+    w, h, x, y = crop
+    return image.crop((x, y, x + w, y + h))
+
+
+def _folder_sheet(folder: Path, *, out: str | None, several: bool, width: int, columns: int, max_kb: int,
+                  crop: tuple[int, int, int, int] | None = None) -> list[dict]:
     """A folder of stills (renders of chosen frames, generated keyframes) as labelled pages, in natural name order
     (f792 before f1062)."""
     import re
@@ -155,6 +171,8 @@ def _folder_sheet(folder: Path, *, out: str | None, several: bool, width: int, c
     for f in files:
         with Image.open(f) as image:
             image = image.convert('RGB')
+            if crop:
+                image = _crop_image(image, crop, f)
             thumbs.append(image.resize((width, max(1, round(image.height * width / image.width))), Image.LANCZOS))
     tile_h = max(t.height for t in thumbs)
     thumbs = [ImageOps.pad(t, (width, tile_h)) for t in thumbs]
@@ -171,17 +189,23 @@ def _folder_sheet(folder: Path, *, out: str | None, several: bool, width: int, c
 
 def sheet_command(paths: list[str], *, out: str | None, every: int | None, rate: float | None, indices: list[int] | None,
                   seconds: list[float] | None, count: int | None, width: int, columns: int, max_kb: int,
-                  around: list[float] | None = None, span: int = 3, diff: bool = False) -> dict:
+                  around: list[float] | None = None, span: int = 3, diff: bool = False,
+                  crop: tuple[int, int, int, int] | None = None) -> dict:
+    """crop (w, h, x, y in source pixels) zooms every tile into one region: a sign, a caption, a face, a logo."""
     pages = []
     for path in paths:
         if Path(path).is_dir():
-            pages += _folder_sheet(Path(path), out=out, several=len(paths) > 1, width=width, columns=columns, max_kb=max_kb)
+            pages += _folder_sheet(Path(path), out=out, several=len(paths) > 1, width=width, columns=columns, max_kb=max_kb, crop=crop)
             continue
         info = probe(path)
         if not info['video'] or info['video']['still']:
             raise RnError(f'{path}: not a video')
         fps = source_fps(info)
         frames = info['video']['frames']
+        if crop:  # ffmpeg rotates phone footage before the filters, so the crop is in the picture as displayed
+            video = info['video']
+            turned = abs(video.get('rotation') or 0) % 180 == 90
+            _check_crop(crop, *((video['height'], video['width']) if turned else (video['width'], video['height'])), path)
         chosen = pick_indices(frames, fps, every=every, rate=rate, indices=indices, seconds=seconds, count=count, around=around, span=span)
         if not chosen:
             raise RnError(f'{path}: no frames in range (the clip has {frames} frames)')
@@ -192,13 +216,14 @@ def sheet_command(paths: list[str], *, out: str | None, every: int | None, rate:
         base.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory() as tmp:
             wanted = sorted({j for i in chosen for j in ((i - 1, i) if diff else (i,)) if j >= 0})
-            extracted = dict(extract(path, wanted, Path(tmp), width=width))
+            extracted = dict(extract(path, wanted, Path(tmp), width=width, crop=crop))
             tiles = [(i, extracted[i]) for i in chosen if i in extracted]
             page_count = math.ceil(len(tiles) / MAX_PER_PAGE)
             for page in range(page_count):
                 part = tiles[page * MAX_PER_PAGE:(page + 1) * MAX_PER_PAGE]
                 target = base if page_count == 1 else base.with_name(f'{base.stem}-p{page + 1}{base.suffix or ".jpg"}')
-                title = f'{Path(path).name}  {fps}fps  {frames}f  frames {part[0][0]}-{part[-1][0]}' + ('  |difference to previous| x4' if diff else '')
+                title = (f'{Path(path).name}  {fps}fps  {frames}f  frames {part[0][0]}-{part[-1][0]}'
+                         + (f'  crop {crop[0]}x{crop[1]}+{crop[2]}+{crop[3]}' if crop else '') + ('  |difference to previous| x4' if diff else ''))
                 images = [_difference(p, extracted.get(i - 1)) for i, p in part] if diff else None
                 size = _save_under(_compose(part, fps, columns, title, images), target, max_kb)
                 pages.append({'path': str(target), 'source': path, 'indices': [index for index, _ in part], 'bytes': size})

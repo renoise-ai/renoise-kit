@@ -1,7 +1,8 @@
 """rn captions: mechanical caption chunking, script alignment, safe-area / face-aware placement.
 
-Writes one plain .ass (single readable style), an .srt, and a JSON of events with word timing so the agent can render
-its own styled captions. Never imposes a style. Contract: spec/mcp/03-media-kit.md §3.1.
+Writes an .ass, an .srt, and a JSON of events with word timing. The .ass is one plain readable style by default;
+--style picks an animated one (clean, pop, karaoke, highlight, box) built from the same per-word timing. Every style is
+plain ASS override tags the agent can read and change. Contract: SPEC.md (rn captions).
 """
 from __future__ import annotations
 
@@ -32,6 +33,8 @@ FONTS = {'zh': 'Noto Sans CJK SC', 'yue': 'Noto Sans CJK SC', 'ja': 'Noto Sans C
 # Windows ships no Noto face and libass would fall back silently, so name the faces every Windows has.
 WINDOWS_FONTS = {'zh': 'Microsoft YaHei', 'yue': 'Microsoft YaHei', 'ja': 'Yu Gothic', 'ko': 'Malgun Gothic', '': 'Segoe UI'}
 PAUSE_BREAK = 0.5  # seconds of silence that ends a caption
+STYLES = ('plain', 'clean', 'pop', 'karaoke', 'highlight', 'box')
+DEFAULT_ACCENT = {'karaoke': '#ffe000', 'highlight': '#ffe000', 'box': '#000000'}
 
 
 def _norm(text: str) -> str:
@@ -206,6 +209,58 @@ def _faces_in_span(frames: list[dict], start: float, end: float, scale: tuple[fl
     return [(f_['box'][0] * scale[0], f_['box'][1] * scale[1], f_['box'][2] * scale[0], f_['box'][3] * scale[1]) for f in chosen for f_ in f.get('faces', [])]
 
 
+def _hex(text: str, what: str) -> tuple[int, int, int]:
+    value = text.strip().lstrip('#')
+    if not re.fullmatch(r'[0-9a-fA-F]{6}', value):
+        raise RnError(f'{what} "{text}": expected #rrggbb')
+    return int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16)
+
+
+def _ass_color(rgb: tuple[int, int, int]) -> str:
+    return f'&H{rgb[2]:02X}{rgb[1]:02X}{rgb[0]:02X}&'
+
+
+def _tagged(lines: list[list[dict]], cjk: bool, upper: bool, tag) -> str:
+    """Lines of units as ASS text, `tag(unit_index)` put before each unit; glue as _join."""
+    out_lines, k = [], 0
+    for line in lines:
+        plain = ''
+        text = ''
+        for unit in line:
+            word = unit['text'].upper() if upper else unit['text']
+            glue = ' ' if plain and (not cjk or (plain[-1].isascii() and plain[-1].isalnum() and word[0].isascii() and word[0].isalnum())) else ''
+            plain += glue + word
+            text += glue + tag(k) + word
+            k += 1
+        out_lines.append(text)
+    return '\\N'.join(out_lines)
+
+
+def _styled_text(style: str, event: dict, lines: list[list[dict]], cjk: bool, upper: bool, base: str, accent: str) -> str:
+    """The animation of one event, as ASS override tags around its words."""
+    start_ms = event['start'] * 1000
+    words = [u for line in lines for u in line]
+    if style == 'pop':  # the chunk scales in with a small overshoot
+        return ('{\\fad(60,0)\\fscx70\\fscy70\\t(0,110,\\fscx108\\fscy108)\\t(110,190,\\fscx100\\fscy100)}'
+                + _tagged(lines, cjk, upper, lambda k: ''))
+    if style == 'karaoke':  # words turn the accent colour as they are spoken and stay (\k: secondary -> primary)
+        lead = max(0, round((words[0]['start'] * 1000 - start_ms) / 10))
+        cs = []
+        for k, unit in enumerate(words):
+            nxt = words[k + 1]['start'] if k + 1 < len(words) else unit['end']
+            cs.append(max(1, round((nxt - unit['start']) * 100)))
+        return ('{\\k%d}' % lead if lead else '') + _tagged(lines, cjk, upper, lambda k: '{\\k%d}' % cs[k])
+    if style == 'highlight':  # only the word being spoken is in the accent colour
+
+        def tag(k: int) -> str:
+            unit = words[k]
+            on = max(0, round(unit['start'] * 1000 - start_ms))
+            off = max(on + 1, round((words[k + 1]['start'] if k + 1 < len(words) else unit['end']) * 1000 - start_ms))
+            return f'{{\\1c{base}\\t({on},{on + 1},\\1c{accent})\\t({off},{off + 1},\\1c{base})}}'
+        return _tagged(lines, cjk, upper, tag)
+    return _tagged(lines, cjk, upper, lambda k: '')
+
+
 def _srt_time(seconds: float) -> str:
     ms = round(seconds * 1000)
     return f'{ms // 3600000:02d}:{ms // 60000 % 60:02d}:{ms // 1000 % 60:02d},{ms % 1000:03d}'
@@ -213,13 +268,20 @@ def _srt_time(seconds: float) -> str:
 
 def captions_command(words_json: str, *, script: str | None = None, faces_json: str | None = None, out: str, width: int, height: int,
                      max_chars: int | None = None, max_lines: int = 2, min_duration: float = 0.6, max_duration: float = 4.0,
-                     safe: str = 'auto', language: str | None = None) -> dict:
+                     safe: str = 'auto', language: str | None = None, style: str = 'plain', font: str | None = None,
+                     color: str | None = None, accent: str | None = None, position: str = 'bottom', upper: bool = False) -> dict:
     try:
         import pysubs2
     except ImportError as error:
         raise RnError('captions needs pysubs2 (pip install pysubs2)') from error
     if safe not in ('auto', *SAFE_MARGINS):
         raise RnError(f'--safe must be one of auto, {", ".join(SAFE_MARGINS)}')
+    if style not in STYLES:
+        raise RnError(f'--style must be one of {", ".join(STYLES)}')
+    if position not in ('bottom', 'middle', 'top'):
+        raise RnError('--position must be bottom, middle or top')
+    text_rgb = _hex(color or '#ffffff', '--color')
+    accent_rgb = _hex(accent or DEFAULT_ACCENT.get(style, '#ffe000'), '--accent')
     if width <= 0 or height <= 0 or max_lines < 1 or min_duration > max_duration:
         raise RnError('captions: width/height must be positive, max_lines >= 1, min_duration <= max_duration')
     try:
@@ -251,11 +313,13 @@ def captions_command(words_json: str, *, script: str | None = None, faces_json: 
     margins = SAFE_MARGINS[safe_name]
     safe_left, safe_right = margins['left'] * width, width - margins['right'] * width
     safe_width = safe_right - safe_left
-    max_chars = max_chars or max(4, round(BASE_CHARS['cjk' if cjk else 'latin'] * width / 1080))
+    # Animated styles read as short-form captions: fewer, bigger words per line (about 0.65 of plain's line).
+    max_chars = max_chars or max(4, round(BASE_CHARS['cjk' if cjk else 'latin'] * width / 1080 * (1 if style == 'plain' else 0.65)))
     em_per_char = 1.0 if cjk else LATIN_EM
-    font_size = round(min(height * (0.03 if height > width else 0.05), safe_width / (max_chars * em_per_char)))
+    size_share = (0.03 if height > width else 0.05) * (1 if style == 'plain' else 1.4)
+    font_size = round(min(height * size_share, safe_width / (max_chars * em_per_char)))
     fonts = WINDOWS_FONTS if sys.platform == 'win32' else FONTS
-    font_name = fonts.get(language.split('-')[0].lower(), fonts['']) if language else fonts['zh' if cjk else '']
+    font_name = font or (fonts.get(language.split('-')[0].lower(), fonts['']) if language else fonts['zh' if cjk else ''])
 
     chunks = _chunk(units, max_chars=max_chars, max_lines=max_lines, min_duration=min_duration, max_duration=max_duration, cjk=cjk)
     for chunk in chunks:
@@ -275,29 +339,33 @@ def captions_command(words_json: str, *, script: str | None = None, faces_json: 
         scale = (width / meta.get('width', width), height / meta.get('height', height))
 
     events: list[dict] = []
+    event_lines: list[list[list[dict]]] = []
     moved: list[dict] = []
+    order = [position] + [b for b in ('bottom', 'top', 'middle') if b != position]
     line_height = font_size * 1.2
     for index, chunk in enumerate(chunks):
-        lines = [_join([u['text'] for u in line], cjk) for line in _layout(chunk, max_chars, cjk)]
+        laid = _layout(chunk, max_chars, cjk)
+        event_lines.append(laid)
+        lines = [_join([u['text'] for u in line], cjk) for line in laid]
         box_w = min(safe_width, max(_em(line) for line in lines) * font_size)
         box_h = len(lines) * line_height
         bands = {'bottom': height - margins['bottom'] * height - box_h, 'top': margins['top'] * height, 'middle': (height - box_h) / 2}
         box_x = (width - box_w) / 2
         span_faces = _faces_in_span(frames, chunk[0]['start'], chunk[-1]['end'], scale) if frames else []
-        band = 'bottom'
-        if span_faces and _overlaps((box_x, bands['bottom'], box_w, box_h), span_faces, 0.01 * height):
-            free = [b for b in ('top', 'middle') if not _overlaps((box_x, bands[b], box_w, box_h), span_faces, 0.01 * height)]
+        band = position
+        if span_faces and _overlaps((box_x, bands[position], box_w, box_h), span_faces, 0.01 * height):
+            free = [b for b in order[1:] if not _overlaps((box_x, bands[b], box_w, box_h), span_faces, 0.01 * height)]
             if free:
                 band = free[0]
-                moved.append({'event': index, 'start': round(chunk[0]['start'], 3), 'end': round(chunk[-1]['end'], 3), 'from': 'bottom', 'to': band,
-                              'reason': 'face box overlaps the bottom caption band'})
+                moved.append({'event': index, 'start': round(chunk[0]['start'], 3), 'end': round(chunk[-1]['end'], 3), 'from': position, 'to': band,
+                              'reason': f'face box overlaps the {position} caption band'})
             else:
-                warnings.append(f'event {index} ({chunk[0]["start"]:.2f}s): faces overlap every caption band; left at bottom')
+                warnings.append(f'event {index} ({chunk[0]["start"]:.2f}s): faces overlap every caption band; left at {position}')
         events.append({'start': chunk[0]['start'], 'end': chunk[-1]['end'], 'lines': lines, 'text': _join([u['text'] for u in chunk], cjk),
                        'words': [{'text': u['text'], 'start': round(u['start'], 3), 'end': round(u['end'], 3)} for u in chunk],
                        'position': {'band': band, 'x': round(box_x), 'y': round(bands[band]), 'w': round(box_w), 'h': round(box_h),
                                     'anchor': {'bottom': 'bottom-center', 'top': 'top-center', 'middle': 'middle-center'}[band]},
-                       'moved_for_face': band != 'bottom'})
+                       'moved_for_face': band != position})
     # Hold short captions up to min_duration, never into the next caption.
     for index, event in enumerate(events):
         next_start = events[index + 1]['start'] if index + 1 < len(events) else float('inf')
@@ -312,30 +380,44 @@ def captions_command(words_json: str, *, script: str | None = None, faces_json: 
 
     subs = pysubs2.SSAFile()
     subs.info.update({'PlayResX': str(width), 'PlayResY': str(height), 'WrapStyle': '2'})  # WrapStyle 2: only our own line breaks
-    subs.styles = {'Default': pysubs2.SSAStyle(
-        fontname=font_name, fontsize=font_size, bold=True, primarycolor=pysubs2.Color(255, 255, 255, 0), outlinecolor=pysubs2.Color(0, 0, 0, 0),
-        backcolor=pysubs2.Color(0, 0, 0, 128), outline=max(2, round(font_size * 0.07)), shadow=1, alignment=pysubs2.Alignment.BOTTOM_CENTER,
-        marginl=round(safe_left), marginr=round(width - safe_right), marginv=round(margins['bottom'] * height))}
-    for event in events:
+    text_color, accent_color = pysubs2.Color(*text_rgb, 0), pysubs2.Color(*accent_rgb, 0)
+    base = {'fontname': font_name, 'fontsize': font_size, 'bold': True, 'primarycolor': text_color, 'outlinecolor': pysubs2.Color(0, 0, 0, 0),
+            'backcolor': pysubs2.Color(0, 0, 0, 128), 'outline': max(2, round(font_size * 0.07)), 'shadow': 1,
+            'alignment': pysubs2.Alignment.BOTTOM_CENTER, 'marginl': round(safe_left), 'marginr': round(width - safe_right),
+            'marginv': round(margins['bottom'] * height)}
+    if style in ('clean', 'pop', 'karaoke', 'highlight'):  # heavy outline + soft drop shadow, no plate
+        base |= {'outline': max(3, round(font_size * 0.1)), 'shadow': max(2, round(font_size * 0.06)), 'backcolor': pysubs2.Color(0, 0, 0, 96)}
+    if style == 'karaoke':  # \k fills SecondaryColour (not yet spoken) with PrimaryColour (spoken)
+        base |= {'primarycolor': accent_color, 'secondarycolor': text_color}
+    if style == 'box':  # BorderStyle 3: an opaque box behind each line (libass and VSFilter take its colour from OutlineColour)
+        box = pysubs2.Color(*accent_rgb, 0x40 if accent is None else 0)
+        base |= {'borderstyle': 3, 'outline': max(4, round(font_size * 0.22)), 'shadow': 0, 'outlinecolor': box, 'backcolor': box}
+    subs.styles = {'Default': pysubs2.SSAStyle(**base)}
+    for event, laid in zip(events, event_lines):
         override = ''
         if event['position']['band'] != 'bottom':
-            position = event['position']
-            an, y = (8, position['y']) if position['band'] == 'top' else (5, position['y'] + position['h'] / 2)
+            where = event['position']
+            an, y = (8, where['y']) if where['band'] == 'top' else (5, where['y'] + where['h'] / 2)
             override = f"{{\\an{an}\\pos({round(width / 2)},{round(y)})}}"
-        subs.append(pysubs2.SSAEvent(start=round(event['start'] * 1000), end=round(event['end'] * 1000), style='Default', text=override + '\\N'.join(event['lines'])))
+        if style == 'plain' and not upper:
+            text = '\\N'.join(event['lines'])
+        else:
+            text = _styled_text(style, event, laid, cjk, upper, _ass_color(text_rgb), _ass_color(accent_rgb))
+        subs.append(pysubs2.SSAEvent(start=round(event['start'] * 1000), end=round(event['end'] * 1000), style='Default', text=override + text))
     subs.save(str(ass_path), encoding='utf-8')
 
     srt_path.write_text(''.join(f"{i}\n{_srt_time(e['start'])} --> {_srt_time(e['end'])}\n" + '\n'.join(e['lines']) + '\n\n' for i, e in enumerate(events, 1)), encoding='utf-8')
     result = {'ass': str(ass_path), 'srt': str(srt_path), 'json': str(json_path), 'event_count': len(events), 'language': language or None,
               'script_alignment': alignment, 'moved_for_faces': moved, 'warnings': warnings, 'safe': safe_name,
-              'font': font_name, 'font_size': font_size, 'max_chars': max_chars, 'max_lines': max_lines}
+              'font': font_name, 'font_size': font_size, 'max_chars': max_chars, 'max_lines': max_lines, 'style': style,
+              'position': position}
     json_path.write_text(json.dumps({'meta': {k: result[k] for k in ('language', 'safe', 'font', 'font_size', 'max_chars', 'max_lines')} | {'width': width, 'height': height},
                                      'events': events}, ensure_ascii=False, indent=1), encoding='utf-8')
     return result
 
 
 def summary_lines(result: dict) -> list[str]:
-    lines = [f"captions: {result['event_count']} events, language {result['language'] or 'auto'}, safe={result['safe']}, "
+    lines = [f"captions: {result['event_count']} events, style {result['style']}, language {result['language'] or 'auto'}, safe={result['safe']}, "
              f"{result['font']} {result['font_size']}px, max {result['max_chars']} chars x {result['max_lines']} lines",
              f"  ass {result['ass']}  srt {result['srt']}  json {result['json']}"]
     if result['script_alignment']:

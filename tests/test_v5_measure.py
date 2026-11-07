@@ -2,8 +2,9 @@
 import json
 import shutil
 
+import numpy as np
 import pytest
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 from conftest import ffmpeg, write_edl
 from rn.cli import main
@@ -94,6 +95,121 @@ def test_text_reads_a_title(tmp_path):
     title = next(s for s in spans if 'RENOISE' in s['text'])
     # Read twice a second: on screen 0.5-1.4 s is seen at 0.5 and 1.0, so the span ends at the 1.5 s read that misses it.
     assert title['start'] == pytest.approx(0.5, abs=0.05) and title['end'] == pytest.approx(1.5, abs=0.05)
+    style = title['style']
+    assert _near(style['color'], (255, 255, 255)) and _near(style['background'], (20, 20, 20)) and style['outline'] is None
+    assert style['height_px'] == title['box'][3] and style['height_share'] == round(title['box'][3] / 360, 4)
+
+
+def _near(colour: str | None, rgb: tuple[int, int, int], tolerance: float = 40) -> bool:
+    return colour is not None and float(np.linalg.norm([int(colour[i:i + 2], 16) - c for i, c in zip((1, 3, 5), rgb)])) <= tolerance
+
+
+def _title_card(fill, background, outline=None, size=(640, 200)) -> tuple[Image.Image, list[int]]:
+    """One line of type on a flat colour and its tight box [x, y, w, h] (glyphs and outline), as tesseract gives one."""
+    font = ImageFont.load_default(size=64)
+    card = Image.new('RGB', size, background)
+    draw = ImageDraw.Draw(card)
+    stroke = 5 if outline else 0
+    draw.text((40, 50), 'RENOISE 26', fill=fill, font=font, stroke_width=stroke, stroke_fill=outline)
+    x0, y0, x1, y1 = draw.textbbox((40, 50), 'RENOISE 26', font=font, stroke_width=stroke)
+    return card, [x0, y0, x1 - x0, y1 - y0]
+
+
+STYLE_CASES = {  # fill, background, outline
+    'white on black': ((255, 255, 255), (0, 0, 0), None),
+    'black on yellow': ((0, 0, 0), (255, 220, 0), None),
+    'yellow on blue': ((255, 230, 0), (20, 40, 220), None),  # 4:2:0 greys the edges: still no outline
+    'white, black outline, grey': ((255, 255, 255), (128, 128, 128), (0, 0, 0)),
+    'white, black outline, blue': ((255, 255, 255), (30, 90, 200), (0, 0, 0)),
+    'black, white outline, orange': ((0, 0, 0), (230, 120, 30), (255, 255, 255)),
+}
+
+
+@pytest.mark.parametrize('codec', ['png', 'h264'])
+@pytest.mark.parametrize('case', list(STYLE_CASES))
+def test_text_style_colours(case, codec, tmp_path):
+    from rn.text import _style
+    fill, background, outline = STYLE_CASES[case]
+    card, _ = _title_card(fill, background, outline)
+    if codec == 'h264':
+        card.save(tmp_path / 'card.png')
+        ffmpeg('-i', str(tmp_path / 'card.png'), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(tmp_path / 'card.mp4'))
+        ffmpeg('-i', str(tmp_path / 'card.mp4'), '-frames:v', '1', str(tmp_path / 'decoded.png'))
+        card = Image.open(tmp_path / 'decoded.png').convert('RGB')
+    style = _style(np.asarray(card))
+    assert _near(style['color'], fill), style
+    assert _near(style['background'], background), style
+    assert style['outline'] is None if outline is None else _near(style['outline'], outline), style
+
+
+def test_text_style_box_and_nothing_to_read():
+    from rn.text import _span_style, _style
+    card, box = _title_card((255, 255, 255), (0, 0, 0), size=(640, 400))
+    style = _span_style(np.asarray(card), box)
+    assert style['height_px'] == box[3] and style['height_share'] == round(box[3] / 400, 4)
+    assert _near(style['color'], (255, 255, 255)) and _near(style['background'], (0, 0, 0))
+    assert _style(np.full((40, 200, 3), 90, np.uint8)) == {'color': None, 'background': '#5a5a5a', 'outline': None}
+
+
+def test_text_style_is_from_the_first_read(tmp_path, monkeypatch):
+    """No tesseract needed: a stand-in OCR reads one line wherever there is light type. The title is white for the first
+    second and yellow for the next; its one span keeps the style of the frame where it was first read."""
+    import rn.text as text
+    for name, fill in (('white', (255, 255, 255)), ('yellow', (255, 220, 0))):
+        _title_card(fill, (20, 20, 20), size=(640, 360))[0].save(tmp_path / f'{name}.png')
+    clip = tmp_path / 'title.mp4'
+    ffmpeg('-loop', '1', '-t', '1', '-r', '24', '-i', str(tmp_path / 'white.png'), '-loop', '1', '-t', '1', '-r', '24',
+           '-i', str(tmp_path / 'yellow.png'), '-filter_complex', '[0:v][1:v]concat=n=2:v=1[v]', '-map', '[v]',
+           '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(clip))
+
+    def read(png, lang, min_conf):
+        ys, xs = np.nonzero(np.asarray(Image.open(png).convert('L')) > 100)
+        return [{'text': 'RENOISE 26', 'box': [int(xs.min()), int(ys.min()), int(np.ptp(xs)) + 1, int(np.ptp(ys)) + 1], 'conf': 90.0}]
+
+    monkeypatch.setattr(text, 'languages', lambda: ['eng'])
+    monkeypatch.setattr(text, '_read', read)
+    result = text.text_command(str(clip), every=None, lang=None, min_conf=50)
+    assert [s['f'] for s in result['samples']] == [0, 12, 24, 36]
+    [span] = result['spans']
+    assert (span['first_frame'], span['last_frame']) == (0, 36)
+    style = span['style']
+    assert _near(style['color'], (255, 255, 255)) and not _near(style['color'], (255, 220, 0)), style
+    assert _near(style['background'], (20, 20, 20)) and style['outline'] is None
+    assert style['height_px'] == span['box'][3] and style['height_share'] == round(span['box'][3] / 360, 4)
+    assert all('style' not in line for sample in result['samples'] for line in sample['lines'])
+    assert style['color'] in text.summary_lines(result)[1]
+
+
+def test_text_bridges_missed_reads(tmp_path, monkeypatch):
+    """No tesseract needed: a stand-in OCR that misses the caption in some samples. Reads up to BRIDGE_S apart at the same
+    place make one span (with its read count and mean confidence); a read after a longer gap, or somewhere else, starts
+    another."""
+    import rn.text as text
+    clip = tmp_path / 'clip.mp4'
+    ffmpeg('-f', 'lavfi', '-i', 'color=c=gray:s=320x240:r=24:d=8', '-pix_fmt', 'yuv420p', str(clip))
+    # samples every 12 frames (0.5 s): read at 0, 0.5, then missed 1.0-2.0, read 2.5 (2 s after the last read), missed
+    # 3.0-5.0, read 5.5 (3 s later: a new span), and at 6.0 lower down the frame (a different place: a new span)
+    reads = {0: (90, 40), 12: (80, 40), 60: (70, 40), 132: (90, 40), 144: (90, 180)}
+
+    def read(png, lang, min_conf):
+        f = int(png.stem.split('_')[-1]) if png.stem.split('_')[-1].isdigit() else None
+        hit = reads.get(f)
+        return [{'text': 'SALE', 'box': [100, hit[1], 120, 30], 'conf': float(hit[0])}] if hit else []
+
+    monkeypatch.setattr(text, 'languages', lambda: ['eng'])
+    monkeypatch.setattr(text, '_read', read)
+
+    def extract(path, indices, out):
+        frame = Image.new('RGB', (320, 240))
+        for i in indices:
+            frame.save(out / f'f_{i}.png')
+        return [(i, out / f'f_{i}.png') for i in indices]
+
+    monkeypatch.setattr(text, 'extract', extract)
+    spans = text.text_command(str(clip), every=None, lang=None, min_conf=50)['spans']
+    assert [(s['first_frame'], s['last_frame'], s['reads'], s['conf']) for s in spans] == [(0, 60, 3, 80.0), (132, 132, 1, 90.0),
+                                                                                          (144, 144, 1, 90.0)]
+    assert (spans[0]['start'], spans[0]['end']) == (0.0, 3.0)
 
 
 def test_matte_masks_the_subject(tmp_path):

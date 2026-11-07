@@ -3,8 +3,8 @@ name = "renoise-kit"
 dynamic = ["version"]
 description = "rn: frame-exact probing, contact sheets, EDL assembly, finishing and QA for AI video edits"
 readme = "README.md"
-license = "MIT"
-license-files = ["LICENSE"]
+license = "MIT AND Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "LICENSES/*"]
 requires-python = ">=3.11"
 dependencies = ["pillow>=10.1", "numpy"]
 
@@ -13,12 +13,13 @@ dependencies = ["pillow>=10.1", "numpy"]
 listen = ["librosa", "matplotlib"]
 transcribe = ["faster-whisper"]
 faces = ["opencv-python-headless>=4.8"]
+shots = ["opencv-python-headless>=4.8"]
 capture = ["playwright"]
 captions = ["pysubs2"]
 fonts = ["fonttools"]
 matte = ["rembg[cpu]"]
 export = ["opentimelineio", "otio-fcpx-xml-adapter", "otio-fcp-adapter", "pysubs2"]
-all = ["renoise-kit[listen,transcribe,faces,capture,captions,fonts,matte,export]"]
+all = ["renoise-kit[listen,transcribe,faces,shots,capture,captions,fonts,matte,export]"]
 
 # uv run pytest. faster-whisper and rembg are left out (large models); their tests skip, as OCR does without tesseract.
 [dependency-groups]
@@ -40,7 +41,8 @@ build-backend = "setuptools.build_meta"
 packages = ["rn", "rn.fx"]
 
 [tool.setuptools.package-data]
-"rn" = ["ref_guide.md"]
+"rn" = ["ref_guide.md", "edit.schema.json", "templates/*.html", "packs/catalog.json", "packs/LICENSES.md", "packs/sfx/*/*.ogg",
+        "packs/fonts/*.ttf", "packs/fonts/licenses/*.txt", "packs/icons/*"]
 "rn.fx" = ["fx.js"]
 
 [tool.setuptools.dynamic]

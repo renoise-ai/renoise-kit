@@ -1,6 +1,7 @@
 """ffmpeg / ffprobe plumbing shared by every command."""
 from __future__ import annotations
 
+import copy
 import json
 import re
 import struct
@@ -93,12 +94,25 @@ def mp4_faststart(path: str | Path) -> bool | None:
             file.seek(body, 1)
 
 
+_PROBED: dict[tuple, dict] = {}
+
+
 def probe(path: str | Path, *, exact: bool = False) -> dict:
     """Facts an edit depends on. Frame count comes from counting packets (or decoding with exact=True),
-    never from the container duration, which an audio track can stretch."""
+    never from the container duration, which an audio track can stretch. Cached per process by the file's identity
+    (inode, size, mtime, ctime), so laying an edit out again (rn edit batch steps) probes each source once."""
     path = Path(path)
-    if not path.exists():
-        raise RnError(f'no such file: {path}')
+    try:
+        stat = path.stat()
+    except FileNotFoundError:
+        raise RnError(f'no such file: {path}') from None
+    key = (str(path.resolve()), exact, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+    if key not in _PROBED:
+        _PROBED[key] = _probe(path, exact)
+    return copy.deepcopy(_PROBED[key]) | {'path': str(path)}
+
+
+def _probe(path: Path, exact: bool) -> dict:
     info = ffprobe_json(path, '-count_frames' if exact else '-count_packets', '-select_streams', 'v:0')
     data = ffprobe_json(path)
     video_stream = next((s for s in info.get('streams', []) if s.get('codec_type') == 'video'), None)

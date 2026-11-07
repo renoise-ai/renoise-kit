@@ -23,7 +23,7 @@ from pathlib import Path
 
 from . import __version__
 from . import audio as audio_mod
-from .edl import Clip, Edit, cache_dir, load, source_offsets
+from .edl import Clip, Edit, cache_dir, filter_files, load, source_offsets
 from .ff import RnError, ff_color, has_filter, probe, run, source_matrix, to_bt709
 
 SR = audio_mod.SAMPLE_RATE
@@ -334,11 +334,19 @@ def _render_video(edit: Edit, slots: list[Path], work: Path, out: Path, span: tu
     if edit.subtitles:
         shutil.copyfile(edit.subtitles, work / f'subs{edit.subtitles.suffix.lower()}')
         style = f":force_style='{edit.subtitle_style}'" if edit.subtitle_style else ''
-        lines.append(f"{tail}subtitles=filename=subs{edit.subtitles.suffix.lower()}{style}[sub]")
+        # rn pack fonts (Anton, Bebas Neue, ...) by family name, besides the system's: libass adds fontsdir to fontconfig.
+        from .pack import font_dir
+        if not (work / 'packfonts').exists():
+            try:
+                (work / 'packfonts').symlink_to(font_dir(), target_is_directory=True)
+            except OSError:  # Windows without symlink rights
+                shutil.copytree(font_dir(), work / 'packfonts', dirs_exist_ok=True)
+        lines.append(f"{tail}subtitles=filename=subs{edit.subtitles.suffix.lower()}:fontsdir=packfonts{style}[sub]")
         tail = '[sub]'
     lines.append(f'{tail}format=yuv420p,{audio_mod.BT709},trim=start_frame={span[0]}:end_frame={span[1]},setpts=N/({edit.fps}*TB)[out]')
     run(['ffmpeg', *inputs, '-filter_complex', ';'.join(lines), '-map', '[out]', *audio_mod.VIDEO_ENCODE, *audio_mod.CFR_VUI,
-         '-crf', str(edit.crf), '-preset', edit.preset, '-r', str(edit.fps), '-an', '-y', str(out.resolve())],
+         '-crf', str(edit.crf), *audio_mod.vbv(edit.max_mbps, edit.width, edit.height, edit.fps)[0],
+         '-preset', edit.preset, '-r', str(edit.fps), '-an', '-y', str(out.resolve())],
         cwd=work)
 
 
@@ -421,7 +429,7 @@ def _preview(edit: Edit, scale: float) -> None:
     fractions of the frame and libass scales subtitles by their PlayRes, so the draft is the same edit, smaller.
     ponytail: renders the whole timeline; a time range needs anchors, transitions and subtitles shifted, add if drafts get slow."""
     edit.width, edit.height = (max(2, round(v * scale / 2) * 2) for v in (edit.width, edit.height))
-    edit.crf, edit.preset = 30, 'ultrafast'
+    edit.crf, edit.preset, edit.max_mbps = 30, 'ultrafast', None
     for clip in edit.overlays:
         if clip.kind != 'color' and not (clip.w or clip.h):
             clip.w = (clip.src_size or (probe(clip.source)['video']['width'],))[0]
@@ -447,7 +455,8 @@ def _slot_key(clip: Clip, edit: Edit, part: str) -> str:
     params = {k: v for k, v in dataclasses.asdict(clip).items()
               if k not in ('where', 'timeline_start', 'id', 'meta', 'transition', 'transition_frames')}
     material = [__version__, part, edit.width, edit.height, str(edit.fps), edit.background, params,
-                _files(clip.source, clip.kind == 'sequence')]
+                _files(clip.source, clip.kind == 'sequence'),
+                [(str(f), f.stat().st_size, f.stat().st_mtime_ns) for f in filter_files(clip.vf) + filter_files(clip.af)]]
     return hashlib.sha256(json.dumps(material, default=str, sort_keys=True).encode()).hexdigest()[:24]
 
 
@@ -562,7 +571,7 @@ def assemble_command(edl_path: str, out: str, *, dry_run: bool, keep: bool, prev
 
 
 def finish_command(source: str, out: str, *, lufs: float | None, true_peak: float, crf: int, preset: str, copy_video: bool,
-                   height: int | None = None, audio: str | None = None, audio_offset: float = 0.0) -> dict:
+                   height: int | None = None, audio: str | None = None, audio_offset: float = 0.0, max_mbps=None) -> dict:
     """Any video -> the delivery standard: H.264 High yuv420p bt709, moov first, LUFS target, encoded TP <= limit.
     `audio`: take the sound from this file instead (e.g. a renderer's separate WAV mix); `audio_offset`: seconds to move
     the sound later (negative: earlier, cutting its head), e.g. to undo an encoder delay a renderer left in."""
@@ -581,13 +590,17 @@ def finish_command(source: str, out: str, *, lufs: float | None, true_peak: floa
         compliant = video['codec'] == 'h264' and video['pix_fmt'] == 'yuv420p' and video['sar'] == '1:1'
         if height and copy_video:
             raise RnError('--height re-encodes the picture; drop --copy-video')
+        if max_mbps is not None and copy_video:
+            raise RnError('--max-mbps re-encodes the picture; drop --copy-video')
+        out_w, out_h = (round(video['width'] * height / video['height'] / 2) * 2, height // 2 * 2) if height else (video['width'], video['height'])
+        cap_flags, cap = audio_mod.vbv(audio_mod.max_mbps_value(max_mbps, '--max-mbps'), out_w, out_h, Fraction(video['fps']))
         if copy_video and compliant:
             run(['ffmpeg', '-i', source, '-map', '0:v:0', '-c:v', 'copy', '-an', '-y', str(encoded)])
         else:
             size = f'-2:{height // 2 * 2}' if height else 'trunc(iw/2)*2:trunc(ih/2)*2'  # --height keeps the aspect, even width
             even = f'scale={size}:flags=lanczos:{to_bt709(source_matrix(video))},setsar=1,format=yuv420p,{audio_mod.BT709}'
             run(['ffmpeg', *(['-c:v', video['alpha_decoder']] if video.get('alpha_decoder') else []), '-i', source, '-map', '0:v:0', '-vf', even, *audio_mod.VIDEO_ENCODE,
-                 *(audio_mod.CFR_VUI if video['cfr'] else []), '-crf', str(crf), '-preset', preset,
+                 *(audio_mod.CFR_VUI if video['cfr'] else []), '-crf', str(crf), *cap_flags, '-preset', preset,
                  '-fps_mode', 'passthrough', '-an', '-y', str(encoded)])
         loudness = None
         m4a = None
@@ -601,4 +614,7 @@ def finish_command(source: str, out: str, *, lufs: float | None, true_peak: floa
             m4a = work / 'audio.m4a'
             loudness = audio_mod.finish_audio(wav, m4a, lufs=lufs, true_peak=true_peak)
         audio_mod.mux(encoded, m4a, out_path, frames=frames)
-    return {'path': str(out_path), 'frames': frames, 'video_copied': bool(copy_video and compliant), 'audio': loudness}
+        video_mbps = round(encoded.stat().st_size * 8 / float(frames / Fraction(video['fps'])) / 1e6, 2) if frames else None
+    return {'path': str(out_path), 'frames': frames, 'video_copied': bool(copy_video and compliant), 'max_mbps': cap,
+            'video_mbps': video_mbps,
+            'audio': loudness}

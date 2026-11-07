@@ -1,5 +1,6 @@
 """rn compare: two videos side by side at the same times (a cut against its reference, or two versions of a cut).
-Measurement only: it shows where they differ in picture and cut timing, never which is better."""
+Measurement only: it shows where they differ in picture, cut timing and (with --shots) each shot's transition and camera
+move, never which is better."""
 from __future__ import annotations
 
 import math
@@ -36,8 +37,54 @@ def match_cuts(a: list[float], b: list[float], tolerance: float = CUT_TOLERANCE)
             'mean_abs_offset': round(sum(abs(o) for o in matched) / len(matched), 4) if matched else None}
 
 
+def _shot_motion(shot: dict, width: int) -> dict:
+    m = shot['motion']
+    return {'zoom_per_s': m['zoom_per_s'], 'pan_widths_per_s': round(m['pan_px_per_s'] / float(width), 4),
+            'pan_dir_deg': m['pan_dir_deg'], 'rigid_fit': m['rigid_fit']}
+
+
+def _span(s: dict) -> dict:
+    """A shot as a compare pair shows it: its time and how it begins, with the transition's frames (and a wipe's edge, a
+    fade's colour and parts) when rn shots measured them."""
+    span = {'shot': s['shot'], 'start': s['start'], 'end': s['end'], 'transition_in': s['transition_in']}
+    if s.get('transition'):
+        span['transition'] = s['transition']
+    return span
+
+
+def _begins(span: dict) -> str:
+    how, t = span['transition_in'] or 'start', span.get('transition') or {}
+    extra = [f'{t["frames"]}f'] if t.get('frames') else []
+    extra += [x for x in (t.get('edge'), t.get('through')) if x]
+    return f'{how} ({" ".join(extra)})' if extra else how
+
+
+def match_shots(a: dict, b: dict) -> dict:
+    """rn shots results of A and B on one clock: each A shot with the B shot that overlaps it most. Per pair the
+    transitions (with their measured frames), durations and the camera numbers (zoom per second, pan in frame widths per second so sizes may differ,
+    pan direction, rigid fit), and how much of each frame-pair stays identical. B shots that are no A shot's best match
+    are listed apart."""
+    pairs, used = [], set()
+    for sa in a['shots']:
+        best, overlap = None, 0.0
+        for sb in b['shots']:
+            o = min(sa['end'], sb['end']) - max(sa['start'], sb['start'])
+            if o > overlap:
+                best, overlap = sb, o
+        pair = {'a': _span(sa), 'b': _span(best) if best else None,
+                'covered': round(overlap / max(1e-6, sa['end'] - sa['start']), 3) if best else 0.0}
+        if best:
+            used.add(best['shot'])
+            pair['motion'] = {'a': _shot_motion(sa, a['size'][0]), 'b': _shot_motion(best, b['size'][0])}
+            pair['identical_pairs'] = {'a': sa['still']['identical_pairs'], 'b': best['still']['identical_pairs']}
+        pairs.append(pair)
+    return {'a': len(a['shots']), 'b': len(b['shots']), 'pairs': pairs,
+            'only_b': [_span(s) for s in b['shots'] if s['shot'] not in used],
+            'transitions_differ': sum(1 for p in pairs if p['b'] and p['b']['transition_in'] != p['a']['transition_in'])}
+
+
 def compare_command(path_a: str, path_b: str, *, out: str | None, count: int | None, seconds: list[float] | None, width: int,
-                    max_kb: int, cuts: bool, video: str | None) -> dict:
+                    max_kb: int, cuts: bool, video: str | None, shots: bool = False, jobs: int | None = None) -> dict:
     from PIL import Image, ImageOps
 
     info_a, info_b = _video(path_a), _video(path_b)
@@ -87,6 +134,9 @@ def compare_command(path_a: str, path_b: str, *, out: str | None, count: int | N
         cuts_a = [c['time'] for c in detect(str(Path(path_a).resolve()))['cuts']]
         cuts_b = [c['time'] for c in detect(str(Path(path_b).resolve()))['cuts']]
         result['cuts'] = {'a': cuts_a, 'b': cuts_b, **match_cuts(cuts_a, cuts_b)}
+    if shots:
+        from .shots import shots_command
+        result['shots'] = match_shots(shots_command(path_a, jobs=jobs), shots_command(path_b, jobs=jobs))
     if video:
         # Same height side by side, A's sound; the shorter one holds its last frame.
         height = min(720, info_a['video']['height']) // 2 * 2
@@ -110,6 +160,21 @@ def summary_lines(result: dict) -> list[str]:
                   for p in c['pairs']]
         if c['only_b']:
             lines.append(f'  only in B: {c["only_b"]}')
+    if 'shots' in result:
+        sh = result['shots']
+        lines.append(f'shots A {sh["a"]}, B {sh["b"]}; {sh["transitions_differ"]} begin differently'
+                     + (f'; {len(sh["only_b"])} B shot(s) match no A shot' if sh['only_b'] else ''))
+
+        def camera(m: dict) -> str:
+            return f'zoom {m["zoom_per_s"] * 100:+.1f}%/s pan {m["pan_widths_per_s"] * 100:.1f}%w/s @{m["pan_dir_deg"]:.0f}° rigid {m["rigid_fit"]:.2f}'
+        for p in sh['pairs']:
+            a, b = p['a'], p['b']
+            head = f'  A{a["shot"]} {a["start"]}-{a["end"]}s {_begins(a)}'
+            if not b:
+                lines.append(f'{head} -> no B shot')
+                continue
+            lines.append(f'{head} -> B{b["shot"]} {b["start"]}-{b["end"]}s {_begins(b)} ({p["covered"]:.0%} covered)'
+                         f'\n      A {camera(p["motion"]["a"])}\n      B {camera(p["motion"]["b"])}')
     if 'video' in result:
         lines.append(f'side by side: {result["video"]}  (A left, B right)')
     return lines

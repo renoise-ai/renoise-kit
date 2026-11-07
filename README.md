@@ -31,13 +31,14 @@ machine.
 uv tool install "renoise-kit[all]"     # or: pipx install "renoise-kit[all]"
 playwright install chromium            # only for rn capture
 rn --version
+rn doctor                              # what this machine can run, and what to install for the rest
 ```
 
 The same commands work in a POSIX shell, PowerShell and cmd (hence the double quotes). On Windows `rn fonts` reads the
 system font folders directly when fontconfig is not installed, and `rn` writes UTF-8 when its output goes to a pipe.
 
 The core install is Pillow and numpy. Heavier dependencies come as extras, so you can install only what you use. When
-a command needs a missing extra, its error line names the extra to install.
+a command needs a missing extra, its error line names the extra to install; `rn doctor` lists everything missing at once.
 
 | Extra | For | Installs |
 |---|---|---|
@@ -141,6 +142,17 @@ rn edit edit.json set title meta.copy="new tagline"
 rn edit edit.json delete end --lift
 ```
 
+Several changes at once are one `batch`: every step is checked, and the file is written once, or not at all if a
+step fails:
+
+```sh
+rn edit edit.json batch <<'EOF'
+set open out=2.4
+set close transition.type=dissolve transition.duration=0.25
+insert --after open --clip '{"id": "logo", "image": "logo.png", "duration": 1}'
+EOF
+```
+
 ## Commands
 
 `rn <command> --help` is the reference. Every command prints a short summary, and `--json FILE` writes the full result.
@@ -151,23 +163,34 @@ rn edit edit.json delete end --lift
 |---|---|
 | `rn probe FILE` | Decoded frame count, rational fps, size, color tags, separate video and audio durations, faststart (JSON) |
 | `rn frame FILE --index N \| --time T \| --last -o out.png` | One exact frame, e.g. a tail frame to continue a shot |
-| `rn sheet FILE... [--fps R \| --every N \| --indices ... \| --around T,.. --diff]` | Contact sheets labelled with frame number and timecode, each under 125 KB |
+| `rn sheet FILE... [--fps R \| --every N \| --indices ... \| --around T,.. --diff] [--crop W:H:X:Y]` | Contact sheets labelled with frame number and timecode, each under 125 KB; `--crop` zooms every tile into one region (a sign, a caption, a face) |
 | `rn cuts FILE [--sheet JPG]` | Shot boundaries by decoded frame, plus weaker "suspects" to check |
-| `rn listen FILE [--transcribe]` | Loudness, silences, onsets, tempo with half/double candidates, beat times, Whisper word times, one picture |
+| `rn shots FILE [--jobs N] [--sheet JPG] [--faces] [--beats [LISTEN.json]]` | Every shot, dissolves, fades and straight wipes included (with how many frames each takes and a wipe's direction), and what its picture does as numbers: still frames, 24→30 repeat cadence, how well one zoom / pan of the whole frame explains it, texture (flat blocks, colours, straight edges, noise, soft gradients, vivid colour), and with `--faces` how often a face fills the picture, with `--beats` how each cut sits against the music's beats. `--keyframes DIR` writes one full-size frame per shot, clear of its transitions: the sharpest of five by default (`--which mid|first|last`). Numbers only, no labels |
+| `rn listen FILE [--transcribe]` | Loudness, silences, onsets, tempo with half/double candidates, beat times and downbeats (4/4), Whisper word times, one picture |
+| `rn listen FILE... --speech [--expect TEXT\|@FILE] [--transcribe]` | Voice takes: where the speech starts and ends inside the file, its length, the pauses in it; with `--expect` the words per second, and with `--transcribe` `match: ok\|mismatch` against the intended text and where it differs |
+| `rn music fit MUSIC --duration S [-o bed.m4a]` | A music bed exactly as long as the edit: starts on a downbeat, the final fade begins on a phrase (4 bars), shorter music loops on phrases with a crossfade. Without `-o` it prints the EDL audio item (`in`, `out`, `fade_out`) |
 | `rn signal FILE [-o PNG]` | Per-frame luma, motion, saturation, loudness, low/mid/high bands, onset strength; flash frames, clicks |
 | `rn align A B` | Where recording B sits inside A, by sound: offset, `match`, `distinct` |
 | `rn faces FILE` | Face boxes and landmarks per frame (measurement only) |
-| `rn text FILE` | On-screen text lines, their boxes and when they are on screen (tesseract) |
+| `rn faces FILE --track` / `--reframe 1080x1920 -o v.mp4` | One subject's face per frame (picked, followed, gaps filled, smoothed); `--reframe` a moving crop that keeps them in a new aspect, rendered ready to use as `src` |
+| `rn text FILE` | On-screen text lines, their boxes and when they are on screen (tesseract; a line read again within 2 s at the same place is the same appearance, with how many reads and their mean confidence); per line, as first read, the text, background and outline colours (`#rrggbb`, outline null when there is none) and the text height |
 | `rn matte FILE -o DIR` | Subject alpha per frame as grey PNGs, ready to use as an EDL `mask`; `--cutout` for RGBA |
+| `rn key FILE -o DIR` | Backdrop matte without a model: green / blue / any solid colour measured on the frame border, or `--white` (flood fill from the border, so white inside the subject stays); grey PNGs for an EDL `mask`, `--cutout --despill` for RGBA |
+| `rn grid IMAGE -o DIR` | Slice a storyboard / character sheet / 2x2 or 3x3 grid into tiles; rows and columns found from the gutters, or `--rows` / `--cols` |
 | `rn ref FILE` | A reference breakdown: shots, sound, cut-to-beat sync, every frame on sheets, and a reading guide |
+| `rn look FILE... [--ref REF...] [--shots SHOTS.json]` | Tone and colour as numbers: L* black / mid / white, contrast, the a\*/b\* cast in shadows, mids and highlights, chroma, crushed and blown shares (flagged above 1%). Against `--ref`: the differences, one distance and a verdict (close / noticeable / far, `--tolerance` moves it). Per shot with `--shots` |
 
 **Render**
 
 | Command | What it gives |
 |---|---|
 | `rn capture page.html -o DIR --frames N --size WxH` | An HTML page rendered frame by frame (`window.renderFrame(i)`) to RGBA PNGs, sharded across Chromiums |
+| `rn capture URL -o DIR [--desktop] [--sections "Pricing,Reviews"] [--scroll-video OUT.mp4]` | A live site in a real phone (1080x1920) or desktop browser: the full page, sections found by their heading, and a frame-exact eased scroll-through video for app and product ads. `--hide` drops cookie banners |
 | `rn fx [--source]` | The effects library (grain, vignette, leak, flash, glitch, ...) as readable source for pages and numpy |
+| `rn grade SRC --ref REF... -o look.cube [--strength S] [--preview PNG]` | A `.cube` LUT that moves a clip's tone curve, chroma and zone casts toward the references, fitted on frames across the whole clip (no flicker); apply it with `"vf": "lut3d=file=look.cube"` (path relative to the EDL). Reports the distance before and after |
 | `rn captions WORDS.json --size WxH -o caps.ass` | Your script aligned to Whisper timing; CJK chunking, balanced lines, safe areas, kept off faces |
+| `rn captions ... --style clean\|pop\|karaoke\|highlight\|box` | Animated caption styles from the same word timing: heavy outline, pop-in, karaoke fill, the spoken word highlighted, a box; `--accent`, `--color`, `--font`, `--position`, `--upper` |
+| `rn template list\|show\|render NAME -o DIR --params '{...}'` | Built-in motion templates (headline, lower third, callout, counter, bar chart, steps, text behind a person) rendered to RGBA PNGs for an EDL overlay; readable HTML pages to copy and change |
 | `rn fonts [--script ja]` | Installed families with the weights that really exist, and the scripts they cover |
 | `rn assets search\|get` | Licensed SFX and overlay footage, checked against sha256 |
 
@@ -175,17 +198,30 @@ rn edit edit.json delete end --lift
 
 | Command | What it gives |
 |---|---|
-| `rn edit EDL ids\|set\|split\|delete\|insert\|move\|upgrade` | Changes an EDL by clip id. Each step is checked against the whole timeline before the file is written |
+| `rn edit EDL ids\|set\|split\|delete\|insert\|move\|upgrade` | Changes an EDL by clip id. Each step is checked against the whole timeline before the file is written; a source not made yet counts as a placeholder and is listed, so an edit can be laid out before its media |
+| `rn edit EDL batch ["OP ..." ...]` | Several of those operations as one, from arguments or one per line on stdin; written once, nothing on a failure |
+| `rn edit EDL hits SFX --at cuts\|beats\|T1,T2,..` | One sound effect as an audio item at many points: every main-track cut (anchored to the clip's id, so it follows later edits), every beat of an `rn listen --json` result, or given seconds. `--offset`, `--pivot` (the whoosh's peak on the point), `--gain`, `--every N`. The sound can come from `rn assets get` |
+| `rn edit EDL init --from-shots SHOTS.json [--src REF] [--size WxH] [--fps R]` | A new edit whose main track is a reference's shots (from `rn shots --json`), frame for frame: one clip per shot (`s01`, `s02`, ...), dissolves and wipes made again as xfade overlaps of their measured frames, fades through black or white as fade-out / fade-in filters, so the total is the reference's length. Each source is `gen/<id>.mp4`, a placeholder card until it exists (fill a slot with `rn edit EDL set s03 src=...`); `--src` cuts every clip from the reference itself, a rebuild to check against it. `meta` keeps each shot's times, transition, keyframe, camera and speed |
+| `rn edit EDL silences CLIP --listen L.json [--min S] [--pad S] [--keep-gap S]` | Cuts a talking clip's long pauses (and the dead air before the first and after the last word) out of it as `ranges`, from `rn listen` of its source |
+| `rn edit EDL snap --listen L.json [--to beats\|downbeats] [--tolerance S]` | Main-track cuts onto the nearest beat or downbeat by rolling edits: the clip before ends later or earlier and the clip after starts later or earlier in its own source, so nothing else moves. Cuts that cannot move (too far, no source to spare) stay and are listed with the reason |
 | `rn assemble EDL -o OUT [--preview] [--range A-B] [--placeholders]` | Renders the EDL frame-exactly. `--placeholders` turns missing shots into labelled cards |
+| `rn schema [--path]` | The edit.json JSON Schema shipped with rn, printed (or where the file is) |
 
 **Check and deliver**
 
 | Command | What it gives |
 |---|---|
-| `rn qa FILE [--edl EDL] [--accept CHECK[@T]]` | Delivery checks. Format: frames, fps, size, codec, color, faststart, fixed frame rate. Sound: A/V length, loudness, true peak, dead air, level jumps, clicks. Picture: black, frozen, bars |
-| `rn compare A B [--cuts] [--video sbs.mp4]` | Two videos at the same times on one sheet, cut timing paired, optional side-by-side video |
+| `rn qa FILE [--edl EDL] [--accept CHECK[@T]]` | Delivery checks. Format: frames, fps, size, codec, color, faststart, fixed frame rate. Sound: A/V length, loudness, true peak, dead air, level jumps, clicks. Picture: black, frozen, bars. `--placeholders` reads the EDL as `rn assemble --placeholders` does |
+| `rn compare A B [--cuts] [--shots] [--video sbs.mp4]` | Two videos at the same times on one sheet, cut timing paired, with `--shots` each shot paired with its transition (with its measured frames, wipe side or fade colour) and camera move, optional side-by-side video |
 | `rn finish FILE -o OUT [--height N]` | Brings any video to the delivery standard; `--height` makes a scaled copy |
+| `rn finish ... --max-mbps N\|auto` | A bitrate ceiling on the CRF encode (also EDL `output.max_mbps`): clean shots keep their quality, grain stops at the cap |
 | `rn export EDL -o cut.otio\|.fcpxml\|.xml [--srt]` | The edit as a project for Final Cut, Premiere, Resolve or any OTIO tool |
+
+**This machine**
+
+| Command | What it gives |
+|---|---|
+| `rn doctor [--json FILE]` | What this machine can do with rn, offline: Python, ffmpeg / ffprobe and their version, the encoders and every filter rn uses (libass included), each extra's Python modules, Chromium for capture, tesseract, fonts, the face / Whisper / matte models. Each is ok, warn or missing, with the commands it affects and a one-line fix; exit 1 only when the core is broken: Python and its required modules, ffmpeg, ffprobe, the H.264 / AAC encoders |
 
 ## The EDL in one screen
 
@@ -218,8 +254,9 @@ rn edit edit.json delete end --lift
 - **Bookkeeping.** `id` and `meta` go on anything; `meta` is kept as given. `accept` waives qa warnings judged
   intended.
 
-The full schema is [schema/edit.schema.json](schema/edit.schema.json), with `rn assemble --help` and [SPEC.md](SPEC.md)
-§4. Fields it marks `x-rn-only` (raw filters, masks, image sequences, nested edits, beat and word anchors, delivery
+The full schema ships with rn as [rn/edit.schema.json](rn/edit.schema.json): `rn schema` prints it, and the
+conformance fixtures are in [schema/fixtures](schema/fixtures). See also `rn assemble --help` and [SPEC.md](SPEC.md) §4.
+Fields it marks `x-rn-only` (raw filters, masks, image sequences, nested edits, beat and word anchors, delivery
 loudness, subtitles) are rn's own; another program that renders the rest of the format previews what rn delivers.
 
 ## Conventions
@@ -255,6 +292,19 @@ can chain several commands. Summaries are short, and errors say what to change. 
 exist because a model cannot watch or listen; check the result through them rather than through the format alone.
 `rn qa` passing does not mean the edit is good.
 
+Three things every summary does for an agent (v0.7.0):
+
+- **`proof: <path>`**: commands whose output is a picture or a sound to check (`key`, `matte`, `grid`, `template render`,
+  `capture`, `faces --reframe -o`, `grade`, `music fit`) write one labelled JPEG under 125 KB next to it
+  (`<out>.proof.jpg`), small enough for one image view; `--no-proof` skips it. Commands that already wrote a sheet name it.
+- **`next: <command>`**: at most two exact next steps from this run's own paths and ids (`rn look` far → the `rn grade`
+  line; `rn edit init` → the slot to fill and the draft render; `rn assemble` → `rn qa`; an EDL snippet to paste).
+- **a time warning**: before work that grows with the media (`shots`, a full `assemble`, `key`, `matte`, `faces
+  --reframe`, `text`, `listen --transcribe`, `compare --shots|--video`, `ref`, a scroll recording), rn prints
+  `rn: about N s ...; in a sandbox run it with background: true` on stderr when it expects over 30 s.
+
+`rn --help` lists the commands by job (look, break down a reference, make pictures and sound, edit, deliver) with five recipes.
+
 In the Renoise media sandbox, `rn` comes preinstalled at the version pinned by the sandbox template.
 
 ## Development
@@ -279,6 +329,20 @@ To release:
 `.github/workflows/release.yml` then publishes the tag to PyPI through trusted publishing.
 
 Design notes, the full EDL contract and the roadmap are in [SPEC.md](SPEC.md) (in Chinese).
+
+
+## Built-in pack
+
+`rn pack` ships inside rn (about 4 MB, no network): 290 CC0 sound effects in 23 categories with measured onset and peak, 16 OFL / Apache-2.0 fonts, 18 colour looks as `.cube` LUTs and the Lucide icons (ISC).
+
+```sh
+rn pack list --kind sfx --search whoosh
+rn edit edit.json hits whoosh/air-1 --at cuts   # the sound's peak lands on every cut
+rn pack path look/teal-orange                  # "vf": "lut3d=file=<path>" on a clip
+rn pack get icon/arrow-right -o icons/ --color "#ffffff"
+```
+
+Pack fonts work by family name in burned-in subtitles and in `rn capture` pages. Sources and licences: `rn pack path licenses`.
 
 ## License
 

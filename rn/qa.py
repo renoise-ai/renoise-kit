@@ -87,9 +87,9 @@ def parse_accept(values: list[str]) -> list[dict]:
     return accepted
 
 
-def qa_command(path: str, *, edl: str | None, frames: int | None, size: str | None, fps: str | None, lufs: float | None,
+def qa_command(path: str, *, edl: str | None, placeholders: bool = False, frames: int | None, size: str | None, fps: str | None, lufs: float | None,
                lufs_tolerance: float, true_peak: float | None, require_audio: bool, accept: list[dict] | None = None) -> dict:
-    edit = load(edl) if edl else None
+    edit = load(edl, placeholders=placeholders) if edl else None
     checks: list[dict] = []
     accepts = (edit.accept if edit else []) + (accept or [])
 

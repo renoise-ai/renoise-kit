@@ -24,12 +24,13 @@
 uv tool install "renoise-kit[all]"     # 或者：pipx install "renoise-kit[all]"
 playwright install chromium            # 只有 rn capture 需要
 rn --version
+rn doctor                              # 本机能跑什么，其余的还缺什么、怎么装
 ```
 
 这几条命令在 POSIX shell、PowerShell 和 cmd 里都能直接用（所以用双引号）。Windows 上没装 fontconfig 时，`rn fonts` 直接读系统字体目录；
 `rn` 的输出接到管道时一律是 UTF-8。
 
-核心依赖只有 Pillow 和 numpy。较重的依赖按功能拆成了 extras，用到哪个装哪个。某条命令缺少依赖时，报错的最后一行会写明该装哪个 extra。
+核心依赖只有 Pillow 和 numpy。较重的依赖按功能拆成了 extras，用到哪个装哪个。某条命令缺少依赖时，报错的最后一行会写明该装哪个 extra；`rn doctor` 一次列出所有缺的东西。
 
 | Extra | 用于 | 安装 |
 |---|---|---|
@@ -128,6 +129,16 @@ rn edit edit.json set title meta.copy="新口号"
 rn edit edit.json delete end --lift
 ```
 
+一次改好几处就用 `batch`：每一步都校验，全部通过才写一次文件，有一步失败就什么都不写：
+
+```sh
+rn edit edit.json batch <<'EOF'
+set open out=2.4
+set close transition.type=dissolve transition.duration=0.25
+insert --after open --clip '{"id": "logo", "image": "logo.png", "duration": 1}'
+EOF
+```
+
 ## 命令
 
 具体参数以 `rn <command> --help` 为准。每条命令在终端只打印几行摘要，`--json FILE` 会写出完整结果。
@@ -138,23 +149,34 @@ rn edit edit.json delete end --lift
 |---|---|
 | `rn probe FILE` | 解码帧数、有理帧率、尺寸、色彩标记、视频和音频各自的时长、是否 faststart（输出 JSON） |
 | `rn frame FILE --index N \| --time T \| --last -o out.png` | 精确取一帧，例如取尾帧来接续镜头 |
-| `rn sheet FILE... [--fps R \| --every N \| --indices ... \| --around T,.. --diff]` | 带帧号和时间码的接触表，每张不超过 125 KB |
+| `rn sheet FILE... [--fps R \| --every N \| --indices ... \| --around T,.. --diff] [--crop W:H:X:Y]` | 带帧号和时间码的接触表，每张不超过 125 KB；`--crop` 让每格只显示画面的一块（招牌、字幕、人脸） |
 | `rn cuts FILE [--sheet JPG]` | 按解码帧号给出镜头边界，较弱的变化列为待确认的 suspects |
-| `rn listen FILE [--transcribe]` | 响度、静音、起音、速度（附半速 / 倍速候选）、拍点时间、Whisper 字词时间，外加一张图 |
+| `rn shots FILE [--jobs N] [--sheet JPG] [--faces] [--beats [LISTEN.json]]` | 全部镜头（含叠化、淡变、直线擦除，并给出转场帧数和擦除方向），以及每个镜头画面在做什么，全是数字：静止帧、24→30 重复帧节奏、整帧单一缩放 / 平移能解释多少、质感（平坦块、颜色数、横竖直边、噪声、柔和渐变、鲜艳颜色），加 `--faces` 时还有人脸占满画面的频率，加 `--beats` 时还有每个剪点与音乐拍点的偏差。`--keyframes DIR` 为每个镜头输出一张避开转场的原尺寸关键帧，默认取 5 帧里最清晰的（`--which mid|first|last`）。只给数字，不下结论 |
+| `rn listen FILE [--transcribe]` | 响度、静音、起音、速度（附半速 / 倍速候选）、拍点与强拍（4/4）时间、Whisper 字词时间，外加一张图 |
+| `rn listen FILE... --speech [--expect TEXT\|@FILE] [--transcribe]` | 配音 take：语音在文件里的起止、长度、中间的停顿；加 `--expect` 给出语速，再加 `--transcribe` 给出与期望文字的 `match: ok\|mismatch` 和不同之处 |
+| `rn music fit MUSIC --duration S [-o bed.m4a]` | 把配乐做成正好成片长度的音乐床：从强拍开始，最后的淡出从乐句（4 小节）边界开始，不够长就在乐句边界交叉淡化循环。不给 `-o` 时只打印 EDL 音频项（`in`、`out`、`fade_out`） |
 | `rn signal FILE [-o PNG]` | 逐帧的亮度、运动、饱和度、响度、低 / 中 / 高频段、起音强度，以及闪帧和爆音位置 |
 | `rn align A B` | 通过声音判断录音 B 在 A 里的位置：偏移量、`match`、`distinct` |
 | `rn faces FILE` | 逐帧人脸框和关键点（只测量，不改脸） |
-| `rn text FILE` | 画面上的文字行、位置框和出现时间（tesseract） |
+| `rn faces FILE --track` / `--reframe 1080x1920 -o v.mp4` | 同一个人的脸逐帧一条轨迹（选人、跟随、补空档、平滑）；`--reframe` 按新画幅移动裁切跟住这个人，直接渲染成可作 `src` 的视频 |
+| `rn text FILE` | 画面上的文字行、位置框和出现时间（tesseract；同一行 2 秒内在同一位置再读到算同一次出现，附读到次数和平均置信度）；每行首次读到时的字色、背景色、描边色（`#rrggbb`，没有描边为 null）和字高 |
 | `rn matte FILE -o DIR` | 逐帧主体 alpha，输出灰度 PNG，可直接作为 EDL 的 `mask`；加 `--cutout` 输出 RGBA 抠像 |
+| `rn key FILE -o DIR` | 实景背景抠像，不用模型：绿幕 / 蓝幕 / 任意纯色（取画面边缘测色），或 `--white` 白底（从边缘泛洪填充，主体内部的白保留）；灰度 PNG 直接作 EDL `mask`，`--cutout --despill` 输出 RGBA |
+| `rn grid IMAGE -o DIR` | 把分镜表、角色设定图、2×2 / 3×3 宫格切成单张；行列数从分隔带找，或用 `--rows` / `--cols` 指定 |
 | `rn ref FILE` | 参考片拆解：镜头、声音、剪点和拍点的对齐情况、所有帧的接触表，附一份读片指南 |
+| `rn look FILE... [--ref REF...] [--shots SHOTS.json]` | 影调和颜色的数字：L* 黑位 / 中灰 / 白位、反差，暗部 / 中间调 / 亮部各自的 a\*/b\* 偏色，平均彩度，死黑和过曝的比例（超过 1% 会标出）。给 `--ref` 时给出差值、一个距离和结论（接近 / 明显 / 差很远，阈值用 `--tolerance` 调）。`--shots` 按镜头逐个测 |
 
 **渲**
 
 | 命令 | 作用 |
 |---|---|
 | `rn capture page.html -o DIR --frames N --size WxH` | HTML 页面（`window.renderFrame(i)`）逐帧渲染成 RGBA PNG，可用多个 Chromium 分片并行 |
+| `rn capture URL -o DIR [--desktop] [--sections "Pricing,Reviews"] [--scroll-video OUT.mp4]` | 用真实浏览器拍线上网站，手机（1080×1920）或桌面：整页截图、按标题找到的区块截图、帧精确的缓动滚动视频，给 App / 产品广告用。`--hide` 隐藏 cookie 横幅 |
 | `rn fx [--source]` | 效果库（颗粒、暗角、漏光、闪白、故障……），以可读源码形式提供，网页和 numpy 都能用 |
+| `rn grade SRC --ref REF... -o look.cube [--strength S] [--preview PNG]` | 生成一个 `.cube` LUT，把片段的影调曲线、彩度和各亮度区的偏色往参考靠；在整段片子的多帧上拟合，不会闪。在 EDL 里用 `"vf": "lut3d=file=look.cube"`（路径相对 EDL）。报告调色前后与参考的距离 |
 | `rn captions WORDS.json --size WxH -o caps.ass` | 把你的原稿对齐到 Whisper 的时间：中日文按字分块、两行均衡断行、留在安全区内、避开人脸 |
+| `rn captions ... --style clean\|pop\|karaoke\|highlight\|box` | 同一套逐词时间生成的动画字幕：粗描边、弹出、卡拉 OK 填色、正在说的词高亮、底框；可设 `--accent`、`--color`、`--font`、`--position`、`--upper` |
+| `rn template list\|show\|render NAME -o DIR --params '{...}'` | 内置动态模板（大标题、姓名条、标注、数字计数、柱状图、步骤条、人物身后的大字），渲染成 RGBA PNG 放进 EDL 叠加层；页面是可读的 HTML，可复制修改 |
 | `rn fonts [--script ja]` | 已安装字体实际有的字重，以及覆盖的文字 |
 | `rn assets search\|get` | 有版权保障的音效和叠加素材，下载后校验 sha256 |
 
@@ -162,17 +184,30 @@ rn edit edit.json delete end --lift
 
 | 命令 | 作用 |
 |---|---|
-| `rn edit EDL ids\|set\|split\|delete\|insert\|move\|upgrade` | 按 clip id 修改 EDL，每一步都先校验整条时间线，通过了才写入文件 |
+| `rn edit EDL ids\|set\|split\|delete\|insert\|move\|upgrade` | 按 clip id 修改 EDL，每一步都先校验整条时间线，通过了才写入文件；还没生成的素材按占位处理并列出，素材到齐前就能先排剪辑 |
+| `rn edit EDL batch ["OP ..." ...]` | 把多步修改合成一次：步骤写在参数里，或从 stdin 每行一步；全部通过才写入，有一步失败就不写 |
+| `rn edit EDL hits SFX --at cuts\|beats\|T1,T2,..` | 把同一个音效放到多个点上，每个点一条音频项：主轨的每个剪点（按片段 id 锚定，之后改剪辑会跟着走）、`rn listen --json` 结果的每个拍点，或给定秒数。可加 `--offset`、`--pivot`（让 whoosh 的峰值落在点上）、`--gain`、`--every N`。音效可以用 `rn assets get` 下载 |
+| `rn edit EDL init --from-shots SHOTS.json [--src REF] [--size WxH] [--fps R]` | 按参考片的镜头（`rn shots --json` 的结果）逐帧新建一条剪辑：每个镜头一个主轨片段（`s01`、`s02`…），叠化和擦除按测到的帧数做成 xfade 交叠，经黑 / 白场的淡变做成前一段淡出、后一段淡入的滤镜，总长与参考片一致。素材默认是 `gen/<id>.mp4`，还没生成时是占位卡（`rn edit EDL set s03 src=...` 填入）；`--src` 让每个片段直接取参考片本身对应的镜头，用来对照检查。`meta` 里保留每个镜头的时间、转场、关键帧、运镜和速度数字 |
+| `rn edit EDL silences CLIP --listen L.json [--min S] [--pad S] [--keep-gap S]` | 按源素材的 `rn listen` 结果，把口播片段里的长停顿（以及第一个字前、最后一个字后的空白）剪掉，写成 `ranges` |
+| `rn edit EDL snap --listen L.json [--to beats\|downbeats] [--tolerance S]` | 用滚动剪辑把主轨剪点挪到最近的拍点或强拍上：前一个片段晚 / 早结束，后一个片段在自己的素材里晚 / 早开始，其他东西都不动。挪不了的剪点（太远、素材不够）留在原处并说明原因 |
 | `rn assemble EDL -o OUT [--preview] [--range A-B] [--placeholders]` | 帧精确地渲染 EDL；`--placeholders` 会把还没生成的镜头渲染成带说明的卡片 |
+| `rn schema [--path]` | 打印随 rn 一起发布的 edit.json JSON Schema（`--path` 只打印文件位置） |
 
 **验与交付**
 
 | 命令 | 作用 |
 |---|---|
-| `rn qa FILE [--edl EDL] [--accept CHECK[@T]]` | 交付检查。格式：帧数、帧率、尺寸、编码、色彩、faststart、固定帧率。声音：音画时长、响度、true peak、片中无声、电平跳变、爆音。画面：黑场、冻帧、黑边 |
-| `rn compare A B [--cuts] [--video sbs.mp4]` | 两个视频按同一时间点对齐到一张图上，并配对比较剪点时间；可另外输出左右并排的视频 |
+| `rn qa FILE [--edl EDL] [--accept CHECK[@T]]` | 交付检查。格式：帧数、帧率、尺寸、编码、色彩、faststart、固定帧率。声音：音画时长、响度、true peak、片中无声、电平跳变、爆音。画面：黑场、冻帧、黑边。`--placeholders` 按 `rn assemble --placeholders` 的方式读 EDL。 |
+| `rn compare A B [--cuts] [--shots] [--video sbs.mp4]` | 两个视频按同一时间点对齐到一张图上，并配对比较剪点时间；`--shots` 逐镜头配对比较转场（连同测到的帧数、擦除方向、淡变颜色）和运镜；可另外输出左右并排的视频 |
 | `rn finish FILE -o OUT [--height N]` | 把任意视频处理成交付标准；`--height` 另出一个缩放版本 |
+| `rn finish ... --max-mbps N\|auto` | 给 CRF 编码加码率上限（EDL 里是 `output.max_mbps`）：干净的镜头画质不变，颗粒重的镜头压在上限 |
 | `rn export EDL -o cut.otio\|.fcpxml\|.xml [--srt]` | 导出成 Final Cut、Premiere、达芬奇或任何 OTIO 工具能打开的工程 |
+
+**本机**
+
+| 命令 | 作用 |
+|---|---|
+| `rn doctor [--json FILE]` | 离线检查本机能用 rn 做什么：Python、ffmpeg / ffprobe 及版本、编码器和 rn 用到的每个滤镜（含 libass）、各 extra 的 Python 模块、capture 用的 Chromium、tesseract、字体、人脸 / Whisper / 抠像模型。每项 ok、warn 或 missing，附受影响的命令和一行修复办法；只有核心坏了才返回 1：Python 及必需模块、ffmpeg、ffprobe、H.264 / AAC 编码器 |
 
 ## 一屏看懂 EDL
 
@@ -193,7 +228,7 @@ rn edit edit.json delete end --lift
 - **合成**：`mask` 接收一张全画幅遮罩，可按亮度或 alpha 取用，也可以反相。`vf` 和 `af` 可以插入一条原始 ffmpeg 滤镜链。
 - **标记与豁免**：任何元素都可以带 `id` 和 `meta`，`meta` 原样保留不做解释。`accept` 用来豁免判断为有意为之的 qa 警告。
 
-完整字段见 [schema/edit.schema.json](schema/edit.schema.json)，以及 `rn assemble --help` 和 [SPEC.md](SPEC.md) §4。schema 里标了 `x-rn-only` 的字段（原始滤镜、遮罩、图像序列、嵌套、拍点和字词锚点、交付响度、字幕）是 rn 自己的扩展；其他程序只要渲染其余部分，预览出来的就是 rn 交付的结果。
+完整字段见随 rn 一起发布的 [rn/edit.schema.json](rn/edit.schema.json)（`rn schema` 会打印它；一致性用例在 [schema/fixtures](schema/fixtures)），以及 `rn assemble --help` 和 [SPEC.md](SPEC.md) §4。schema 里标了 `x-rn-only` 的字段（原始滤镜、遮罩、图像序列、嵌套、拍点和字词锚点、交付响度、字幕）是 rn 自己的扩展；其他程序只要渲染其余部分，预览出来的就是 rn 交付的结果。
 
 ## 约定
 
@@ -226,6 +261,14 @@ rn edit edit.json delete end --lift
 
 接触表、`listen`、`signal`、`align` 之所以存在，是因为模型看不了视频、也听不到声音。检查结果要靠它们，不能只看格式对不对：`rn qa` 通过，不代表剪得好。
 
+v0.7.0 起每条命令的摘要还为 agent 多做三件事：
+
+- **`proof: <路径>`**：输出是画面或声音、需要检查的命令（`key`、`matte`、`grid`、`template render`、`capture`、`faces --reframe -o`、`grade`、`music fit`）在输出旁边写一张带标注、不超过 125 KB 的 JPEG（`<输出>.proof.jpg`），一次就能看；`--no-proof` 不写。本来就写了接触表的命令直接给出接触表路径。
+- **`next: <命令>`**：最多两条下一步，用这次运行的真实路径和 id（`rn look` 判为 far → 对应的 `rn grade`；`rn edit init` → 要填的槽位和草稿渲染；`rn assemble` → `rn qa`；可直接粘贴的 EDL 片段）。
+- **耗时提醒**：随素材变长的命令（`shots`、完整 `assemble`、`key`、`matte`、`faces --reframe`、`text`、`listen --transcribe`、`compare --shots|--video`、`ref`、滚动录屏）预计超过 30 s 时，先在 stderr 打印 `rn: about N s …; in a sandbox run it with background: true`。
+
+`rn --help` 按用途分组列出命令（看、拆参考片、做画面与声音、剪辑、交付），并附 5 个常用流程。
+
 在 Renoise 媒体沙箱里，`rn` 已经预装好，版本由沙箱模板固定。
 
 ## 开发
@@ -249,6 +292,20 @@ CI 在三个环境里跑：Debian trixie + ffmpeg 7.1（和沙箱同一个基础
 之后 `.github/workflows/release.yml` 会通过 trusted publishing 自动发布到 PyPI。
 
 设计说明、完整的 EDL 约定和路线图见 [SPEC.md](SPEC.md)。
+
+
+## 自带素材包
+
+`rn pack` 随 rn 一起安装（约 4 MB，不联网）：290 个 CC0 音效（23 类，带实测起音点和峰值）、16 个 OFL / Apache-2.0 字体、18 个调色 look（`.cube` LUT）和 Lucide 图标（ISC）。
+
+```sh
+rn pack list --kind sfx --search whoosh
+rn edit edit.json hits whoosh/air-1 --at cuts   # 音效峰值对齐每个剪点
+rn pack path look/teal-orange                  # 片段上写 "vf": "lut3d=file=<路径>"
+rn pack get icon/arrow-right -o icons/ --color "#ffffff"
+```
+
+字幕烧录和 `rn capture` 页面里可以直接按 family 名用素材包字体。来源与许可证：`rn pack path licenses`。
 
 ## 许可证
 
