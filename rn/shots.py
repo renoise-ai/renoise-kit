@@ -96,26 +96,34 @@ def _hist(bgr):
     return h.flatten().astype(np.float32)
 
 
-def _track(path: str, display: tuple[int, int]) -> dict:
+def _track(path: str, display: tuple[int, int], scratch: Path) -> dict:
+    """Per-frame change scores, mean luma and a small grey thumbnail of every frame. The thumbnails go to a file in
+    `scratch` and come back memory-mapped: an hour at 30 fps is about half a gigabyte of them."""
     import cv2
 
-    hist_d, pix_d, chg, luma, thumbs = [], [], [], [], []
+    hist_d, pix_d, chg, luma = [], [], [], []
     prev_h = prev_g = None
-    for bgr in _frames(path, display, THUMB_W):
-        g = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY).astype(np.float32)
-        h = _hist(bgr)
-        if prev_h is None:
-            hist_d.append(0.0), pix_d.append(0.0), chg.append(0.0)
-        else:
-            d = np.abs(g - prev_g)
-            hist_d.append(float(cv2.compareHist(prev_h, h, cv2.HISTCMP_BHATTACHARYYA)))
-            pix_d.append(float(d.mean() / 255.0))
-            chg.append(float((d > max(6.0, 0.35 * float(min(g.std(), prev_g.std())))).mean()))
-        luma.append(float(g.mean()))
-        thumbs.append(g.astype(np.uint8))
-        prev_h, prev_g = h, g
+    thumb_file = scratch / 'thumbs.u8'
+    shape = None
+    with open(thumb_file, 'wb') as thumb_out:
+        for bgr in _frames(path, display, THUMB_W):
+            g = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY).astype(np.float32)
+            h = _hist(bgr)
+            if prev_h is None:
+                hist_d.append(0.0), pix_d.append(0.0), chg.append(0.0)
+            else:
+                d = np.abs(g - prev_g)
+                hist_d.append(float(cv2.compareHist(prev_h, h, cv2.HISTCMP_BHATTACHARYYA)))
+                pix_d.append(float(d.mean() / 255.0))
+                chg.append(float((d > max(6.0, 0.35 * float(min(g.std(), prev_g.std())))).mean()))
+            luma.append(float(g.mean()))
+            thumb = g.astype(np.uint8)
+            shape = thumb.shape
+            thumb_out.write(thumb.tobytes())
+            prev_h, prev_g = h, g
     if not luma:
         raise RnError(f'{path}: no frames decoded')
+    thumbs = np.memmap(thumb_file, dtype=np.uint8, mode='r', shape=(len(luma), *shape))
     return {'hist': np.array(hist_d), 'pix': np.array(pix_d), 'chg': np.array(chg), 'luma': np.array(luma), 'thumbs': thumbs}
 
 
@@ -490,8 +498,10 @@ def shots_command(path: str, *, min_shot: float = 0.35, threshold: float = 0.30,
     if abs(int(video.get('rotation') or 0)) % 180 == 90:
         width, height = height, width
     display = (int(width), int(height))
-    track = _track(path, display)
-    found = boundaries(track, fps, min_shot=min_shot, threshold=threshold)
+    with tempfile.TemporaryDirectory(prefix='rn-shots-', ignore_cleanup_errors=True) as scratch:
+        track = _track(path, display, Path(scratch))
+        found = boundaries(track, fps, min_shot=min_shot, threshold=threshold)
+        del track['thumbs']  # the memory map must close before its file goes
     n = len(track['luma'])
     for s in found:
         s['start'], s['end'] = round(s['start_frame'] / fps, 4), round(s['end_frame'] / fps, 4)
