@@ -109,11 +109,29 @@ def test_default_model_is_fetched_once_and_checked(lena_clip, model, tmp_path, m
     assert (tmp_path / 'home' / '.cache' / 'rn' / 'face_detection_yunet_2023mar.onnx').is_file()
 
 
-def test_shots_counts_frames_with_a_face(lena_clip, model, tmp_path):
-    """rn shots --faces: the same detector, per shot."""
-    from rn.shots import shots_command
+@pytest.fixture(scope='session')
+def portrait_clip(request, tmp_path_factory) -> Path:
+    """The portrait at the canvas's full height, held still for 2 s: its face covers several percent of the picture."""
+    cache = Path(request.config.cache.mkdir('rn-faces'))
+    lena = cv2.resize(cv2.imread(str(fetch(cache, LENA_URL, 'lena.jpg'))), (CANVAS_H, CANVAS_H))
+    canvas = np.full((CANVAS_H, CANVAS_W, 3), 128, np.uint8)
+    x = (CANVAS_W - CANVAS_H) // 2
+    canvas[:, x:x + CANVAS_H] = lena
+    folder = tmp_path_factory.mktemp('portrait')
+    cv2.imwrite(str(folder / 'portrait.png'), canvas)
+    clip = folder / 'portrait.mp4'
+    subprocess.run(['ffmpeg', '-hide_banner', '-v', 'error', '-nostdin', '-loop', '1', '-framerate', '10', '-t', '2',
+                    '-i', str(folder / 'portrait.png'), '-c:v', 'libx264', '-crf', '12', '-pix_fmt', 'yuv420p', '-y', str(clip)],
+                   check=True)
+    return clip
 
-    result = shots_command(str(lena_clip), jobs=1, faces=True, face_model=model)
-    assert len(result['shots']) == 1
-    faces = result['shots'][0]['faces']
-    assert faces['frames_with_face'] == 1.0 and faces['largest_area'] >= 0.02 and faces['checked'] >= 2
+
+def test_shots_counts_frames_with_a_large_face(portrait_clip, lena_clip, model):
+    """rn shots --faces: the same detector as rn faces, per shot. A face counts when it covers 2%+ of the picture: the
+    full-height portrait's does in every checked frame; the small sliding one's (about 1.5%) does not."""
+    from rn.shots import FACE_MIN_AREA, shots_command
+
+    faces = shots_command(str(portrait_clip), jobs=1, faces=True, face_model=model)['shots'][0]['faces']
+    assert faces['checked'] >= 2 and faces['frames_with_face'] == 1.0 and faces['largest_area'] >= FACE_MIN_AREA
+    small = shots_command(str(lena_clip), jobs=1, faces=True, face_model=model)['shots'][0]['faces']
+    assert small['frames_with_face'] == 0.0 and small['largest_area'] < FACE_MIN_AREA

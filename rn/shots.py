@@ -406,6 +406,7 @@ def _faces(path: str, display: tuple[int, int], times: list[float], model: str) 
         frame = next(_frames(path, display, width, start=t, duration=0.5), None)
         if frame is None:
             continue
+        frame = frame.copy()  # the decoder's buffer is read-only
         h, w = frame.shape[:2]
         detector.setInputSize((w, h))
         _, found = detector.detect(frame)
