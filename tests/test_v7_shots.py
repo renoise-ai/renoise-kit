@@ -187,3 +187,22 @@ def test_shots_says_how_long_dissolves_and_fades_take(edit_film, tmp_path):
     assert fade['through'] == 'black' and fade['hold_frames'] >= 12
     assert fade['frames'] == fade['out_frames'] + fade['hold_frames'] + fade['in_frames'] and 24 <= fade['frames'] <= 64
     assert 'transition' not in shots[1], 'a hard cut takes no frames'
+
+
+def test_shots_measures_speed_inside_a_shot(tmp_path):
+    """A moving pattern slowed to a quarter speed half way, and one that freezes on its last frame for 1.5 s: the change
+    per quarter, the fastest quarter over the slowest, and the longest hold."""
+    ramp, hold = tmp_path / 'ramp.mp4', tmp_path / 'hold.mp4'
+    ffmpeg('-f', 'lavfi', '-i', 'testsrc2=s=320x240:r=24:d=4', '-vf', "setpts='if(lt(T,2),PTS,2/TB+(PTS-2/TB)*4)'", '-r', '24',
+           '-t', '6', '-pix_fmt', 'yuv420p', str(ramp))
+    ffmpeg('-f', 'lavfi', '-i', 'testsrc2=s=320x240:r=24:d=3', '-vf', 'tpad=stop_mode=clone:stop_duration=1.5',
+           '-pix_fmt', 'yuv420p', str(hold))
+    speeds = {}
+    for name, clip in (('ramp', ramp), ('hold', hold)):
+        report = tmp_path / f'{name}.json'
+        assert rn('shots', clip, '--json', report, '--jobs', 1) == 0
+        (shot,) = json.loads(report.read_text(encoding='utf-8'))['shots']
+        speeds[name] = shot['speed']
+    first, *_, last = speeds['ramp']['change_per_quarter']
+    assert first > 2.5 * last and speeds['ramp']['ramp'] >= 2.5 and speeds['ramp']['longest_hold_s'] < 0.5
+    assert speeds['hold']['change_per_quarter'][-1] < 0.1 and speeds['hold']['longest_hold_s'] == pytest.approx(1.4, abs=0.15)

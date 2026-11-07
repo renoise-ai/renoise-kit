@@ -27,6 +27,8 @@ Per shot, from up to 12 sampled frames and 20 frame pairs (frames touching a tra
            detail on light
   pixels   share of pixels exactly unchanged between frames and the noise in still areas (cameras keep noise everywhere;
            a composite redraws only what moves)
+  speed    the frame-to-frame change per quarter of the shot, the fastest quarter over the slowest (speed ramps and slow
+           motion show here) and the longest run of identical frames inside it (a hold or freeze frame), in seconds
   faces    with --faces: in how many of up to 4 sampled frames a face covers 2%+ of the picture, and the largest face
 """
 from __future__ import annotations
@@ -572,6 +574,20 @@ def _faces(path: str, display: tuple[int, int], times: list[float], model: str) 
             'largest_area': round(max(largest, default=0.0), 4), 'checked': len(largest)}
 
 
+def _speed(mad: np.ndarray, fps: float) -> dict:
+    """How the picture's change runs through a shot, from the mean difference of each frame pair (0..255): its mean per
+    quarter of the shot, the fastest quarter over the slowest (a speed ramp or a slow-motion stretch shows here), and the
+    longest run of identical frames inside it in seconds (a hold or freeze frame)."""
+    quarters = [float(q.mean()) for q in np.array_split(mad, 4) if len(q)] or [0.0]
+    longest = run = 0
+    for same in (mad < 0.15).tolist():
+        run = run + 1 if same else 0
+        longest = max(longest, run)
+    return {'change_per_quarter': [round(q, 3) for q in quarters],
+            'ramp': round(max(quarters) / max(min(quarters), 0.05), 2),
+            'longest_hold_s': round(longest / fps, 3)}
+
+
 def _measure(job: tuple) -> dict:
     """One shot's measurements (runs in a worker process)."""
     import cv2
@@ -629,6 +645,7 @@ def _measure(job: tuple) -> dict:
         'texture': texture,
         'pixels': {'unchanged': round(float(np.median(zeros)), 4) if zeros else 0.0,
                    'still_noise': round(float(np.median(tnoise)), 3) if tnoise else 0.0},
+        'speed': _speed(mad, fps),
         **({'faces': faces} if faces is not None else {}),
     }
 

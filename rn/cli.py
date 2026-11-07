@@ -130,7 +130,8 @@ def _parser() -> argparse.ArgumentParser:
                 'how many frames it takes. Per shot: still (identical frames), cadence (24->30 pulldown repeats), motion\n'
                 '(how well one zoom/pan of the whole frame explains it, zoom/s, pan px/s), texture (flat blocks, colours,\n'
                 'straight edges, noise, fine texture, gentle slopes, vivid colour, light/dark smoothness), pixels (unchanged\n'
-                'share, noise in still areas) and with --faces how often a face fills the picture. Numbers only, no\n'
+                'share, noise in still areas), speed (change per quarter, fastest over slowest, longest hold) and with\n'
+                '--faces how often a face fills the picture. Numbers only, no\n'
                 'labels. rn cuts finds hard cuts only and stays what EDL {"shot": n} means; rn shots can count more shots.')
     shots.add_argument('file')
     shots.add_argument('--min-shot', type=float, default=0.35, help='seconds; a shorter shot merges into the one before')
