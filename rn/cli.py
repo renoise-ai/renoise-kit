@@ -90,6 +90,20 @@ def _edit_ops(ops) -> None:
     op_sil.add_argument('--keep-gap', type=float, default=0.0, metavar='S',
                         help='seconds of each removed pause kept in all (default 0: only the pads)')
     op_hits.add_argument('--id-prefix', default='sfx', metavar='P', help='item ids P1, P2, ... skipping ids already used (default sfx)')
+    snap_text = 'move main-track cuts onto the nearest beat or downbeat (rolling edits: nothing else moves)'
+    op_snap = ops.add_parser(
+        'snap', help=snap_text, description=f'{snap_text[0].upper()}{snap_text[1:]}.\n'
+        'For each cut, the clip before it ends later or earlier and the clip after it starts later or earlier in its own\n'
+        'source by the same time (a rolling edit), so the cut lands on the beat and the timeline length stays. A cut with a\n'
+        'transition is snapped by the transition\'s middle. Cuts with no beat within --tolerance, or whose clips have no\n'
+        'source to spare, stay where they are and are listed with the reason.',
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    op_snap.add_argument('--listen', required=True, metavar='LISTEN.json', help='rn listen MUSIC --json LISTEN.json')
+    op_snap.add_argument('--to', choices=['beats', 'downbeats'], default='beats')
+    op_snap.add_argument('--tolerance', type=float, default=0.2, metavar='S', help='only move a cut this far at most (default 0.2 s)')
+    op_snap.add_argument('--only', metavar='ID,..', help='only the cuts into these clips (ids of the clips that start at the cut)')
+    op_snap.add_argument('--offset', type=float, default=0.0, metavar='S',
+                         help='where the analysed music starts on the timeline (its audio item\'s "at")')
 
 
 def _crop(text: str) -> tuple[int, int, int, int]:
@@ -279,21 +293,34 @@ def _parser() -> argparse.ArgumentParser:
     ref.add_argument('--model', default='small')
     ref.add_argument('--threshold', type=float, default=0.3)
 
-    capture = add('capture', 'render an HTML page frame by frame to RGBA PNGs',
+    capture = add('capture', 'render an HTML page frame by frame to RGBA PNGs, or shoot a live site',
                   'The page defines window.renderFrame(i) (may be async) and draws frame i completely: the frame index is\n'
                   'the time, so frames are exact and any order or shard gives the same pixels. window.RN = {fps, frames,\n'
                   'width, height, shard} and window.RNFX (rn fx) exist before the page runs; window.rnReady (a Promise) is\n'
                   'awaited once. Transparent where the page does not paint. Put the result in an EDL as\n'
                   '{"frames": "<dir>/%05d.png", "fps": R}. Example:\n'
                   '  <canvas id=c></canvas><script>const x = c.getContext("2d"); c.width = RN.width; c.height = RN.height;\n'
-                  '  window.renderFrame = i => { x.clearRect(0, 0, c.width, c.height); /* draw frame i */ RNFX.grain(x, i, {}); };</script>')
-    capture.add_argument('page')
+                  '  window.renderFrame = i => { x.clearRect(0, 0, c.width, c.height); /* draw frame i */ RNFX.grain(x, i, {}); };</script>\n'
+                  'A live site (http/https URL) instead: real screenshots in a phone (default) or desktop browser:\n'
+                  '  rn capture https://example.com -o site                                   # full.png, the whole page\n'
+                  '  rn capture https://example.com -o site --sections "Pricing,Reviews" --hide "#cookie-banner"\n'
+                  '  rn capture https://example.com -o site --scroll-video site/scroll.mp4 --duration 6   # 1080x1920 scroll')
+    capture.add_argument('page', help='an HTML file with renderFrame(i), or an http(s) URL of a live site')
     capture.add_argument('-o', '--out', required=True, help='output folder (its PNGs are replaced)')
-    capture.add_argument('--frames', type=int, required=True)
-    capture.add_argument('--size', default='1080x1920', metavar='WxH')
+    capture.add_argument('--frames', type=int, help='page: frames to render (required for a page)')
+    capture.add_argument('--size', metavar='WxH', help='output pixels (page default 1080x1920; URL: 1080x1920 mobile, 1920x1080 desktop)')
     capture.add_argument('--fps', type=float, default=30)
     capture.add_argument('--shards', type=int, default=4, help='parallel Chromium instances (each boots in 1-3 s)')
     capture.add_argument('--start', type=int, default=0, help='first frame index (render a part)')
+    web = capture.add_argument_group('a live site (rn capture https://... -o shots): app and product ads')
+    device = web.add_mutually_exclusive_group()
+    device.add_argument('--mobile', dest='device', action='store_const', const='mobile', help='a phone (default): 360x640 CSS px at 3x')
+    device.add_argument('--desktop', dest='device', action='store_const', const='desktop', help='1280x720 CSS px at 1.5x')
+    web.add_argument('--full', action='store_true', help='the whole page as full.png (the default when nothing else is asked)')
+    web.add_argument('--sections', metavar='"Pricing,Reviews"', help='a still of each section, found by its heading text')
+    web.add_argument('--scroll-video', metavar='MP4', help='a scroll from top to bottom, frame-exact, eased, held at both ends')
+    web.add_argument('--duration', type=float, default=8.0, metavar='S', help='--scroll-video length (default 8 s)')
+    web.add_argument('--hide', metavar='"SEL,SEL"', help='CSS selectors to hide first: cookie banners, chat bubbles, pop-ups')
 
     signal = add('signal', 'frame-by-frame numbers: luma, motion, saturation, loudness, bands, onsets, clicks',
                  'One series per quantity on the video\'s frame clock (30/s for audio alone): luma, frame difference and\n'
@@ -500,6 +527,23 @@ def _parser() -> argparse.ArgumentParser:
     assemble.add_argument('--no-cache', action='store_true',
                           help='render every slot afresh (default: reuse slots and nested edits from .rn-cache next to the EDL, or RN_CACHE)')
 
+    music = add('music', 'fit a music bed to the edit\'s length, ending on a bar or phrase',
+                'rn music fit MUSIC --duration S -o bed.m4a: a bed exactly S seconds long that starts on a downbeat and whose\n'
+                'final fade begins on a phrase boundary (4 bars from the start; --end-on downbeat|beat for finer points), so it\n'
+                'ends like it was cut for the video. Shorter music is looped on phrase boundaries with a short crossfade.\n'
+                'Without -o (and no loop needed) it only prints the EDL audio item: {"src", "in", "out", "fade_out"}.\n'
+                'Beats and downbeats come from the music (extra "listen") or --listen (rn listen --json).')
+    music.add_argument('action', choices=['fit'])
+    music.add_argument('file')
+    music.add_argument('--duration', type=float, required=True, metavar='S', help='bed length in seconds (the edit\'s length)')
+    music.add_argument('-o', '--out', help='.wav, .m4a, .mp3 or .flac (omit to get the EDL audio item only)')
+    music.add_argument('--listen', metavar='LISTEN.json', help='rn listen MUSIC --json result (skips the analysis)')
+    music.add_argument('--start', type=float, metavar='S', help='start at this second of the music (default: the best downbeat)')
+    music.add_argument('--end-on', choices=['phrase', 'downbeat', 'beat'], default='phrase',
+                       help='where the final fade may begin (default phrase; falls back to finer points when none fits)')
+    music.add_argument('--fade', type=float, metavar='S', help='wanted fade length (default about one bar, 1-3 s)')
+    music.add_argument('--loop', action='store_true', help='loop on phrases even when the music is long enough')
+
     edit = add('edit', 'change an EDL by operations on clip ids (checked before writing)',
                'Each operation lays the whole edit out again and writes the file only if it is valid. Clips are addressed\n'
                'by "id" (rn edit e.json ids gives every clip one) or by position "track:index" / "audio:index".\n'
@@ -520,6 +564,9 @@ def _parser() -> argparse.ArgumentParser:
                '  rn edit e.json hits boom.wav --at 1.5,4.25 --id-prefix boom\n'
                'Long pauses of a talking clip cut out (from rn listen of its source):\n'
                '  rn edit e.json silences c1 --listen take.json --min 0.5 --pad 0.1\n'
+               'Cuts onto the music (rolling edits; cuts with no beat near enough stay and are listed):\n'
+               '  rn edit e.json snap --listen music.json --tolerance 0.15            # nearest beat\n'
+               '  rn edit e.json snap --listen music.json --to downbeats --only c4,c7 --offset 0.5   # music starts at 0.5 s\n'
                'Several changes in one call, checked step by step and written once (a failing step writes nothing):\n'
                '  rn edit e.json batch \'set c2 transition.type=dissolve transition.duration=0.25\' \'set c1 out=3.2\'\n'
                "  rn edit e.json batch <<'EOF'   # one operation per line\n"
@@ -666,12 +713,12 @@ def _print_summary(command: str, result: dict) -> None:
               f'{len(result["checks"]) - result["failed"] - result["warnings"]} passed  ({result["path"]})')
 
 
-SUMMARIZED = {'look', 'grade', 'template', 'cuts', 'shots', 'listen', 'faces', 'key', 'grid', 'ref', 'capture', 'fx', 'fonts', 'assets', 'captions',
-              'compare', 'edit', 'signal', 'align',
+SUMMARIZED = {'look', 'grade', 'template', 'music', 'cuts', 'shots', 'listen', 'faces', 'key', 'grid', 'ref', 'capture', 'fx', 'fonts', 'assets',
+              'captions', 'compare', 'edit', 'signal', 'align',
               'matte', 'text', 'export', 'doctor', 'schema'}
 NO_FFMPEG = {'doctor', 'schema'}  # they work without ffmpeg on PATH: doctor reports it missing
 # The pip extra that brings a command's optional Python modules (the media sandbox has them all).
-EXTRAS = {'template': 'capture', 'listen': 'listen', 'ref': 'listen', 'faces': 'faces', 'shots': 'shots', 'capture': 'capture', 'captions': 'captions', 'fonts': 'fonts',
+EXTRAS = {'template': 'capture', 'listen': 'listen', 'music': 'listen', 'ref': 'listen', 'faces': 'faces', 'shots': 'shots', 'capture': 'capture', 'captions': 'captions', 'fonts': 'fonts',
           'signal': 'listen', 'matte': 'matte', 'export': 'export'}
 
 
@@ -709,6 +756,8 @@ def _edit_step(path: Path, args) -> dict:
                                every=args.every, prefix=args.id_prefix)
     if args.op == 'silences':
         return editops.silences_op(path, args.ref, args.listen, min_silence=args.min, pad=args.pad, keep_gap=args.keep_gap)
+    if args.op == 'snap':
+        return editops.snap_op(path, args.listen, to=args.to, tolerance=args.tolerance, only=args.only, offset=args.offset)
     return editops.move_op(path, args.ref, args.before, args.after, args.track)
 
 
@@ -786,9 +835,20 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
         from .ref import ref_command, summary_lines
         result = ref_command(args.file, out=args.out, every=args.every, transcribe=args.transcribe, language=args.language,
                              model=args.model, threshold=args.threshold)
+    elif command == 'capture' and args.page.startswith(('http://', 'https://')):
+        from .capture import web_command, web_summary_lines
+        split = lambda text: [part.strip() for part in text.split(',') if part.strip()] if text else []  # noqa: E731
+        result = web_command(args.page, out=args.out, device=args.device or 'mobile', size=_size(args.size) if args.size else None,
+                             full=args.full, sections=split(args.sections), scroll_video=args.scroll_video,
+                             duration=args.duration, fps=args.fps, hide=split(args.hide))
+        return result, web_summary_lines(result)
     elif command == 'capture':
         from .capture import capture_command, summary_lines
-        width, height = _size(args.size)
+        if args.frames is None:
+            raise RnError('rn capture PAGE.html needs --frames N (or give an http(s) URL to shoot a live site)')
+        if args.device or args.full or args.sections or args.scroll_video or args.hide:
+            raise RnError('--mobile/--desktop/--full/--sections/--scroll-video/--hide are for an http(s) URL')
+        width, height = _size(args.size or '1080x1920')
         result = capture_command(args.page, out=args.out, frames=args.frames, width=width, height=height, fps=args.fps,
                                  shards=args.shards, start=args.start)
     elif command == 'template':
@@ -812,6 +872,10 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
         else:
             result = _edit_step(path, args)
         return result, editops.summary_lines(result)
+    elif command == 'music':
+        from .music import fit_command, summary_lines
+        result = fit_command(args.file, duration=args.duration, out=args.out, listen=args.listen, start=args.start,
+                             end_on=args.end_on, fade=args.fade, loop=True if args.loop else None)
     elif command == 'signal':
         from .signal import signal_command, summary_lines
         result = signal_command(args.file, out=args.out)

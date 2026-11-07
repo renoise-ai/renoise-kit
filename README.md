@@ -166,8 +166,9 @@ EOF
 | `rn sheet FILE... [--fps R \| --every N \| --indices ... \| --around T,.. --diff] [--crop W:H:X:Y]` | Contact sheets labelled with frame number and timecode, each under 125 KB; `--crop` zooms every tile into one region (a sign, a caption, a face) |
 | `rn cuts FILE [--sheet JPG]` | Shot boundaries by decoded frame, plus weaker "suspects" to check |
 | `rn shots FILE [--jobs N] [--sheet JPG] [--faces] [--beats [LISTEN.json]]` | Every shot, dissolves, fades and straight wipes included (with how many frames each takes and a wipe's direction), and what its picture does as numbers: still frames, 24→30 repeat cadence, how well one zoom / pan of the whole frame explains it, texture (flat blocks, colours, straight edges, noise, soft gradients, vivid colour), and with `--faces` how often a face fills the picture, with `--beats` how each cut sits against the music's beats. `--keyframes DIR` writes one full-size frame per shot, clear of its transitions: the sharpest of five by default (`--which mid|first|last`). Numbers only, no labels |
-| `rn listen FILE [--transcribe]` | Loudness, silences, onsets, tempo with half/double candidates, beat times, Whisper word times, one picture |
+| `rn listen FILE [--transcribe]` | Loudness, silences, onsets, tempo with half/double candidates, beat times and downbeats (4/4), Whisper word times, one picture |
 | `rn listen FILE... --speech [--expect TEXT\|@FILE] [--transcribe]` | Voice takes: where the speech starts and ends inside the file, its length, the pauses in it; with `--expect` the words per second, and with `--transcribe` `match: ok\|mismatch` against the intended text and where it differs |
+| `rn music fit MUSIC --duration S [-o bed.m4a]` | A music bed exactly as long as the edit: starts on a downbeat, the final fade begins on a phrase (4 bars), shorter music loops on phrases with a crossfade. Without `-o` it prints the EDL audio item (`in`, `out`, `fade_out`) |
 | `rn signal FILE [-o PNG]` | Per-frame luma, motion, saturation, loudness, low/mid/high bands, onset strength; flash frames, clicks |
 | `rn align A B` | Where recording B sits inside A, by sound: offset, `match`, `distinct` |
 | `rn faces FILE` | Face boxes and landmarks per frame (measurement only) |
@@ -184,6 +185,7 @@ EOF
 | Command | What it gives |
 |---|---|
 | `rn capture page.html -o DIR --frames N --size WxH` | An HTML page rendered frame by frame (`window.renderFrame(i)`) to RGBA PNGs, sharded across Chromiums |
+| `rn capture URL -o DIR [--desktop] [--sections "Pricing,Reviews"] [--scroll-video OUT.mp4]` | A live site in a real phone (1080x1920) or desktop browser: the full page, sections found by their heading, and a frame-exact eased scroll-through video for app and product ads. `--hide` drops cookie banners |
 | `rn fx [--source]` | The effects library (grain, vignette, leak, flash, glitch, ...) as readable source for pages and numpy |
 | `rn grade SRC --ref REF... -o look.cube [--strength S] [--preview PNG]` | A `.cube` LUT that moves a clip's tone curve, chroma and zone casts toward the references, fitted on frames across the whole clip (no flicker); apply it with `"vf": "lut3d=file=look.cube"` (path relative to the EDL). Reports the distance before and after |
 | `rn captions WORDS.json --size WxH -o caps.ass` | Your script aligned to Whisper timing; CJK chunking, balanced lines, safe areas, kept off faces |
@@ -201,6 +203,7 @@ EOF
 | `rn edit EDL hits SFX --at cuts\|beats\|T1,T2,..` | One sound effect as an audio item at many points: every main-track cut (anchored to the clip's id, so it follows later edits), every beat of an `rn listen --json` result, or given seconds. `--offset`, `--pivot` (the whoosh's peak on the point), `--gain`, `--every N`. The sound can come from `rn assets get` |
 | `rn edit EDL init --from-shots SHOTS.json [--src REF] [--size WxH] [--fps R]` | A new edit whose main track is a reference's shots (from `rn shots --json`), frame for frame: one clip per shot (`s01`, `s02`, ...), dissolves and wipes made again as xfade overlaps of their measured frames, fades through black or white as fade-out / fade-in filters, so the total is the reference's length. Each source is `gen/<id>.mp4`, a placeholder card until it exists (fill a slot with `rn edit EDL set s03 src=...`); `--src` cuts every clip from the reference itself, a rebuild to check against it. `meta` keeps each shot's times, transition, keyframe, camera and speed |
 | `rn edit EDL silences CLIP --listen L.json [--min S] [--pad S] [--keep-gap S]` | Cuts a talking clip's long pauses (and the dead air before the first and after the last word) out of it as `ranges`, from `rn listen` of its source |
+| `rn edit EDL snap --listen L.json [--to beats\|downbeats] [--tolerance S]` | Main-track cuts onto the nearest beat or downbeat by rolling edits: the clip before ends later or earlier and the clip after starts later or earlier in its own source, so nothing else moves. Cuts that cannot move (too far, no source to spare) stay and are listed with the reason |
 | `rn assemble EDL -o OUT [--preview] [--range A-B] [--placeholders]` | Renders the EDL frame-exactly. `--placeholders` turns missing shots into labelled cards |
 | `rn schema [--path]` | The edit.json JSON Schema shipped with rn, printed (or where the file is) |
 

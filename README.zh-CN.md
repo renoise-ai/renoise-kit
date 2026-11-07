@@ -152,8 +152,9 @@ EOF
 | `rn sheet FILE... [--fps R \| --every N \| --indices ... \| --around T,.. --diff] [--crop W:H:X:Y]` | 带帧号和时间码的接触表，每张不超过 125 KB；`--crop` 让每格只显示画面的一块（招牌、字幕、人脸） |
 | `rn cuts FILE [--sheet JPG]` | 按解码帧号给出镜头边界，较弱的变化列为待确认的 suspects |
 | `rn shots FILE [--jobs N] [--sheet JPG] [--faces] [--beats [LISTEN.json]]` | 全部镜头（含叠化、淡变、直线擦除，并给出转场帧数和擦除方向），以及每个镜头画面在做什么，全是数字：静止帧、24→30 重复帧节奏、整帧单一缩放 / 平移能解释多少、质感（平坦块、颜色数、横竖直边、噪声、柔和渐变、鲜艳颜色），加 `--faces` 时还有人脸占满画面的频率，加 `--beats` 时还有每个剪点与音乐拍点的偏差。`--keyframes DIR` 为每个镜头输出一张避开转场的原尺寸关键帧，默认取 5 帧里最清晰的（`--which mid|first|last`）。只给数字，不下结论 |
-| `rn listen FILE [--transcribe]` | 响度、静音、起音、速度（附半速 / 倍速候选）、拍点时间、Whisper 字词时间，外加一张图 |
+| `rn listen FILE [--transcribe]` | 响度、静音、起音、速度（附半速 / 倍速候选）、拍点与强拍（4/4）时间、Whisper 字词时间，外加一张图 |
 | `rn listen FILE... --speech [--expect TEXT\|@FILE] [--transcribe]` | 配音 take：语音在文件里的起止、长度、中间的停顿；加 `--expect` 给出语速，再加 `--transcribe` 给出与期望文字的 `match: ok\|mismatch` 和不同之处 |
+| `rn music fit MUSIC --duration S [-o bed.m4a]` | 把配乐做成正好成片长度的音乐床：从强拍开始，最后的淡出从乐句（4 小节）边界开始，不够长就在乐句边界交叉淡化循环。不给 `-o` 时只打印 EDL 音频项（`in`、`out`、`fade_out`） |
 | `rn signal FILE [-o PNG]` | 逐帧的亮度、运动、饱和度、响度、低 / 中 / 高频段、起音强度，以及闪帧和爆音位置 |
 | `rn align A B` | 通过声音判断录音 B 在 A 里的位置：偏移量、`match`、`distinct` |
 | `rn faces FILE` | 逐帧人脸框和关键点（只测量，不改脸） |
@@ -170,6 +171,7 @@ EOF
 | 命令 | 作用 |
 |---|---|
 | `rn capture page.html -o DIR --frames N --size WxH` | HTML 页面（`window.renderFrame(i)`）逐帧渲染成 RGBA PNG，可用多个 Chromium 分片并行 |
+| `rn capture URL -o DIR [--desktop] [--sections "Pricing,Reviews"] [--scroll-video OUT.mp4]` | 用真实浏览器拍线上网站，手机（1080×1920）或桌面：整页截图、按标题找到的区块截图、帧精确的缓动滚动视频，给 App / 产品广告用。`--hide` 隐藏 cookie 横幅 |
 | `rn fx [--source]` | 效果库（颗粒、暗角、漏光、闪白、故障……），以可读源码形式提供，网页和 numpy 都能用 |
 | `rn grade SRC --ref REF... -o look.cube [--strength S] [--preview PNG]` | 生成一个 `.cube` LUT，把片段的影调曲线、彩度和各亮度区的偏色往参考靠；在整段片子的多帧上拟合，不会闪。在 EDL 里用 `"vf": "lut3d=file=look.cube"`（路径相对 EDL）。报告调色前后与参考的距离 |
 | `rn captions WORDS.json --size WxH -o caps.ass` | 把你的原稿对齐到 Whisper 的时间：中日文按字分块、两行均衡断行、留在安全区内、避开人脸 |
@@ -187,6 +189,7 @@ EOF
 | `rn edit EDL hits SFX --at cuts\|beats\|T1,T2,..` | 把同一个音效放到多个点上，每个点一条音频项：主轨的每个剪点（按片段 id 锚定，之后改剪辑会跟着走）、`rn listen --json` 结果的每个拍点，或给定秒数。可加 `--offset`、`--pivot`（让 whoosh 的峰值落在点上）、`--gain`、`--every N`。音效可以用 `rn assets get` 下载 |
 | `rn edit EDL init --from-shots SHOTS.json [--src REF] [--size WxH] [--fps R]` | 按参考片的镜头（`rn shots --json` 的结果）逐帧新建一条剪辑：每个镜头一个主轨片段（`s01`、`s02`…），叠化和擦除按测到的帧数做成 xfade 交叠，经黑 / 白场的淡变做成前一段淡出、后一段淡入的滤镜，总长与参考片一致。素材默认是 `gen/<id>.mp4`，还没生成时是占位卡（`rn edit EDL set s03 src=...` 填入）；`--src` 让每个片段直接取参考片本身对应的镜头，用来对照检查。`meta` 里保留每个镜头的时间、转场、关键帧、运镜和速度数字 |
 | `rn edit EDL silences CLIP --listen L.json [--min S] [--pad S] [--keep-gap S]` | 按源素材的 `rn listen` 结果，把口播片段里的长停顿（以及第一个字前、最后一个字后的空白）剪掉，写成 `ranges` |
+| `rn edit EDL snap --listen L.json [--to beats\|downbeats] [--tolerance S]` | 用滚动剪辑把主轨剪点挪到最近的拍点或强拍上：前一个片段晚 / 早结束，后一个片段在自己的素材里晚 / 早开始，其他东西都不动。挪不了的剪点（太远、素材不够）留在原处并说明原因 |
 | `rn assemble EDL -o OUT [--preview] [--range A-B] [--placeholders]` | 帧精确地渲染 EDL；`--placeholders` 会把还没生成的镜头渲染成带说明的卡片 |
 | `rn schema [--path]` | 打印随 rn 一起发布的 edit.json JSON Schema（`--path` 只打印文件位置） |
 

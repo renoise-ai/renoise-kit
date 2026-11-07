@@ -4,6 +4,7 @@ whole edit out again (as rn assemble --dry-run would) and only then written back
 `rn edit EDL batch` runs several operations as one and writes the file once, only if every step passes.
 `rn edit EDL hits` places one sound effect at many points (cuts, beats, given seconds) as audio items.
 `rn edit EDL silences` cuts a clip's long pauses out, as measured by rn listen, by writing its "ranges".
+`rn edit EDL snap` moves cuts onto beats by rolling edits.
 
 The main track always plays back to back, so removing or trimming a clip there ripples everything after it; overlays and
 audio anchored by clip id ({"clip": "id"}) follow, ones placed at fixed seconds do not.
@@ -548,6 +549,109 @@ def silences_op(path: Path, ref: str, listen: str, *, min_silence: float = 0.5, 
             'removed': round(before - after, 3), 'kept': round(after, 3), 'warnings': warnings, 'timeline': summary}
 
 
+def _roll(raw_a: dict, a: Clip, raw_b: dict, b: Clip, shift_frames: int, fps: Fraction) -> str | None:
+    """A rolling edit: the cut between a and b moves by shift_frames; a ends later (or earlier) and b starts later (or
+    earlier) in its source by the same timeline time, so nothing else on the track moves. Returns why it cannot."""
+    d = Fraction(shift_frames) / fps
+    if a.kind in ('video', 'sequence', 'edit') and 'duration' not in raw_a:
+        raw_a['out'] = round(a.start_s + float(Fraction(a.frames) / fps + d) * a.speed, 6)
+    else:
+        raw_a['duration'] = round(float(Fraction(a.frames) / fps + d), 6)
+    if b.kind in ('video', 'sequence', 'edit'):
+        new_in = b.start_s + float(d) * b.speed
+        if new_in < -1e-9:
+            return f'{b.id or b.where} would start {-new_in:.3f}s before its source begins'
+        raw_b['in'] = round(max(new_in, 0.0), 6)
+        if 'duration' in raw_b:
+            raw_b['duration'] = round(float(Fraction(b.frames) / fps - d), 6)
+    else:
+        raw_b['duration'] = round(float(Fraction(b.frames) / fps - d), 6)
+    return None
+
+
+def snap_op(path: Path, listen: str, *, to: str = 'beats', tolerance: float = 0.2, only: str | None = None,
+            offset: float = 0.0) -> dict:
+    """Moves main-track cuts onto the nearest beat (or downbeat) of a rn listen result by rolling edits: the clip before
+    a cut ends later or earlier and the clip after it starts later or earlier in its own source by the same time, so
+    the rest of the timeline stays where it is. A cut with a transition is snapped by the transition's middle. offset:
+    where the analysed music starts on the timeline. Cuts with no beat within tolerance, or whose clips have no source
+    to spare, stay and are listed with the reason."""
+    if to not in ('beats', 'downbeats'):
+        raise RnError('--to beats or downbeats')
+    if tolerance <= 0:
+        raise RnError('--tolerance: seconds > 0')
+    listen = _edl_relative(path, listen, '--listen ')
+    data = json.loads((path.parent / listen).read_text(encoding='utf-8-sig'))
+    beats = data.get('beats') if isinstance(data, dict) else None
+    times = (beats or {}).get('times' if to == 'beats' else 'downbeats')
+    if not times:
+        raise RnError(f'--listen {listen}: no beats.{"times" if to == "beats" else "downbeats"} '
+                      '(rn listen MUSIC --json writes them; downbeats need rn 0.7+)')
+    grid = sorted(float(t) + offset for t in times)
+    wanted = {part.strip() for part in only.split(',')} if only else None
+    raw = _read(path)
+    clips = (raw.get('tracks') or [{}])[0].get('clips') or []
+    edit = load(path)
+    fps = edit.fps
+    if wanted:
+        unknown = wanted - {c.id for c in edit.base}
+        if unknown:
+            raise RnError(f'--only {", ".join(sorted(unknown))}: no main-track clip with that id')
+    snapped, kept = [], []
+    for i in range(1, len(edit.base)):
+        b = edit.base[i]
+        if wanted and b.id not in wanted:
+            continue
+        label = b.id or f'clip {i}'
+        point = Fraction(b.timeline_start) / fps + Fraction(b.transition_frames, 2) / fps
+        nearest = min(grid, key=lambda t: abs(t - float(point)))
+        shift = nearest - float(point)
+        frames = round(shift * fps)
+        entry = {'cut': label, 'time': round(float(point), 4), 'beat': round(nearest, 4)}
+        if abs(shift) > tolerance:
+            kept.append({**entry, 'reason': f'nearest {to[:-1]} is {shift:+.3f}s away (tolerance {tolerance}s)'})
+            continue
+        if frames == 0:
+            kept.append({**entry, 'reason': 'already on it (within half a frame)'})
+            continue
+        a = edit.base[i - 1]
+        if '.ranges[' in a.where or '.ranges[' in b.where:
+            kept.append({**entry, 'reason': 'a clip with "ranges": trim its spans instead'})
+            continue
+        if (a.keys or {}).get('speed') or (b.keys or {}).get('speed'):
+            kept.append({**entry, 'reason': 'a clip with a speed ramp'})
+            continue
+        index_a, index_b = (int(c.where.split('[')[2].rstrip(']')) for c in (a, b))
+        trial_a, trial_b = dict(clips[index_a]), dict(clips[index_b])
+        why = _roll(trial_a, a, trial_b, b, frames, fps)
+        if why is None:
+            before = clips[index_a], clips[index_b]
+            clips[index_a], clips[index_b] = trial_a, trial_b
+            trial = path.with_name(f'.{path.stem}.rn-snap.json')
+            trial.write_text(json.dumps(raw, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+            try:
+                laid = load(trial)
+                ran_out = [w for w in laid.warnings if w not in edit.warnings and a.where in w]
+                if ran_out:  # the source cannot cover the longer clip (rn would hold its last frame)
+                    why = f'{a.id or a.where} has no source to spare: {ran_out[0]}'
+                else:
+                    edit = laid
+            except RnError as error:
+                why = str(error)
+            finally:
+                trial.unlink(missing_ok=True)
+            if why:
+                clips[index_a], clips[index_b] = before
+        if why:
+            kept.append({**entry, 'reason': why})
+            continue
+        snapped.append({**entry, 'shift': round(frames / float(fps), 4), 'frames': frames,
+                        'off_by': round(float(Fraction(frames) / fps) - shift, 4)})
+    if not snapped:
+        raise RnError('no cut moved: ' + '; '.join(f'{k["cut"]}: {k["reason"]}' for k in kept[:8]))
+    return {'op': 'snap', 'to': to, 'snapped': snapped, 'kept': kept, 'timeline': _write_checked(path, raw)}
+
+
 def batch_op(path: Path, steps: list[str], apply) -> dict:
     """Several operations as one: each is applied and checked in turn on a working copy next to the EDL (so relative
     paths resolve the same), which replaces the EDL only after the last step passes. A failing step writes nothing.
@@ -581,6 +685,7 @@ def summary_lines(result: dict) -> list[str]:
             'move': lambda r: f'moved {r["clip"]}',
             'hits': lambda r: f'added {len(r["added"])} x {Path(r["src"]).name} at {r["at"]}: '
                               + (r['added'][0] if len(r['added']) == 1 else f'{r["added"][0]}..{r["added"][-1]}'),
+            'snap': lambda r: f'snapped {len(r["snapped"])} cut(s) to {r["to"]}, {len(r["kept"])} kept',
             'silences': lambda r: f'{r["clip"]}: cut {r["removed"]}s of silence, {r["spans"]} spans play ({r["kept"]}s)',
             'batch': lambda r: f'{len(r["steps"])} steps: ' + '; '.join(r['steps']),
             'init': lambda r: f'created {r["path"]}: {len(r["clips"])} clips from the reference\'s shots, sources {r["source"]}'
@@ -600,6 +705,9 @@ def summary_lines(result: dict) -> list[str]:
     if result['op'] == 'silences':
         lines.append('  ranges ' + ', '.join(f'{a:g}-{b:g}' for a, b in result['ranges'][:12]) + (' ...' if len(result['ranges']) > 12 else ''))
         lines += [f'warning: {w}' for w in result['warnings']]
+    if result['op'] == 'snap':
+        lines += [f'  {c["cut"]}: {c["time"]}s -> {c["beat"]}s ({c["frames"]:+d} frames)' for c in result['snapped']]
+        lines += [f'  {c["cut"]} stays at {c["time"]}s: {c["reason"]}' for c in result['kept']]
     lines.append(f'timeline {out["width"]}x{out["height"]} {out["fps"]}fps  {out["frames"]} frames  {out["duration"]}s')
     lines += [f'  {c["id"] or c["where"]}: frames {c["start_frame"]}..{c["start_frame"] + c["frames"] - 1}' for c in result['timeline']['base']]
     lines += [f'  {c["id"] or c["where"]}: overlay frames {c["start_frame"]}..{c["start_frame"] + c["frames"] - 1}'
