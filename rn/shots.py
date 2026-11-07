@@ -333,7 +333,7 @@ def boundaries(track: dict, fps: float, *, min_shot: float = 0.35, threshold: fl
                 if not any(abs(j - b) < radius for b in found):
                     found[j] = ('fade', 0.5)
                     details[j] = {'frames': z - a, 'through': 'black' if luma[i] < low else 'white',
-                                  'out_frames': i - a, 'hold_frames': j - i, 'in_frames': z - j}
+                                  'out_frames': i - a, 'hold_frames': j - i, 'in_frames': z - j, 'start_frame': a}
             i = j
         else:
             i += 1
@@ -400,7 +400,7 @@ def boundaries(track: dict, fps: float, *, min_shot: float = 0.35, threshold: fl
                 for b in near:
                     del found[b]
                 found[i] = ('wipe', round(1 - resid, 3))
-                details[i] = {'frames': hi - lo + 1, 'edge': edge}
+                details[i] = {'frames': hi - lo + 1, 'edge': edge, 'start_frame': lo}
     # how many frames each dissolve takes (wipes were measured when found)
     ordered = sorted(found)
     for index, b in enumerate(ordered):
@@ -414,7 +414,7 @@ def boundaries(track: dict, fps: float, *, min_shot: float = 0.35, threshold: fl
             details[b] = {'frames': None}
             continue
         lo, hi = _span(track['thumbs'], b, k, limit, _blend_part)
-        details[b] = {'frames': hi - lo + 1}
+        details[b] = {'frames': hi - lo + 1, 'start_frame': lo}
     min_len = max(1, int(round(min_shot * fps)))
     shots, start, trans, sc, how = [], 0, None, None, None
     for b in sorted(found) + [n]:
@@ -677,9 +677,73 @@ def _beat_offsets(shots: list[dict], beats: dict, fps: float, source: str) -> di
             'median_offset_frames': round(float(np.median(offsets)), 2) if offsets else None}
 
 
+def interior(shots: list[dict], k: int, fps: float) -> tuple[int, int]:
+    """Shot k's frames [lo, hi) clear of its transitions: the incoming dissolve / wipe / fade-in, a flash, and the
+    outgoing transition into the next shot. The whole shot when nothing is left."""
+    s = shots[k]
+    lo, hi = s['start_frame'], s['end_frame']
+    t = s.get('transition') or {}
+    if s['transition_in'] == 'fade':
+        lo += t.get('in_frames') or 0
+    elif t.get('frames') and t.get('start_frame') is not None:
+        lo = max(lo, t['start_frame'] + t['frames'])
+    if s.get('flash_s'):
+        lo += int(round(s['flash_s'] * fps))
+    if k + 1 < len(shots):
+        n = shots[k + 1]
+        t = n.get('transition') or {}
+        if n['transition_in'] == 'fade':
+            hi -= (t.get('hold_frames') or 0) + (t.get('out_frames') or 0)
+        elif t.get('frames') and t.get('start_frame') is not None:
+            hi = min(hi, t['start_frame'])
+    return (lo, hi) if hi > lo else (s['start_frame'], s['end_frame'])
+
+
+KEYFRAME_PICKS = ('sharpest', 'mid', 'first', 'last')
+
+
+def _keyframes(path: str, shots: list[dict], fps: float, out: str, which: str) -> None:
+    """One full-size PNG per shot in `out` (shot_000.png ...), frame-exact by decoded index, from the shot's frames clear
+    of its transitions: the first, middle or last of them, or the sharpest (variance of the Laplacian) of 5 spread
+    across them, the outer tenth on each side left out. Adds shot["keyframe"]."""
+    import shutil
+
+    import cv2
+
+    from .frames import extract
+
+    picks = []
+    for k in range(len(shots)):
+        lo, hi = interior(shots, k, fps)
+        if which == 'first':
+            picks.append([lo])
+        elif which == 'last':
+            picks.append([hi - 1])
+        elif which == 'mid':
+            picks.append([(lo + hi - 1) // 2])
+        else:
+            margin = 0.1 * (hi - 1 - lo)
+            picks.append(sorted({int(round(x)) for x in np.linspace(lo + margin, hi - 1 - margin, num=min(5, hi - lo))}))
+    folder = Path(out)
+    folder.mkdir(parents=True, exist_ok=True)
+    for old in folder.glob('shot_*.png'):
+        old.unlink()
+    with tempfile.TemporaryDirectory(prefix='rn-keyframes-') as tmp:
+        got = dict(extract(path, [i for p in picks for i in p], Path(tmp)))
+        for k, (shot, candidates) in enumerate(zip(shots, picks)):
+            scored = [(float(cv2.Laplacian(cv2.imread(str(got[i]), cv2.IMREAD_GRAYSCALE), cv2.CV_64F).var()), i)
+                      for i in candidates if i in got]
+            if not scored:
+                continue
+            sharpness, index = max(scored)
+            target = folder / f'shot_{k:03d}.png'
+            shutil.copyfile(got[index], target)
+            shot['keyframe'] = {'path': str(target), 'index': index, 'time': round(index / fps, 4), 'sharpness': round(sharpness, 1)}
+
+
 def shots_command(path: str, *, min_shot: float = 0.35, threshold: float = 0.30, jobs: int | None = None,
                   sheet: str | None = None, max_kb: int = 125, faces: bool = False, face_model: str | None = None,
-                  beats: str | None = None) -> dict:
+                  beats: str | None = None, keyframes: str | None = None, which: str = 'sharpest') -> dict:
     import cv2  # noqa: F401  (extra "shots"; a missing module fails here, before any decoding, with the install hint)
 
     info = probe(path)
@@ -736,9 +800,12 @@ def shots_command(path: str, *, min_shot: float = 0.35, threshold: float = 0.30,
             except (OSError, ValueError, KeyError, TypeError) as error:
                 raise RnError(f'--beats {beats}: not an rn listen --json result ({error})') from None
             beat_info = _beat_offsets(shots, grid, fps, beats)
+    if keyframes:
+        _keyframes(path, shots, fps, keyframes, which)
     result = {'path': path, 'fps': str(fps_frac), 'frames': n, 'size': list(display), 'workers': workers, 'shots': shots,
               'transitions': {t: sum(1 for s in shots if s['transition_in'] == t) for t in ('cut', 'flash', 'dissolve', 'fade', 'wipe')},
-              **({'beats': beat_info} if beat_info else {})}
+              **({'beats': beat_info} if beat_info else {}),
+              **({'keyframes': {'dir': keyframes, 'which': which}} if keyframes else {})}
     if sheet:
         from .frames import sheet_command
         # first, middle and last frame of every shot, one row per shot
@@ -771,6 +838,10 @@ def summary_lines(result: dict) -> list[str]:
                      + (f'{b["within_1_frame"]:.0%} of {b["boundaries"]} boundaries within 1 frame of a beat, '
                         f'{b["within_2_frames"]:.0%} within 2 (random cuts: {b["chance_within_1_frame"]:.0%}, '
                         f'{b["chance_within_2_frames"]:.0%}), median {b["median_offset_frames"]} frames' if b['boundaries'] else 'no boundaries'))
+    if result.get('keyframes'):
+        kf = result['keyframes']
+        lines.append(f'keyframes ({kf["which"]}, clear of transitions): {sum(1 for s in result["shots"] if s.get("keyframe"))} PNGs in '
+                     f'{kf["dir"]}: ' + ', '.join(f'#{s["keyframe"]["index"]}' for s in result['shots'] if s.get('keyframe')))
     lines += [f'sheet {page["path"]}' for page in result.get('sheet', [])]
     lines.append('numbers only: what a shot is and how to remake it is yours to judge (look at --sheet)')
     return lines
