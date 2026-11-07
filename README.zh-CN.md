@@ -162,6 +162,7 @@ EOF
 | `rn key FILE -o DIR` | 实景背景抠像，不用模型：绿幕 / 蓝幕 / 任意纯色（取画面边缘测色），或 `--white` 白底（从边缘泛洪填充，主体内部的白保留）；灰度 PNG 直接作 EDL `mask`，`--cutout --despill` 输出 RGBA |
 | `rn grid IMAGE -o DIR` | 把分镜表、角色设定图、2×2 / 3×3 宫格切成单张；行列数从分隔带找，或用 `--rows` / `--cols` 指定 |
 | `rn ref FILE` | 参考片拆解：镜头、声音、剪点和拍点的对齐情况、所有帧的接触表，附一份读片指南 |
+| `rn look FILE... [--ref REF...] [--shots SHOTS.json]` | 影调和颜色的数字：L* 黑位 / 中灰 / 白位、反差，暗部 / 中间调 / 亮部各自的 a\*/b\* 偏色，平均彩度，死黑和过曝的比例（超过 1% 会标出）。给 `--ref` 时给出差值、一个距离和结论（接近 / 明显 / 差很远，阈值用 `--tolerance` 调）。`--shots` 按镜头逐个测 |
 
 **渲**
 
@@ -169,6 +170,7 @@ EOF
 |---|---|
 | `rn capture page.html -o DIR --frames N --size WxH` | HTML 页面（`window.renderFrame(i)`）逐帧渲染成 RGBA PNG，可用多个 Chromium 分片并行 |
 | `rn fx [--source]` | 效果库（颗粒、暗角、漏光、闪白、故障……），以可读源码形式提供，网页和 numpy 都能用 |
+| `rn grade SRC --ref REF... -o look.cube [--strength S] [--preview PNG]` | 生成一个 `.cube` LUT，把片段的影调曲线、彩度和各亮度区的偏色往参考靠；在整段片子的多帧上拟合，不会闪。在 EDL 里用 `"vf": "lut3d=file=look.cube"`（路径相对 EDL）。报告调色前后与参考的距离 |
 | `rn captions WORDS.json --size WxH -o caps.ass` | 把你的原稿对齐到 Whisper 的时间：中日文按字分块、两行均衡断行、留在安全区内、避开人脸 |
 | `rn fonts [--script ja]` | 已安装字体实际有的字重，以及覆盖的文字 |
 | `rn assets search\|get` | 有版权保障的音效和叠加素材，下载后校验 sha256 |

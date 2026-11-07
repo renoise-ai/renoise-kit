@@ -57,6 +57,8 @@ FILTER_USES = (
     ('rn key', 'scale'),
     ('rn faces --reframe -o', 'crop scale setsar'),
     ('rn listen', 'ebur128'),
+    ('rn look, rn grade', 'select scale'),
+    ('rn grade --preview (and EDL "vf": "lut3d=...")', 'lut3d'),
 )
 
 OPENCV = ('opencv-python-headless', 'opencv-python', 'opencv-contrib-python-headless', 'opencv-contrib-python')

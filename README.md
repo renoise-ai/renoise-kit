@@ -176,6 +176,7 @@ EOF
 | `rn key FILE -o DIR` | Backdrop matte without a model: green / blue / any solid colour measured on the frame border, or `--white` (flood fill from the border, so white inside the subject stays); grey PNGs for an EDL `mask`, `--cutout --despill` for RGBA |
 | `rn grid IMAGE -o DIR` | Slice a storyboard / character sheet / 2x2 or 3x3 grid into tiles; rows and columns found from the gutters, or `--rows` / `--cols` |
 | `rn ref FILE` | A reference breakdown: shots, sound, cut-to-beat sync, every frame on sheets, and a reading guide |
+| `rn look FILE... [--ref REF...] [--shots SHOTS.json]` | Tone and colour as numbers: L* black / mid / white, contrast, the a\*/b\* cast in shadows, mids and highlights, chroma, crushed and blown shares (flagged above 1%). Against `--ref`: the differences, one distance and a verdict (close / noticeable / far, `--tolerance` moves it). Per shot with `--shots` |
 
 **Render**
 
@@ -183,6 +184,7 @@ EOF
 |---|---|
 | `rn capture page.html -o DIR --frames N --size WxH` | An HTML page rendered frame by frame (`window.renderFrame(i)`) to RGBA PNGs, sharded across Chromiums |
 | `rn fx [--source]` | The effects library (grain, vignette, leak, flash, glitch, ...) as readable source for pages and numpy |
+| `rn grade SRC --ref REF... -o look.cube [--strength S] [--preview PNG]` | A `.cube` LUT that moves a clip's tone curve, chroma and zone casts toward the references, fitted on frames across the whole clip (no flicker); apply it with `"vf": "lut3d=file=look.cube"` (path relative to the EDL). Reports the distance before and after |
 | `rn captions WORDS.json --size WxH -o caps.ass` | Your script aligned to Whisper timing; CJK chunking, balanced lines, safe areas, kept off faces |
 | `rn fonts [--script ja]` | Installed families with the weights that really exist, and the scripts they cover |
 | `rn assets search\|get` | Licensed SFX and overlay footage, checked against sha256 |
