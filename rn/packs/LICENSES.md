@@ -7,6 +7,30 @@ anyway; the font licences (OFL-1.1, Apache-2.0) and the icon licence (ISC) trave
 
 | pack | author | source |
 |---|---|---|
+| 12 Coin Sound Effects | StarNinjas | https://opengameart.org/content/12-coin-sound-effects |
+| 50 CC0 Sci-Fi SFX | rubberduck | https://opengameart.org/content/50-cc0-sci-fi-sfx |
+| 50 CC0 retro / synth SFX | rubberduck | https://opengameart.org/content/50-cc0-retro-synth-sfx |
+| 54 Casino sound effects (cards, dice, chips) | Kenney | https://opengameart.org/content/54-casino-sound-effects-cards-dice-chips |
+| 60 CC0 Sci-Fi SFX | rubberduck | https://opengameart.org/content/60-cc0-sci-fi-sfx |
+| 63 Digital sound effects (lasers, phasers, space etc.) | Kenney | https://opengameart.org/content/63-digital-sound-effects-lasers-phasers-space-etc |
+| 75 CC0 breaking / falling / hit sfx | rubberduck | https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx |
+| Air whoosh | pyranostudios | https://opengameart.org/content/air-whoosh |
+| Alert/Notification Sound | frosty ham | https://opengameart.org/content/alertnotification-sound |
+| Camera | themightyglider | https://opengameart.org/content/camera |
+| Energy Drain | qubodup | https://opengameart.org/content/energy-drain |
+| Frequency Static Sound Effects | bretbernhoft | https://opengameart.org/content/frequency-static-sound-effects |
+| Impact | qubodup | https://opengameart.org/content/impact |
+| Interface Sounds | Kenney | https://opengameart.org/content/interface-sounds |
+| Keyboard Soundpack #1 [Typing and Single Keystrokes] | unicaegames | https://opengameart.org/content/keyboard-soundpack-1-typing-and-single-keystrokes |
+| Machine shutting down | Cough-E | https://opengameart.org/content/machine-shutting-down |
+| Metal Impact Sounds | BMacZero | https://opengameart.org/content/metal-impact-sounds |
+| Pop effect sounds | trezegames | https://opengameart.org/content/pop-effect-sounds |
+| Punch | qubodup | https://opengameart.org/content/punch |
+| Sci-Fi Sounds | Kenney | https://opengameart.org/content/sci-fi-sounds |
+| Static | xhunterko | https://opengameart.org/content/static |
+| Swishes Sound Pack | artisticdude | https://opengameart.org/content/swishes-sound-pack |
+| UI Sound Effects (Button Clicks, User Feedback, Notifications) | Robin Lamb | https://opengameart.org/content/ui-sound-effects-button-clicks-user-feedback-notifications |
+| bubbles 'pop' | farfadet46 | https://opengameart.org/content/bubbles-pop |
 
 Trimmed of silence and re-encoded (Ogg Opus 96 kb/s); otherwise unchanged.
 

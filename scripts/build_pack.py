@@ -8,7 +8,7 @@ SOURCES_DIR holds what scripts/pack_sources.json names:
   fonts/<dir>/<file>.ttf       from github.com/google/fonts (ofl/ or apache/), with OFL.txt / LICENSE.txt
   lucide/package/              the lucide-static npm package (icon-nodes.json, tags.json, LICENSE)
 
-Sound effects are trimmed of leading/trailing silence (-60 dBFS), loudness-capped, encoded as Ogg Opus 96 kb/s 48 kHz and
+Sound effects are trimmed of leading/trailing silence (-60 dBFS), peak-limited so the decoded peak is <= -1 dBFS, encoded as Ogg Opus 96 kb/s 48 kHz and
 measured from the encoded file: onset (first sample within 30 dB of the peak), peak (loudest 10 ms window), peak_db,
 rms_db, duration. Only CC0 sources are accepted.
 """
@@ -52,8 +52,14 @@ def encode(src: Path, dest: Path, max_seconds: float) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     trim = ('silenceremove=start_periods=1:start_threshold=-60dB:start_silence=0.005,'
             'areverse,silenceremove=start_periods=1:start_threshold=-60dB:start_silence=0.02,areverse')
-    subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(src), '-af', f'{trim},atrim=0:{max_seconds},afade=t=out:st={max_seconds - 0.05}:d=0.05,'
-                    'alimiter=limit=0.89:level=disabled', '-ar', '48000', '-c:a', 'libopus', '-b:a', '96k', str(dest)], check=True)
+    gain = 0.0
+    for _ in range(4):  # very short transients overshoot after Opus: lower the gain until the decoded peak is <= -1 dBFS
+        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(src), '-af', f'{trim},atrim=0:{max_seconds},afade=t=out:st={max_seconds - 0.05}:d=0.05,'
+                        f'alimiter=limit=0.7:level=disabled,volume={gain}dB', '-ar', '48000', '-c:a', 'libopus', '-b:a', '96k', str(dest)], check=True)
+        peak = 20 * np.log10(float(np.max(np.abs(decode(dest)))) + 1e-9)
+        if peak <= -1:
+            return
+        gain -= peak + 1.2
 
 
 def unpack(sources: Path) -> None:

@@ -1,21 +1,3765 @@
 {
  "fonts": [
-  {"name": "anton", "file": "anton/Anton-Regular.ttf", "upstream": "ofl/anton", "category": "headline", "tags": ["condensed", "bold", "headline", "impact", "youtube"], "what": "tall condensed heavy sans: thumbnails, punchy titles"},
-  {"name": "bebas-neue", "file": "bebasneue/BebasNeue-Regular.ttf", "upstream": "ofl/bebasneue", "category": "headline", "tags": ["condensed", "caps", "headline", "poster"], "what": "all-caps condensed display: posters, lower thirds"},
-  {"name": "league-gothic", "file": "leaguegothic/LeagueGothic[wdth].ttf", "upstream": "ofl/leaguegothic", "category": "headline", "tags": ["condensed", "headline", "news", "variable"], "what": "narrow gothic with a width axis: dense headlines, news"},
-  {"name": "archivo-black", "file": "archivoblack/ArchivoBlack-Regular.ttf", "upstream": "ofl/archivoblack", "category": "headline", "tags": ["heavy", "grotesque", "headline", "brand"], "what": "wide heavy grotesque: bold brand statements"},
-  {"name": "oswald", "file": "oswald/Oswald[wght].ttf", "upstream": "ofl/oswald", "category": "headline", "tags": ["condensed", "variable", "headline", "sports"], "what": "condensed sans 200-700: sports, data labels"},
-  {"name": "montserrat", "file": "montserrat/Montserrat[wght].ttf", "upstream": "ofl/montserrat", "category": "sans", "tags": ["geometric", "variable", "captions", "body", "ui"], "what": "geometric sans 100-900: captions, UI, body text"},
-  {"name": "poppins-bold", "file": "poppins/Poppins-Bold.ttf", "upstream": "ofl/poppins", "category": "sans", "tags": ["geometric", "captions", "social", "tiktok"], "what": "rounded geometric bold: social captions"},
-  {"name": "poppins-extrabold", "file": "poppins/Poppins-ExtraBold.ttf", "upstream": "ofl/poppins", "category": "sans", "tags": ["geometric", "captions", "social", "heavy"], "what": "heavier Poppins for word-pop captions"},
-  {"name": "playfair-display", "file": "playfairdisplay/PlayfairDisplay[wght].ttf", "upstream": "ofl/playfairdisplay", "category": "serif", "tags": ["serif", "elegant", "luxury", "editorial", "variable"], "what": "high-contrast serif 400-900: luxury, editorial, beauty"},
-  {"name": "dm-serif-display", "file": "dmserifdisplay/DMSerifDisplay-Regular.ttf", "upstream": "ofl/dmserifdisplay", "category": "serif", "tags": ["serif", "display", "magazine", "elegant"], "what": "display serif: magazine titles, quotes"},
-  {"name": "caveat", "file": "caveat/Caveat[wght].ttf", "upstream": "ofl/caveat", "category": "hand", "tags": ["handwritten", "casual", "notes", "variable"], "what": "handwriting 400-700: notes, annotations, friendly captions"},
-  {"name": "permanent-marker", "file": "permanentmarker/PermanentMarker-Regular.ttf", "upstream": "apache/permanentmarker", "category": "hand", "tags": ["marker", "handwritten", "street", "fun"], "what": "felt-tip marker: playful callouts, street style"},
-  {"name": "luckiest-guy", "file": "luckiestguy/LuckiestGuy-Regular.ttf", "upstream": "apache/luckiestguy", "category": "fun", "tags": ["cartoon", "kids", "fun", "gaming", "heavy"], "what": "chunky cartoon caps: kids, gaming, meme captions"},
-  {"name": "bangers", "file": "bangers/Bangers-Regular.ttf", "upstream": "ofl/bangers", "category": "fun", "tags": ["comic", "caps", "fun", "action"], "what": "comic-book caps: action words, POW moments"},
-  {"name": "jetbrains-mono", "file": "jetbrainsmono/JetBrainsMono[wght].ttf", "upstream": "ofl/jetbrainsmono", "category": "mono", "tags": ["mono", "code", "tech", "variable"], "what": "monospace 100-800: code, terminals, tech explainers"},
-  {"name": "space-mono-bold", "file": "spacemono/SpaceMono-Bold.ttf", "upstream": "ofl/spacemono", "category": "mono", "tags": ["mono", "retro", "tech", "display"], "what": "retro-futurist mono bold: tech titles, data"}
+  {
+   "name": "anton",
+   "file": "anton/Anton-Regular.ttf",
+   "upstream": "ofl/anton",
+   "category": "headline",
+   "tags": [
+    "condensed",
+    "bold",
+    "headline",
+    "impact",
+    "youtube"
+   ],
+   "what": "tall condensed heavy sans: thumbnails, punchy titles"
+  },
+  {
+   "name": "bebas-neue",
+   "file": "bebasneue/BebasNeue-Regular.ttf",
+   "upstream": "ofl/bebasneue",
+   "category": "headline",
+   "tags": [
+    "condensed",
+    "caps",
+    "headline",
+    "poster"
+   ],
+   "what": "all-caps condensed display: posters, lower thirds"
+  },
+  {
+   "name": "league-gothic",
+   "file": "leaguegothic/LeagueGothic[wdth].ttf",
+   "upstream": "ofl/leaguegothic",
+   "category": "headline",
+   "tags": [
+    "condensed",
+    "headline",
+    "news",
+    "variable"
+   ],
+   "what": "narrow gothic with a width axis: dense headlines, news"
+  },
+  {
+   "name": "archivo-black",
+   "file": "archivoblack/ArchivoBlack-Regular.ttf",
+   "upstream": "ofl/archivoblack",
+   "category": "headline",
+   "tags": [
+    "heavy",
+    "grotesque",
+    "headline",
+    "brand"
+   ],
+   "what": "wide heavy grotesque: bold brand statements"
+  },
+  {
+   "name": "oswald",
+   "file": "oswald/Oswald[wght].ttf",
+   "upstream": "ofl/oswald",
+   "category": "headline",
+   "tags": [
+    "condensed",
+    "variable",
+    "headline",
+    "sports"
+   ],
+   "what": "condensed sans 200-700: sports, data labels"
+  },
+  {
+   "name": "montserrat",
+   "file": "montserrat/Montserrat[wght].ttf",
+   "upstream": "ofl/montserrat",
+   "category": "sans",
+   "tags": [
+    "geometric",
+    "variable",
+    "captions",
+    "body",
+    "ui"
+   ],
+   "what": "geometric sans 100-900: captions, UI, body text"
+  },
+  {
+   "name": "poppins-bold",
+   "file": "poppins/Poppins-Bold.ttf",
+   "upstream": "ofl/poppins",
+   "category": "sans",
+   "tags": [
+    "geometric",
+    "captions",
+    "social",
+    "tiktok"
+   ],
+   "what": "rounded geometric bold: social captions"
+  },
+  {
+   "name": "poppins-extrabold",
+   "file": "poppins/Poppins-ExtraBold.ttf",
+   "upstream": "ofl/poppins",
+   "category": "sans",
+   "tags": [
+    "geometric",
+    "captions",
+    "social",
+    "heavy"
+   ],
+   "what": "heavier Poppins for word-pop captions"
+  },
+  {
+   "name": "playfair-display",
+   "file": "playfairdisplay/PlayfairDisplay[wght].ttf",
+   "upstream": "ofl/playfairdisplay",
+   "category": "serif",
+   "tags": [
+    "serif",
+    "elegant",
+    "luxury",
+    "editorial",
+    "variable"
+   ],
+   "what": "high-contrast serif 400-900: luxury, editorial, beauty"
+  },
+  {
+   "name": "dm-serif-display",
+   "file": "dmserifdisplay/DMSerifDisplay-Regular.ttf",
+   "upstream": "ofl/dmserifdisplay",
+   "category": "serif",
+   "tags": [
+    "serif",
+    "display",
+    "magazine",
+    "elegant"
+   ],
+   "what": "display serif: magazine titles, quotes"
+  },
+  {
+   "name": "caveat",
+   "file": "caveat/Caveat[wght].ttf",
+   "upstream": "ofl/caveat",
+   "category": "hand",
+   "tags": [
+    "handwritten",
+    "casual",
+    "notes",
+    "variable"
+   ],
+   "what": "handwriting 400-700: notes, annotations, friendly captions"
+  },
+  {
+   "name": "permanent-marker",
+   "file": "permanentmarker/PermanentMarker-Regular.ttf",
+   "upstream": "apache/permanentmarker",
+   "category": "hand",
+   "tags": [
+    "marker",
+    "handwritten",
+    "street",
+    "fun"
+   ],
+   "what": "felt-tip marker: playful callouts, street style"
+  },
+  {
+   "name": "luckiest-guy",
+   "file": "luckiestguy/LuckiestGuy-Regular.ttf",
+   "upstream": "apache/luckiestguy",
+   "category": "fun",
+   "tags": [
+    "cartoon",
+    "kids",
+    "fun",
+    "gaming",
+    "heavy"
+   ],
+   "what": "chunky cartoon caps: kids, gaming, meme captions"
+  },
+  {
+   "name": "bangers",
+   "file": "bangers/Bangers-Regular.ttf",
+   "upstream": "ofl/bangers",
+   "category": "fun",
+   "tags": [
+    "comic",
+    "caps",
+    "fun",
+    "action"
+   ],
+   "what": "comic-book caps: action words, POW moments"
+  },
+  {
+   "name": "jetbrains-mono",
+   "file": "jetbrainsmono/JetBrainsMono[wght].ttf",
+   "upstream": "ofl/jetbrainsmono",
+   "category": "mono",
+   "tags": [
+    "mono",
+    "code",
+    "tech",
+    "variable"
+   ],
+   "what": "monospace 100-800: code, terminals, tech explainers"
+  },
+  {
+   "name": "space-mono-bold",
+   "file": "spacemono/SpaceMono-Bold.ttf",
+   "upstream": "ofl/spacemono",
+   "category": "mono",
+   "tags": [
+    "mono",
+    "retro",
+    "tech",
+    "display"
+   ],
+   "what": "retro-futurist mono bold: tech titles, data"
+  }
  ],
- "sfx": {}
+ "sfx": {
+  "whoosh": [
+   {
+    "from": "swishes-sound-pack",
+    "file": "swish-1.wav",
+    "name": "swish-1",
+    "tags": [
+     "swish",
+     "fast",
+     "transition",
+     "swipe"
+    ],
+    "max": 2
+   },
+   {
+    "from": "swishes-sound-pack",
+    "file": "swish-2.wav",
+    "name": "swish-2",
+    "tags": [
+     "swish",
+     "fast",
+     "transition",
+     "swipe"
+    ],
+    "max": 2
+   },
+   {
+    "from": "swishes-sound-pack",
+    "file": "swish-3.wav",
+    "name": "swish-3",
+    "tags": [
+     "swish",
+     "fast",
+     "transition",
+     "swipe"
+    ],
+    "max": 2
+   },
+   {
+    "from": "swishes-sound-pack",
+    "file": "swish-4.wav",
+    "name": "swish-4",
+    "tags": [
+     "swish",
+     "fast",
+     "transition",
+     "swipe"
+    ],
+    "max": 2
+   },
+   {
+    "from": "swishes-sound-pack",
+    "file": "swish-5.wav",
+    "name": "swish-5",
+    "tags": [
+     "swish",
+     "fast",
+     "transition",
+     "swipe"
+    ],
+    "max": 2
+   },
+   {
+    "from": "swishes-sound-pack",
+    "file": "swish-6.wav",
+    "name": "swish-6",
+    "tags": [
+     "swish",
+     "fast",
+     "transition",
+     "swipe"
+    ],
+    "max": 2
+   },
+   {
+    "from": "swishes-sound-pack",
+    "file": "swish-7.wav",
+    "name": "swish-7",
+    "tags": [
+     "swish",
+     "fast",
+     "transition",
+     "swipe"
+    ],
+    "max": 2
+   },
+   {
+    "from": "swishes-sound-pack",
+    "file": "swish-8.wav",
+    "name": "swish-8",
+    "tags": [
+     "swish",
+     "fast",
+     "transition",
+     "swipe"
+    ],
+    "max": 2
+   },
+   {
+    "from": "swishes-sound-pack",
+    "file": "swish-9.wav",
+    "name": "swish-9",
+    "tags": [
+     "swish",
+     "fast",
+     "transition",
+     "swipe"
+    ],
+    "max": 2
+   },
+   {
+    "from": "swishes-sound-pack",
+    "file": "swish-10.wav",
+    "name": "swish-10",
+    "tags": [
+     "swish",
+     "fast",
+     "transition",
+     "swipe"
+    ],
+    "max": 2
+   },
+   {
+    "from": "swishes-sound-pack",
+    "file": "swish-11.wav",
+    "name": "swish-11",
+    "tags": [
+     "swish",
+     "fast",
+     "transition",
+     "swipe"
+    ],
+    "max": 2
+   },
+   {
+    "from": "swishes-sound-pack",
+    "file": "swish-12.wav",
+    "name": "swish-12",
+    "tags": [
+     "swish",
+     "fast",
+     "transition",
+     "swipe"
+    ],
+    "max": 2
+   },
+   {
+    "from": "swishes-sound-pack",
+    "file": "swish-13.wav",
+    "name": "swish-13",
+    "tags": [
+     "swish",
+     "fast",
+     "transition",
+     "swipe"
+    ],
+    "max": 2
+   },
+   {
+    "from": "air-whoosh",
+    "file": "whoosh2_0.wav",
+    "name": "air-1",
+    "tags": [
+     "air",
+     "long",
+     "transition",
+     "pass-by"
+    ],
+    "max": 3
+   }
+  ],
+  "swipe": [
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "highUp.mp3",
+    "name": "digital-1",
+    "tags": [
+     "digital",
+     "data",
+     "transition",
+     "tech",
+     "slide"
+    ],
+    "max": 2
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "highDown.mp3",
+    "name": "digital-2",
+    "tags": [
+     "digital",
+     "data",
+     "transition",
+     "tech",
+     "slide"
+    ],
+    "max": 2
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "phaserUp1.mp3",
+    "name": "digital-3",
+    "tags": [
+     "digital",
+     "data",
+     "transition",
+     "tech",
+     "slide"
+    ],
+    "max": 2
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "phaserUp2.mp3",
+    "name": "digital-4",
+    "tags": [
+     "digital",
+     "data",
+     "transition",
+     "tech",
+     "slide"
+    ],
+    "max": 2
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "phaserUp3.mp3",
+    "name": "digital-5",
+    "tags": [
+     "digital",
+     "data",
+     "transition",
+     "tech",
+     "slide"
+    ],
+    "max": 2
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "phaseJump1.mp3",
+    "name": "digital-6",
+    "tags": [
+     "digital",
+     "data",
+     "transition",
+     "tech",
+     "slide"
+    ],
+    "max": 2
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "phaseJump2.mp3",
+    "name": "digital-7",
+    "tags": [
+     "digital",
+     "data",
+     "transition",
+     "tech",
+     "slide"
+    ],
+    "max": 2
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "phaseJump3.mp3",
+    "name": "digital-8",
+    "tags": [
+     "digital",
+     "data",
+     "transition",
+     "tech",
+     "slide"
+    ],
+    "max": 2
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "phaseJump4.mp3",
+    "name": "digital-9",
+    "tags": [
+     "digital",
+     "data",
+     "transition",
+     "tech",
+     "slide"
+    ],
+    "max": 2
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "phaseJump5.mp3",
+    "name": "digital-10",
+    "tags": [
+     "digital",
+     "data",
+     "transition",
+     "tech",
+     "slide"
+    ],
+    "max": 2
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "phaserDown1.mp3",
+    "name": "digital-11",
+    "tags": [
+     "digital",
+     "data",
+     "transition",
+     "tech",
+     "slide"
+    ],
+    "max": 2
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "phaserDown2.mp3",
+    "name": "digital-12",
+    "tags": [
+     "digital",
+     "data",
+     "transition",
+     "tech",
+     "slide"
+    ],
+    "max": 2
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "phaserDown3.mp3",
+    "name": "digital-13",
+    "tags": [
+     "digital",
+     "data",
+     "transition",
+     "tech",
+     "slide"
+    ],
+    "max": 2
+   },
+   {
+    "from": "interface-sounds",
+    "file": "open_001.ogg",
+    "name": "ui-1",
+    "tags": [
+     "ui",
+     "slide",
+     "panel",
+     "transition"
+    ],
+    "max": 2
+   },
+   {
+    "from": "interface-sounds",
+    "file": "open_002.ogg",
+    "name": "ui-2",
+    "tags": [
+     "ui",
+     "slide",
+     "panel",
+     "transition"
+    ],
+    "max": 2
+   },
+   {
+    "from": "interface-sounds",
+    "file": "close_001.ogg",
+    "name": "ui-3",
+    "tags": [
+     "ui",
+     "slide",
+     "panel",
+     "transition"
+    ],
+    "max": 2
+   },
+   {
+    "from": "interface-sounds",
+    "file": "close_002.ogg",
+    "name": "ui-4",
+    "tags": [
+     "ui",
+     "slide",
+     "panel",
+     "transition"
+    ],
+    "max": 2
+   },
+   {
+    "from": "interface-sounds",
+    "file": "scroll_001.ogg",
+    "name": "ui-5",
+    "tags": [
+     "ui",
+     "slide",
+     "panel",
+     "transition"
+    ],
+    "max": 2
+   },
+   {
+    "from": "interface-sounds",
+    "file": "scroll_002.ogg",
+    "name": "ui-6",
+    "tags": [
+     "ui",
+     "slide",
+     "panel",
+     "transition"
+    ],
+    "max": 2
+   },
+   {
+    "from": "interface-sounds",
+    "file": "scroll_003.ogg",
+    "name": "ui-7",
+    "tags": [
+     "ui",
+     "slide",
+     "panel",
+     "transition"
+    ],
+    "max": 2
+   }
+  ],
+  "hit": [
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_hit_01.ogg",
+    "name": "thud-1",
+    "tags": [
+     "thud",
+     "impact",
+     "drop",
+     "beat"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_hit_02.ogg",
+    "name": "thud-2",
+    "tags": [
+     "thud",
+     "impact",
+     "drop",
+     "beat"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_hit_03.ogg",
+    "name": "thud-3",
+    "tags": [
+     "thud",
+     "impact",
+     "drop",
+     "beat"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_hit_04.ogg",
+    "name": "thud-4",
+    "tags": [
+     "thud",
+     "impact",
+     "drop",
+     "beat"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_hit_05.ogg",
+    "name": "thud-5",
+    "tags": [
+     "thud",
+     "impact",
+     "drop",
+     "beat"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_hit_06.ogg",
+    "name": "thud-6",
+    "tags": [
+     "thud",
+     "impact",
+     "drop",
+     "beat"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_hit_07.ogg",
+    "name": "thud-7",
+    "tags": [
+     "thud",
+     "impact",
+     "drop",
+     "beat"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_hit_08.ogg",
+    "name": "thud-8",
+    "tags": [
+     "thud",
+     "impact",
+     "drop",
+     "beat"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_hit_09.ogg",
+    "name": "thud-9",
+    "tags": [
+     "thud",
+     "impact",
+     "drop",
+     "beat"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_hit_10.ogg",
+    "name": "thud-10",
+    "tags": [
+     "thud",
+     "impact",
+     "drop",
+     "beat"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_hit_11.ogg",
+    "name": "thud-11",
+    "tags": [
+     "thud",
+     "impact",
+     "drop",
+     "beat"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_hit_12.ogg",
+    "name": "thud-12",
+    "tags": [
+     "thud",
+     "impact",
+     "drop",
+     "beat"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_hit_13.ogg",
+    "name": "thud-13",
+    "tags": [
+     "thud",
+     "impact",
+     "drop",
+     "beat"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "impact",
+    "file": "qubodupImpactWood.ogg",
+    "name": "impact-1",
+    "tags": [
+     "impact",
+     "body",
+     "heavy"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "impact",
+    "file": "qubodupImpactStone.ogg",
+    "name": "impact-2",
+    "tags": [
+     "impact",
+     "body",
+     "heavy"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "impact",
+    "file": "qubodupImpactMeat01.ogg",
+    "name": "impact-3",
+    "tags": [
+     "impact",
+     "body",
+     "heavy"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "impact",
+    "file": "qubodupImpactMeat02.ogg",
+    "name": "impact-4",
+    "tags": [
+     "impact",
+     "body",
+     "heavy"
+    ],
+    "max": 2.5
+   }
+  ],
+  "punch": [
+   {
+    "from": "punch",
+    "file": "qubodupPunch01.ogg",
+    "name": "punch-1",
+    "tags": [
+     "punch",
+     "fight",
+     "comedy",
+     "impact"
+    ],
+    "max": 2
+   },
+   {
+    "from": "punch",
+    "file": "qubodupPunch02.ogg",
+    "name": "punch-2",
+    "tags": [
+     "punch",
+     "fight",
+     "comedy",
+     "impact"
+    ],
+    "max": 2
+   },
+   {
+    "from": "punch",
+    "file": "qubodupPunch03.ogg",
+    "name": "punch-3",
+    "tags": [
+     "punch",
+     "fight",
+     "comedy",
+     "impact"
+    ],
+    "max": 2
+   },
+   {
+    "from": "punch",
+    "file": "qubodupPunch04.ogg",
+    "name": "punch-4",
+    "tags": [
+     "punch",
+     "fight",
+     "comedy",
+     "impact"
+    ],
+    "max": 2
+   },
+   {
+    "from": "punch",
+    "file": "qubodupPunch05.ogg",
+    "name": "punch-5",
+    "tags": [
+     "punch",
+     "fight",
+     "comedy",
+     "impact"
+    ],
+    "max": 2
+   }
+  ],
+  "metal": [
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_metal_hit_01.ogg",
+    "name": "hit-1",
+    "tags": [
+     "metal",
+     "clang",
+     "impact"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_metal_hit_02.ogg",
+    "name": "hit-2",
+    "tags": [
+     "metal",
+     "clang",
+     "impact"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_metal_hit_03.ogg",
+    "name": "hit-3",
+    "tags": [
+     "metal",
+     "clang",
+     "impact"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_metal_hit_04.ogg",
+    "name": "hit-4",
+    "tags": [
+     "metal",
+     "clang",
+     "impact"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_metal_hit_05.ogg",
+    "name": "hit-5",
+    "tags": [
+     "metal",
+     "clang",
+     "impact"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_metal_hit_06.ogg",
+    "name": "hit-6",
+    "tags": [
+     "metal",
+     "clang",
+     "impact"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "sci-fi-sounds",
+    "file": "impactMetal_000.ogg",
+    "name": "clank-1",
+    "tags": [
+     "metal",
+     "clank",
+     "mechanical"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "sci-fi-sounds",
+    "file": "impactMetal_001.ogg",
+    "name": "clank-2",
+    "tags": [
+     "metal",
+     "clank",
+     "mechanical"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "sci-fi-sounds",
+    "file": "impactMetal_002.ogg",
+    "name": "clank-3",
+    "tags": [
+     "metal",
+     "clank",
+     "mechanical"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "sci-fi-sounds",
+    "file": "impactMetal_003.ogg",
+    "name": "clank-4",
+    "tags": [
+     "metal",
+     "clank",
+     "mechanical"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "sci-fi-sounds",
+    "file": "impactMetal_004.ogg",
+    "name": "clank-5",
+    "tags": [
+     "metal",
+     "clank",
+     "mechanical"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "metal-impact-sounds",
+    "file": "bing1.wav",
+    "name": "ring-1",
+    "tags": [
+     "metal",
+     "ring",
+     "bell",
+     "clink"
+    ],
+    "max": 3
+   },
+   {
+    "from": "metal-impact-sounds",
+    "file": "bong1.wav",
+    "name": "ring-2",
+    "tags": [
+     "metal",
+     "ring",
+     "bell",
+     "clink"
+    ],
+    "max": 3
+   },
+   {
+    "from": "metal-impact-sounds",
+    "file": "thud2.wav",
+    "name": "ring-3",
+    "tags": [
+     "metal",
+     "ring",
+     "bell",
+     "clink"
+    ],
+    "max": 3
+   },
+   {
+    "from": "metal-impact-sounds",
+    "file": "clink1_0.wav",
+    "name": "ring-4",
+    "tags": [
+     "metal",
+     "ring",
+     "bell",
+     "clink"
+    ],
+    "max": 3
+   }
+  ],
+  "glass": [
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_glass_hit_01.ogg",
+    "name": "break-1",
+    "tags": [
+     "glass",
+     "shatter",
+     "crack",
+     "break"
+    ],
+    "max": 3
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_glass_hit_02.ogg",
+    "name": "break-2",
+    "tags": [
+     "glass",
+     "shatter",
+     "crack",
+     "break"
+    ],
+    "max": 3
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_glass_breaking_01.ogg",
+    "name": "break-3",
+    "tags": [
+     "glass",
+     "shatter",
+     "crack",
+     "break"
+    ],
+    "max": 3
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_glass_breaking_02.ogg",
+    "name": "break-4",
+    "tags": [
+     "glass",
+     "shatter",
+     "crack",
+     "break"
+    ],
+    "max": 3
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_glass_breaking_03.ogg",
+    "name": "break-5",
+    "tags": [
+     "glass",
+     "shatter",
+     "crack",
+     "break"
+    ],
+    "max": 3
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_glass_breaking_04.ogg",
+    "name": "break-6",
+    "tags": [
+     "glass",
+     "shatter",
+     "crack",
+     "break"
+    ],
+    "max": 3
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_glass_breaking_05.ogg",
+    "name": "break-7",
+    "tags": [
+     "glass",
+     "shatter",
+     "crack",
+     "break"
+    ],
+    "max": 3
+   }
+  ],
+  "break": [
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_breaking_01.ogg",
+    "name": "crash-1",
+    "tags": [
+     "break",
+     "crash",
+     "wood",
+     "rock",
+     "destroy"
+    ],
+    "max": 3
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_breaking_02.ogg",
+    "name": "crash-2",
+    "tags": [
+     "break",
+     "crash",
+     "wood",
+     "rock",
+     "destroy"
+    ],
+    "max": 3
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_rock_breaking_01.ogg",
+    "name": "crash-3",
+    "tags": [
+     "break",
+     "crash",
+     "wood",
+     "rock",
+     "destroy"
+    ],
+    "max": 3
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_rock_breaking_02.ogg",
+    "name": "crash-4",
+    "tags": [
+     "break",
+     "crash",
+     "wood",
+     "rock",
+     "destroy"
+    ],
+    "max": 3
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_wood_breaking_01.ogg",
+    "name": "crash-5",
+    "tags": [
+     "break",
+     "crash",
+     "wood",
+     "rock",
+     "destroy"
+    ],
+    "max": 3
+   },
+   {
+    "from": "75-cc0-breaking-falling-hit-sfx",
+    "file": "bfh1_wood_breaking_02.ogg",
+    "name": "crash-6",
+    "tags": [
+     "break",
+     "crash",
+     "wood",
+     "rock",
+     "destroy"
+    ],
+    "max": 3
+   }
+  ],
+  "boom": [
+   {
+    "from": "sci-fi-sounds",
+    "file": "explosionCrunch_000.ogg",
+    "name": "explosion-1",
+    "tags": [
+     "explosion",
+     "boom",
+     "bass",
+     "drop",
+     "impact"
+    ],
+    "max": 4
+   },
+   {
+    "from": "sci-fi-sounds",
+    "file": "explosionCrunch_001.ogg",
+    "name": "explosion-2",
+    "tags": [
+     "explosion",
+     "boom",
+     "bass",
+     "drop",
+     "impact"
+    ],
+    "max": 4
+   },
+   {
+    "from": "sci-fi-sounds",
+    "file": "explosionCrunch_002.ogg",
+    "name": "explosion-3",
+    "tags": [
+     "explosion",
+     "boom",
+     "bass",
+     "drop",
+     "impact"
+    ],
+    "max": 4
+   },
+   {
+    "from": "sci-fi-sounds",
+    "file": "explosionCrunch_003.ogg",
+    "name": "explosion-4",
+    "tags": [
+     "explosion",
+     "boom",
+     "bass",
+     "drop",
+     "impact"
+    ],
+    "max": 4
+   },
+   {
+    "from": "sci-fi-sounds",
+    "file": "explosionCrunch_004.ogg",
+    "name": "explosion-5",
+    "tags": [
+     "explosion",
+     "boom",
+     "bass",
+     "drop",
+     "impact"
+    ],
+    "max": 4
+   },
+   {
+    "from": "sci-fi-sounds",
+    "file": "lowFrequency_explosion_000.ogg",
+    "name": "explosion-6",
+    "tags": [
+     "explosion",
+     "boom",
+     "bass",
+     "drop",
+     "impact"
+    ],
+    "max": 4
+   },
+   {
+    "from": "sci-fi-sounds",
+    "file": "lowFrequency_explosion_001.ogg",
+    "name": "explosion-7",
+    "tags": [
+     "explosion",
+     "boom",
+     "bass",
+     "drop",
+     "impact"
+    ],
+    "max": 4
+   },
+   {
+    "from": "50-cc0-retro-synth-sfx",
+    "file": "retro_explosion_01.ogg",
+    "name": "retro-1",
+    "tags": [
+     "explosion",
+     "retro",
+     "8-bit",
+     "game"
+    ],
+    "max": 3
+   },
+   {
+    "from": "50-cc0-retro-synth-sfx",
+    "file": "retro_explosion_02.ogg",
+    "name": "retro-2",
+    "tags": [
+     "explosion",
+     "retro",
+     "8-bit",
+     "game"
+    ],
+    "max": 3
+   },
+   {
+    "from": "50-cc0-retro-synth-sfx",
+    "file": "retro_explosion_03.ogg",
+    "name": "retro-3",
+    "tags": [
+     "explosion",
+     "retro",
+     "8-bit",
+     "game"
+    ],
+    "max": 3
+   }
+  ],
+  "riser": [
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "powerUp2.mp3",
+    "name": "digital-1",
+    "tags": [
+     "riser",
+     "build",
+     "tension",
+     "up"
+    ],
+    "max": 3
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "powerUp3.mp3",
+    "name": "digital-2",
+    "tags": [
+     "riser",
+     "build",
+     "tension",
+     "up"
+    ],
+    "max": 3
+   },
+   {
+    "from": "50-cc0-retro-synth-sfx",
+    "file": "power_up_03.ogg",
+    "name": "synth-1",
+    "tags": [
+     "riser",
+     "synth",
+     "build",
+     "sweep"
+    ],
+    "max": 4
+   },
+   {
+    "from": "50-cc0-retro-synth-sfx",
+    "file": "synth_misc_04.ogg",
+    "name": "synth-2",
+    "tags": [
+     "riser",
+     "synth",
+     "build",
+     "sweep"
+    ],
+    "max": 4
+   },
+   {
+    "from": "50-cc0-retro-synth-sfx",
+    "file": "synth_misc_12.ogg",
+    "name": "synth-3",
+    "tags": [
+     "riser",
+     "synth",
+     "build",
+     "sweep"
+    ],
+    "max": 4
+   },
+   {
+    "from": "50-cc0-retro-synth-sfx",
+    "file": "synth_misc_16.ogg",
+    "name": "synth-4",
+    "tags": [
+     "riser",
+     "synth",
+     "build",
+     "sweep"
+    ],
+    "max": 4
+   },
+   {
+    "from": "50-cc0-sci-fi-sfx",
+    "file": "misc_03.ogg",
+    "name": "scifi-1",
+    "tags": [
+     "riser",
+     "teleport",
+     "sci-fi",
+     "reveal"
+    ],
+    "max": 4
+   },
+   {
+    "from": "50-cc0-sci-fi-sfx",
+    "file": "teleport_01.ogg",
+    "name": "scifi-2",
+    "tags": [
+     "riser",
+     "teleport",
+     "sci-fi",
+     "reveal"
+    ],
+    "max": 4
+   },
+   {
+    "from": "50-cc0-sci-fi-sfx",
+    "file": "teleport_02.ogg",
+    "name": "scifi-3",
+    "tags": [
+     "riser",
+     "teleport",
+     "sci-fi",
+     "reveal"
+    ],
+    "max": 4
+   },
+   {
+    "from": "60-cc0-sci-fi-sfx",
+    "file": "sfx_04a.ogg",
+    "name": "sweep-1",
+    "tags": [
+     "riser",
+     "sweep",
+     "transition"
+    ],
+    "max": 4
+   },
+   {
+    "from": "60-cc0-sci-fi-sfx",
+    "file": "sfx_21a.ogg",
+    "name": "sweep-2",
+    "tags": [
+     "riser",
+     "sweep",
+     "transition"
+    ],
+    "max": 4
+   }
+  ],
+  "power-down": [
+   {
+    "from": "energy-drain",
+    "file": "qubodup-PowerDrain.ogg",
+    "name": "drain-1",
+    "tags": [
+     "power down",
+     "fail",
+     "drain",
+     "sad"
+    ],
+    "max": 3
+   },
+   {
+    "from": "machine-shutting-down",
+    "file": "MachinePowerOff.ogg",
+    "name": "machine-1",
+    "tags": [
+     "power down",
+     "machine",
+     "shut down"
+    ],
+    "max": 4
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "lowDown.mp3",
+    "name": "digital-1",
+    "tags": [
+     "power down",
+     "down",
+     "fail",
+     "digital"
+    ],
+    "max": 2
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "zapThreeToneDown.mp3",
+    "name": "digital-2",
+    "tags": [
+     "power down",
+     "down",
+     "fail",
+     "digital"
+    ],
+    "max": 2
+   },
+   {
+    "from": "interface-sounds",
+    "file": "minimize_001.ogg",
+    "name": "ui-1",
+    "tags": [
+     "power down",
+     "close",
+     "shrink",
+     "ui"
+    ],
+    "max": 2
+   },
+   {
+    "from": "interface-sounds",
+    "file": "minimize_002.ogg",
+    "name": "ui-2",
+    "tags": [
+     "power down",
+     "close",
+     "shrink",
+     "ui"
+    ],
+    "max": 2
+   },
+   {
+    "from": "interface-sounds",
+    "file": "minimize_003.ogg",
+    "name": "ui-3",
+    "tags": [
+     "power down",
+     "close",
+     "shrink",
+     "ui"
+    ],
+    "max": 2
+   },
+   {
+    "from": "50-cc0-retro-synth-sfx",
+    "file": "retro_die_01.ogg",
+    "name": "retro-1",
+    "tags": [
+     "power down",
+     "game over",
+     "retro",
+     "fail"
+    ],
+    "max": 3
+   },
+   {
+    "from": "50-cc0-retro-synth-sfx",
+    "file": "retro_die_02.ogg",
+    "name": "retro-2",
+    "tags": [
+     "power down",
+     "game over",
+     "retro",
+     "fail"
+    ],
+    "max": 3
+   },
+   {
+    "from": "50-cc0-retro-synth-sfx",
+    "file": "retro_die_03.ogg",
+    "name": "retro-3",
+    "tags": [
+     "power down",
+     "game over",
+     "retro",
+     "fail"
+    ],
+    "max": 3
+   }
+  ],
+  "power-up": [
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "powerUp1.mp3",
+    "name": "digital-1",
+    "tags": [
+     "power up",
+     "success",
+     "level up",
+     "digital"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "powerUp4.mp3",
+    "name": "digital-2",
+    "tags": [
+     "power up",
+     "success",
+     "level up",
+     "digital"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "powerUp6.mp3",
+    "name": "digital-3",
+    "tags": [
+     "power up",
+     "success",
+     "level up",
+     "digital"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "powerUp10.mp3",
+    "name": "digital-4",
+    "tags": [
+     "power up",
+     "success",
+     "level up",
+     "digital"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "powerUp12.mp3",
+    "name": "digital-5",
+    "tags": [
+     "power up",
+     "success",
+     "level up",
+     "digital"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "zapThreeToneUp.mp3",
+    "name": "digital-6",
+    "tags": [
+     "power up",
+     "success",
+     "level up",
+     "digital"
+    ],
+    "max": 2.5
+   },
+   {
+    "from": "interface-sounds",
+    "file": "maximize_001.ogg",
+    "name": "ui-1",
+    "tags": [
+     "power up",
+     "open",
+     "grow",
+     "ui"
+    ],
+    "max": 2
+   },
+   {
+    "from": "interface-sounds",
+    "file": "maximize_002.ogg",
+    "name": "ui-2",
+    "tags": [
+     "power up",
+     "open",
+     "grow",
+     "ui"
+    ],
+    "max": 2
+   },
+   {
+    "from": "interface-sounds",
+    "file": "maximize_003.ogg",
+    "name": "ui-3",
+    "tags": [
+     "power up",
+     "open",
+     "grow",
+     "ui"
+    ],
+    "max": 2
+   },
+   {
+    "from": "50-cc0-retro-synth-sfx",
+    "file": "power_up_01.ogg",
+    "name": "retro-1",
+    "tags": [
+     "power up",
+     "retro",
+     "game",
+     "bonus"
+    ],
+    "max": 3
+   },
+   {
+    "from": "50-cc0-retro-synth-sfx",
+    "file": "power_up_02.ogg",
+    "name": "retro-2",
+    "tags": [
+     "power up",
+     "retro",
+     "game",
+     "bonus"
+    ],
+    "max": 3
+   },
+   {
+    "from": "50-cc0-retro-synth-sfx",
+    "file": "power_up_04.ogg",
+    "name": "retro-3",
+    "tags": [
+     "power up",
+     "retro",
+     "game",
+     "bonus"
+    ],
+    "max": 3
+   },
+   {
+    "from": "50-cc0-retro-synth-sfx",
+    "file": "power_up_05.ogg",
+    "name": "retro-4",
+    "tags": [
+     "power up",
+     "retro",
+     "game",
+     "bonus"
+    ],
+    "max": 3
+   },
+   {
+    "from": "50-cc0-retro-synth-sfx",
+    "file": "power_up_06.ogg",
+    "name": "retro-5",
+    "tags": [
+     "power up",
+     "retro",
+     "game",
+     "bonus"
+    ],
+    "max": 3
+   }
+  ],
+  "glitch": [
+   {
+    "from": "interface-sounds",
+    "file": "glitch_001.ogg",
+    "name": "ui-1",
+    "tags": [
+     "glitch",
+     "error",
+     "digital",
+     "scratch"
+    ],
+    "max": 2
+   },
+   {
+    "from": "interface-sounds",
+    "file": "glitch_002.ogg",
+    "name": "ui-2",
+    "tags": [
+     "glitch",
+     "error",
+     "digital",
+     "scratch"
+    ],
+    "max": 2
+   },
+   {
+    "from": "interface-sounds",
+    "file": "glitch_003.ogg",
+    "name": "ui-3",
+    "tags": [
+     "glitch",
+     "error",
+     "digital",
+     "scratch"
+    ],
+    "max": 2
+   },
+   {
+    "from": "interface-sounds",
+    "file": "glitch_004.ogg",
+    "name": "ui-4",
+    "tags": [
+     "glitch",
+     "error",
+     "digital",
+     "scratch"
+    ],
+    "max": 2
+   },
+   {
+    "from": "interface-sounds",
+    "file": "scratch_001.ogg",
+    "name": "ui-5",
+    "tags": [
+     "glitch",
+     "error",
+     "digital",
+     "scratch"
+    ],
+    "max": 2
+   },
+   {
+    "from": "interface-sounds",
+    "file": "scratch_002.ogg",
+    "name": "ui-6",
+    "tags": [
+     "glitch",
+     "error",
+     "digital",
+     "scratch"
+    ],
+    "max": 2
+   },
+   {
+    "from": "interface-sounds",
+    "file": "scratch_003.ogg",
+    "name": "ui-7",
+    "tags": [
+     "glitch",
+     "error",
+     "digital",
+     "scratch"
+    ],
+    "max": 2
+   },
+   {
+    "from": "60-cc0-sci-fi-sfx",
+    "file": "sfx_02a.ogg",
+    "name": "digital-1",
+    "tags": [
+     "glitch",
+     "digital",
+     "cyber",
+     "distortion"
+    ],
+    "max": 3
+   },
+   {
+    "from": "60-cc0-sci-fi-sfx",
+    "file": "sfx_02c.ogg",
+    "name": "digital-2",
+    "tags": [
+     "glitch",
+     "digital",
+     "cyber",
+     "distortion"
+    ],
+    "max": 3
+   },
+   {
+    "from": "60-cc0-sci-fi-sfx",
+    "file": "sfx_07a.ogg",
+    "name": "digital-3",
+    "tags": [
+     "glitch",
+     "digital",
+     "cyber",
+     "distortion"
+    ],
+    "max": 3
+   },
+   {
+    "from": "60-cc0-sci-fi-sfx",
+    "file": "sfx_07c.ogg",
+    "name": "digital-4",
+    "tags": [
+     "glitch",
+     "digital",
+     "cyber",
+     "distortion"
+    ],
+    "max": 3
+   },
+   {
+    "from": "60-cc0-sci-fi-sfx",
+    "file": "sfx_09a.ogg",
+    "name": "digital-5",
+    "tags": [
+     "glitch",
+     "digital",
+     "cyber",
+     "distortion"
+    ],
+    "max": 3
+   },
+   {
+    "from": "60-cc0-sci-fi-sfx",
+    "file": "sfx_13a.ogg",
+    "name": "digital-6",
+    "tags": [
+     "glitch",
+     "digital",
+     "cyber",
+     "distortion"
+    ],
+    "max": 3
+   },
+   {
+    "from": "60-cc0-sci-fi-sfx",
+    "file": "sfx_20a.ogg",
+    "name": "digital-7",
+    "tags": [
+     "glitch",
+     "digital",
+     "cyber",
+     "distortion"
+    ],
+    "max": 3
+   },
+   {
+    "from": "60-cc0-sci-fi-sfx",
+    "file": "sfx_22a.ogg",
+    "name": "digital-8",
+    "tags": [
+     "glitch",
+     "digital",
+     "cyber",
+     "distortion"
+    ],
+    "max": 3
+   },
+   {
+    "from": "50-cc0-sci-fi-sfx",
+    "file": "weird_01.ogg",
+    "name": "weird-1",
+    "tags": [
+     "glitch",
+     "weird",
+     "alien",
+     "distortion"
+    ],
+    "max": 3
+   },
+   {
+    "from": "50-cc0-sci-fi-sfx",
+    "file": "weird_02.ogg",
+    "name": "weird-2",
+    "tags": [
+     "glitch",
+     "weird",
+     "alien",
+     "distortion"
+    ],
+    "max": 3
+   },
+   {
+    "from": "50-cc0-sci-fi-sfx",
+    "file": "weird_03.ogg",
+    "name": "weird-3",
+    "tags": [
+     "glitch",
+     "weird",
+     "alien",
+     "distortion"
+    ],
+    "max": 3
+   },
+   {
+    "from": "50-cc0-sci-fi-sfx",
+    "file": "weird_04.ogg",
+    "name": "weird-4",
+    "tags": [
+     "glitch",
+     "weird",
+     "alien",
+     "distortion"
+    ],
+    "max": 3
+   },
+   {
+    "from": "50-cc0-sci-fi-sfx",
+    "file": "weird_05.ogg",
+    "name": "weird-5",
+    "tags": [
+     "glitch",
+     "weird",
+     "alien",
+     "distortion"
+    ],
+    "max": 3
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "spaceTrash1.mp3",
+    "name": "trash-1",
+    "tags": [
+     "glitch",
+     "noise",
+     "digital"
+    ],
+    "max": 2
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "spaceTrash2.mp3",
+    "name": "trash-2",
+    "tags": [
+     "glitch",
+     "noise",
+     "digital"
+    ],
+    "max": 2
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "spaceTrash3.mp3",
+    "name": "trash-3",
+    "tags": [
+     "glitch",
+     "noise",
+     "digital"
+    ],
+    "max": 2
+   }
+  ],
+  "click": [
+   {
+    "from": "interface-sounds",
+    "file": "tick_001.ogg",
+    "name": "ui-1",
+    "tags": [
+     "click",
+     "ui",
+     "tap",
+     "button"
+    ],
+    "max": 1
+   },
+   {
+    "from": "interface-sounds",
+    "file": "tick_002.ogg",
+    "name": "ui-2",
+    "tags": [
+     "click",
+     "ui",
+     "tap",
+     "button"
+    ],
+    "max": 1
+   },
+   {
+    "from": "interface-sounds",
+    "file": "tick_004.ogg",
+    "name": "ui-3",
+    "tags": [
+     "click",
+     "ui",
+     "tap",
+     "button"
+    ],
+    "max": 1
+   },
+   {
+    "from": "interface-sounds",
+    "file": "click_001.ogg",
+    "name": "ui-4",
+    "tags": [
+     "click",
+     "ui",
+     "tap",
+     "button"
+    ],
+    "max": 1
+   },
+   {
+    "from": "interface-sounds",
+    "file": "click_002.ogg",
+    "name": "ui-5",
+    "tags": [
+     "click",
+     "ui",
+     "tap",
+     "button"
+    ],
+    "max": 1
+   },
+   {
+    "from": "interface-sounds",
+    "file": "click_003.ogg",
+    "name": "ui-6",
+    "tags": [
+     "click",
+     "ui",
+     "tap",
+     "button"
+    ],
+    "max": 1
+   },
+   {
+    "from": "interface-sounds",
+    "file": "click_004.ogg",
+    "name": "ui-7",
+    "tags": [
+     "click",
+     "ui",
+     "tap",
+     "button"
+    ],
+    "max": 1
+   },
+   {
+    "from": "interface-sounds",
+    "file": "click_005.ogg",
+    "name": "ui-8",
+    "tags": [
+     "click",
+     "ui",
+     "tap",
+     "button"
+    ],
+    "max": 1
+   },
+   {
+    "from": "interface-sounds",
+    "file": "select_001.ogg",
+    "name": "ui-9",
+    "tags": [
+     "click",
+     "ui",
+     "tap",
+     "button"
+    ],
+    "max": 1
+   },
+   {
+    "from": "interface-sounds",
+    "file": "select_002.ogg",
+    "name": "ui-10",
+    "tags": [
+     "click",
+     "ui",
+     "tap",
+     "button"
+    ],
+    "max": 1
+   },
+   {
+    "from": "interface-sounds",
+    "file": "select_003.ogg",
+    "name": "ui-11",
+    "tags": [
+     "click",
+     "ui",
+     "tap",
+     "button"
+    ],
+    "max": 1
+   },
+   {
+    "from": "interface-sounds",
+    "file": "select_004.ogg",
+    "name": "ui-12",
+    "tags": [
+     "click",
+     "ui",
+     "tap",
+     "button"
+    ],
+    "max": 1
+   },
+   {
+    "from": "interface-sounds",
+    "file": "switch_001.ogg",
+    "name": "ui-13",
+    "tags": [
+     "click",
+     "ui",
+     "tap",
+     "button"
+    ],
+    "max": 1
+   },
+   {
+    "from": "interface-sounds",
+    "file": "switch_002.ogg",
+    "name": "ui-14",
+    "tags": [
+     "click",
+     "ui",
+     "tap",
+     "button"
+    ],
+    "max": 1
+   },
+   {
+    "from": "interface-sounds",
+    "file": "switch_003.ogg",
+    "name": "ui-15",
+    "tags": [
+     "click",
+     "ui",
+     "tap",
+     "button"
+    ],
+    "max": 1
+   },
+   {
+    "from": "interface-sounds",
+    "file": "toggle_001.ogg",
+    "name": "ui-16",
+    "tags": [
+     "click",
+     "ui",
+     "tap",
+     "button"
+    ],
+    "max": 1
+   },
+   {
+    "from": "interface-sounds",
+    "file": "toggle_002.ogg",
+    "name": "ui-17",
+    "tags": [
+     "click",
+     "ui",
+     "tap",
+     "button"
+    ],
+    "max": 1
+   },
+   {
+    "from": "interface-sounds",
+    "file": "toggle_003.ogg",
+    "name": "ui-18",
+    "tags": [
+     "click",
+     "ui",
+     "tap",
+     "button"
+    ],
+    "max": 1
+   },
+   {
+    "from": "ui-sound-effects-button-clicks-user-feedback-notifications",
+    "file": "click_1.ogg",
+    "name": "soft-1",
+    "tags": [
+     "click",
+     "soft",
+     "ui",
+     "tap"
+    ],
+    "max": 1
+   },
+   {
+    "from": "ui-sound-effects-button-clicks-user-feedback-notifications",
+    "file": "click_2.ogg",
+    "name": "soft-2",
+    "tags": [
+     "click",
+     "soft",
+     "ui",
+     "tap"
+    ],
+    "max": 1
+   },
+   {
+    "from": "ui-sound-effects-button-clicks-user-feedback-notifications",
+    "file": "click_3.ogg",
+    "name": "soft-3",
+    "tags": [
+     "click",
+     "soft",
+     "ui",
+     "tap"
+    ],
+    "max": 1
+   },
+   {
+    "from": "ui-sound-effects-button-clicks-user-feedback-notifications",
+    "file": "click_4.ogg",
+    "name": "soft-4",
+    "tags": [
+     "click",
+     "soft",
+     "ui",
+     "tap"
+    ],
+    "max": 1
+   }
+  ],
+  "pop": [
+   {
+    "from": "pop-effect-sounds",
+    "file": "p_1.ogg",
+    "name": "pop-1",
+    "tags": [
+     "pop",
+     "appear",
+     "bubble",
+     "cute"
+    ],
+    "max": 1.5
+   },
+   {
+    "from": "pop-effect-sounds",
+    "file": "p_2.ogg",
+    "name": "pop-2",
+    "tags": [
+     "pop",
+     "appear",
+     "bubble",
+     "cute"
+    ],
+    "max": 1.5
+   },
+   {
+    "from": "pop-effect-sounds",
+    "file": "p_3.ogg",
+    "name": "pop-3",
+    "tags": [
+     "pop",
+     "appear",
+     "bubble",
+     "cute"
+    ],
+    "max": 1.5
+   },
+   {
+    "from": "pop-effect-sounds",
+    "file": "p_4.ogg",
+    "name": "pop-4",
+    "tags": [
+     "pop",
+     "appear",
+     "bubble",
+     "cute"
+    ],
+    "max": 1.5
+   },
+   {
+    "from": "pop-effect-sounds",
+    "file": "p_5.ogg",
+    "name": "pop-5",
+    "tags": [
+     "pop",
+     "appear",
+     "bubble",
+     "cute"
+    ],
+    "max": 1.5
+   },
+   {
+    "from": "bubbles-pop",
+    "file": "pop.ogg",
+    "name": "bubble-1",
+    "tags": [
+     "pop",
+     "bubble",
+     "cute"
+    ],
+    "max": 1.5
+   },
+   {
+    "from": "interface-sounds",
+    "file": "drop_001.ogg",
+    "name": "drop-1",
+    "tags": [
+     "pop",
+     "drop",
+     "pluck",
+     "appear"
+    ],
+    "max": 1.5
+   },
+   {
+    "from": "interface-sounds",
+    "file": "drop_002.ogg",
+    "name": "drop-2",
+    "tags": [
+     "pop",
+     "drop",
+     "pluck",
+     "appear"
+    ],
+    "max": 1.5
+   },
+   {
+    "from": "interface-sounds",
+    "file": "drop_003.ogg",
+    "name": "drop-3",
+    "tags": [
+     "pop",
+     "drop",
+     "pluck",
+     "appear"
+    ],
+    "max": 1.5
+   },
+   {
+    "from": "interface-sounds",
+    "file": "drop_004.ogg",
+    "name": "drop-4",
+    "tags": [
+     "pop",
+     "drop",
+     "pluck",
+     "appear"
+    ],
+    "max": 1.5
+   },
+   {
+    "from": "interface-sounds",
+    "file": "pluck_001.ogg",
+    "name": "drop-5",
+    "tags": [
+     "pop",
+     "drop",
+     "pluck",
+     "appear"
+    ],
+    "max": 1.5
+   },
+   {
+    "from": "interface-sounds",
+    "file": "pluck_002.ogg",
+    "name": "drop-6",
+    "tags": [
+     "pop",
+     "drop",
+     "pluck",
+     "appear"
+    ],
+    "max": 1.5
+   }
+  ],
+  "ding": [
+   {
+    "from": "ui-sound-effects-button-clicks-user-feedback-notifications",
+    "file": "Ding.ogg",
+    "name": "bell-1",
+    "tags": [
+     "ding",
+     "notification",
+     "success",
+     "bell"
+    ],
+    "max": 4
+   },
+   {
+    "from": "ui-sound-effects-button-clicks-user-feedback-notifications",
+    "file": "chimes.ogg",
+    "name": "bell-2",
+    "tags": [
+     "ding",
+     "notification",
+     "success",
+     "bell"
+    ],
+    "max": 4
+   },
+   {
+    "from": "ui-sound-effects-button-clicks-user-feedback-notifications",
+    "file": "ding_deep.ogg",
+    "name": "bell-3",
+    "tags": [
+     "ding",
+     "notification",
+     "success",
+     "bell"
+    ],
+    "max": 4
+   },
+   {
+    "from": "interface-sounds",
+    "file": "bong_001.ogg",
+    "name": "ui-1",
+    "tags": [
+     "ding",
+     "confirm",
+     "notification",
+     "ui"
+    ],
+    "max": 3
+   },
+   {
+    "from": "interface-sounds",
+    "file": "question_001.ogg",
+    "name": "ui-2",
+    "tags": [
+     "ding",
+     "confirm",
+     "notification",
+     "ui"
+    ],
+    "max": 3
+   },
+   {
+    "from": "interface-sounds",
+    "file": "question_002.ogg",
+    "name": "ui-3",
+    "tags": [
+     "ding",
+     "confirm",
+     "notification",
+     "ui"
+    ],
+    "max": 3
+   },
+   {
+    "from": "interface-sounds",
+    "file": "confirmation_001.ogg",
+    "name": "ui-4",
+    "tags": [
+     "ding",
+     "confirm",
+     "notification",
+     "ui"
+    ],
+    "max": 3
+   },
+   {
+    "from": "interface-sounds",
+    "file": "confirmation_002.ogg",
+    "name": "ui-5",
+    "tags": [
+     "ding",
+     "confirm",
+     "notification",
+     "ui"
+    ],
+    "max": 3
+   },
+   {
+    "from": "interface-sounds",
+    "file": "confirmation_003.ogg",
+    "name": "ui-6",
+    "tags": [
+     "ding",
+     "confirm",
+     "notification",
+     "ui"
+    ],
+    "max": 3
+   },
+   {
+    "from": "interface-sounds",
+    "file": "confirmation_004.ogg",
+    "name": "ui-7",
+    "tags": [
+     "ding",
+     "confirm",
+     "notification",
+     "ui"
+    ],
+    "max": 3
+   },
+   {
+    "from": "alertnotification-sound",
+    "file": "alert.ogg",
+    "name": "alert-1",
+    "tags": [
+     "ding",
+     "alert",
+     "notification",
+     "message"
+    ],
+    "max": 3
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "twoTone1.mp3",
+    "name": "tone-1",
+    "tags": [
+     "ding",
+     "tone",
+     "notification",
+     "digital"
+    ],
+    "max": 2
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "twoTone2.mp3",
+    "name": "tone-2",
+    "tags": [
+     "ding",
+     "tone",
+     "notification",
+     "digital"
+    ],
+    "max": 2
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "threeTone1.mp3",
+    "name": "tone-3",
+    "tags": [
+     "ding",
+     "tone",
+     "notification",
+     "digital"
+    ],
+    "max": 2
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "threeTone2.mp3",
+    "name": "tone-4",
+    "tags": [
+     "ding",
+     "tone",
+     "notification",
+     "digital"
+    ],
+    "max": 2
+   }
+  ],
+  "error": [
+   {
+    "from": "interface-sounds",
+    "file": "error_001.ogg",
+    "name": "ui-1",
+    "tags": [
+     "error",
+     "wrong",
+     "fail",
+     "buzz"
+    ],
+    "max": 2
+   },
+   {
+    "from": "interface-sounds",
+    "file": "error_002.ogg",
+    "name": "ui-2",
+    "tags": [
+     "error",
+     "wrong",
+     "fail",
+     "buzz"
+    ],
+    "max": 2
+   },
+   {
+    "from": "interface-sounds",
+    "file": "error_003.ogg",
+    "name": "ui-3",
+    "tags": [
+     "error",
+     "wrong",
+     "fail",
+     "buzz"
+    ],
+    "max": 2
+   },
+   {
+    "from": "interface-sounds",
+    "file": "error_004.ogg",
+    "name": "ui-4",
+    "tags": [
+     "error",
+     "wrong",
+     "fail",
+     "buzz"
+    ],
+    "max": 2
+   },
+   {
+    "from": "interface-sounds",
+    "file": "error_005.ogg",
+    "name": "ui-5",
+    "tags": [
+     "error",
+     "wrong",
+     "fail",
+     "buzz"
+    ],
+    "max": 2
+   },
+   {
+    "from": "ui-sound-effects-button-clicks-user-feedback-notifications",
+    "file": "dum.ogg",
+    "name": "buzz-1",
+    "tags": [
+     "error",
+     "wrong",
+     "alarm",
+     "negative"
+    ],
+    "max": 3
+   },
+   {
+    "from": "ui-sound-effects-button-clicks-user-feedback-notifications",
+    "file": "alarm.ogg",
+    "name": "buzz-2",
+    "tags": [
+     "error",
+     "wrong",
+     "alarm",
+     "negative"
+    ],
+    "max": 3
+   },
+   {
+    "from": "ui-sound-effects-button-clicks-user-feedback-notifications",
+    "file": "negative_sound.ogg",
+    "name": "buzz-3",
+    "tags": [
+     "error",
+     "wrong",
+     "alarm",
+     "negative"
+    ],
+    "max": 3
+   },
+   {
+    "from": "ui-sound-effects-button-clicks-user-feedback-notifications",
+    "file": "negative_sound2.ogg",
+    "name": "buzz-4",
+    "tags": [
+     "error",
+     "wrong",
+     "alarm",
+     "negative"
+    ],
+    "max": 3
+   }
+  ],
+  "type": [
+   {
+    "from": "keyboard-soundpack-1-typing-and-single-keystrokes",
+    "file": "keypress-001.wav",
+    "name": "key-1",
+    "tags": [
+     "typing",
+     "keyboard",
+     "key",
+     "text"
+    ],
+    "max": 1
+   },
+   {
+    "from": "keyboard-soundpack-1-typing-and-single-keystrokes",
+    "file": "keypress-002.wav",
+    "name": "key-2",
+    "tags": [
+     "typing",
+     "keyboard",
+     "key",
+     "text"
+    ],
+    "max": 1
+   },
+   {
+    "from": "keyboard-soundpack-1-typing-and-single-keystrokes",
+    "file": "keypress-003.wav",
+    "name": "key-3",
+    "tags": [
+     "typing",
+     "keyboard",
+     "key",
+     "text"
+    ],
+    "max": 1
+   },
+   {
+    "from": "keyboard-soundpack-1-typing-and-single-keystrokes",
+    "file": "keypress-004.wav",
+    "name": "key-4",
+    "tags": [
+     "typing",
+     "keyboard",
+     "key",
+     "text"
+    ],
+    "max": 1
+   },
+   {
+    "from": "keyboard-soundpack-1-typing-and-single-keystrokes",
+    "file": "keypress-005.wav",
+    "name": "key-5",
+    "tags": [
+     "typing",
+     "keyboard",
+     "key",
+     "text"
+    ],
+    "max": 1
+   },
+   {
+    "from": "keyboard-soundpack-1-typing-and-single-keystrokes",
+    "file": "keypress-006.wav",
+    "name": "key-6",
+    "tags": [
+     "typing",
+     "keyboard",
+     "key",
+     "text"
+    ],
+    "max": 1
+   },
+   {
+    "from": "keyboard-soundpack-1-typing-and-single-keystrokes",
+    "file": "keypress-007.wav",
+    "name": "key-7",
+    "tags": [
+     "typing",
+     "keyboard",
+     "key",
+     "text"
+    ],
+    "max": 1
+   },
+   {
+    "from": "keyboard-soundpack-1-typing-and-single-keystrokes",
+    "file": "keypress-008.wav",
+    "name": "key-8",
+    "tags": [
+     "typing",
+     "keyboard",
+     "key",
+     "text"
+    ],
+    "max": 1
+   },
+   {
+    "from": "keyboard-soundpack-1-typing-and-single-keystrokes",
+    "file": "keypress-009.wav",
+    "name": "key-9",
+    "tags": [
+     "typing",
+     "keyboard",
+     "key",
+     "text"
+    ],
+    "max": 1
+   },
+   {
+    "from": "keyboard-soundpack-1-typing-and-single-keystrokes",
+    "file": "keypress-010.wav",
+    "name": "key-10",
+    "tags": [
+     "typing",
+     "keyboard",
+     "key",
+     "text"
+    ],
+    "max": 1
+   },
+   {
+    "from": "keyboard-soundpack-1-typing-and-single-keystrokes",
+    "file": "keypress-011.wav",
+    "name": "key-11",
+    "tags": [
+     "typing",
+     "keyboard",
+     "key",
+     "text"
+    ],
+    "max": 1
+   },
+   {
+    "from": "keyboard-soundpack-1-typing-and-single-keystrokes",
+    "file": "keypress-012.wav",
+    "name": "key-12",
+    "tags": [
+     "typing",
+     "keyboard",
+     "key",
+     "text"
+    ],
+    "max": 1
+   },
+   {
+    "from": "keyboard-soundpack-1-typing-and-single-keystrokes",
+    "file": "keypress-013.wav",
+    "name": "key-13",
+    "tags": [
+     "typing",
+     "keyboard",
+     "key",
+     "text"
+    ],
+    "max": 1
+   },
+   {
+    "from": "keyboard-soundpack-1-typing-and-single-keystrokes",
+    "file": "keypress-014.wav",
+    "name": "key-14",
+    "tags": [
+     "typing",
+     "keyboard",
+     "key",
+     "text"
+    ],
+    "max": 1
+   },
+   {
+    "from": "keyboard-soundpack-1-typing-and-single-keystrokes",
+    "file": "keypress-015.wav",
+    "name": "key-15",
+    "tags": [
+     "typing",
+     "keyboard",
+     "key",
+     "text"
+    ],
+    "max": 1
+   },
+   {
+    "from": "keyboard-soundpack-1-typing-and-single-keystrokes",
+    "file": "keypress-016.wav",
+    "name": "key-16",
+    "tags": [
+     "typing",
+     "keyboard",
+     "key",
+     "text"
+    ],
+    "max": 1
+   },
+   {
+    "from": "keyboard-soundpack-1-typing-and-single-keystrokes",
+    "file": "keypress-017.wav",
+    "name": "key-17",
+    "tags": [
+     "typing",
+     "keyboard",
+     "key",
+     "text"
+    ],
+    "max": 1
+   },
+   {
+    "from": "keyboard-soundpack-1-typing-and-single-keystrokes",
+    "file": "keypress-018.wav",
+    "name": "key-18",
+    "tags": [
+     "typing",
+     "keyboard",
+     "key",
+     "text"
+    ],
+    "max": 1
+   },
+   {
+    "from": "keyboard-soundpack-1-typing-and-single-keystrokes",
+    "file": "keypress-019.wav",
+    "name": "key-19",
+    "tags": [
+     "typing",
+     "keyboard",
+     "key",
+     "text"
+    ],
+    "max": 1
+   },
+   {
+    "from": "keyboard-soundpack-1-typing-and-single-keystrokes",
+    "file": "human_vel-001.wav",
+    "name": "run-1",
+    "tags": [
+     "typing",
+     "keyboard",
+     "sequence"
+    ],
+    "max": 5
+   },
+   {
+    "from": "keyboard-soundpack-1-typing-and-single-keystrokes",
+    "file": "human_vel-002.wav",
+    "name": "run-2",
+    "tags": [
+     "typing",
+     "keyboard",
+     "sequence"
+    ],
+    "max": 5
+   },
+   {
+    "from": "keyboard-soundpack-1-typing-and-single-keystrokes",
+    "file": "generated-003_slow.wav",
+    "name": "run-3",
+    "tags": [
+     "typing",
+     "keyboard",
+     "sequence"
+    ],
+    "max": 5
+   },
+   {
+    "from": "keyboard-soundpack-1-typing-and-single-keystrokes",
+    "file": "generated-005_fast.wav",
+    "name": "run-4",
+    "tags": [
+     "typing",
+     "keyboard",
+     "sequence"
+    ],
+    "max": 5
+   }
+  ],
+  "camera": [
+   {
+    "from": "camera",
+    "file": "photo.ogg",
+    "name": "shutter-1",
+    "tags": [
+     "camera",
+     "shutter",
+     "photo",
+     "flash",
+     "snapshot"
+    ],
+    "max": 2
+   },
+   {
+    "from": "interface-sounds",
+    "file": "glass_001.ogg",
+    "name": "flash-1",
+    "tags": [
+     "flash",
+     "shine",
+     "sparkle",
+     "glass"
+    ],
+    "max": 2
+   },
+   {
+    "from": "interface-sounds",
+    "file": "glass_002.ogg",
+    "name": "flash-2",
+    "tags": [
+     "flash",
+     "shine",
+     "sparkle",
+     "glass"
+    ],
+    "max": 2
+   },
+   {
+    "from": "interface-sounds",
+    "file": "glass_003.ogg",
+    "name": "flash-3",
+    "tags": [
+     "flash",
+     "shine",
+     "sparkle",
+     "glass"
+    ],
+    "max": 2
+   }
+  ],
+  "data": [
+   {
+    "from": "50-cc0-sci-fi-sfx",
+    "file": "terminal_01.ogg",
+    "name": "terminal-1",
+    "tags": [
+     "data",
+     "terminal",
+     "computer",
+     "beep",
+     "scan"
+    ],
+    "max": 2
+   },
+   {
+    "from": "50-cc0-sci-fi-sfx",
+    "file": "terminal_02.ogg",
+    "name": "terminal-2",
+    "tags": [
+     "data",
+     "terminal",
+     "computer",
+     "beep",
+     "scan"
+    ],
+    "max": 2
+   },
+   {
+    "from": "50-cc0-sci-fi-sfx",
+    "file": "terminal_03.ogg",
+    "name": "terminal-3",
+    "tags": [
+     "data",
+     "terminal",
+     "computer",
+     "beep",
+     "scan"
+    ],
+    "max": 2
+   },
+   {
+    "from": "50-cc0-sci-fi-sfx",
+    "file": "terminal_04.ogg",
+    "name": "terminal-4",
+    "tags": [
+     "data",
+     "terminal",
+     "computer",
+     "beep",
+     "scan"
+    ],
+    "max": 2
+   },
+   {
+    "from": "50-cc0-sci-fi-sfx",
+    "file": "terminal_05.ogg",
+    "name": "terminal-5",
+    "tags": [
+     "data",
+     "terminal",
+     "computer",
+     "beep",
+     "scan"
+    ],
+    "max": 2
+   },
+   {
+    "from": "50-cc0-sci-fi-sfx",
+    "file": "terminal_06.ogg",
+    "name": "terminal-6",
+    "tags": [
+     "data",
+     "terminal",
+     "computer",
+     "beep",
+     "scan"
+    ],
+    "max": 2
+   },
+   {
+    "from": "50-cc0-sci-fi-sfx",
+    "file": "terminal_07.ogg",
+    "name": "terminal-7",
+    "tags": [
+     "data",
+     "terminal",
+     "computer",
+     "beep",
+     "scan"
+    ],
+    "max": 2
+   },
+   {
+    "from": "50-cc0-sci-fi-sfx",
+    "file": "terminal_08.ogg",
+    "name": "terminal-8",
+    "tags": [
+     "data",
+     "terminal",
+     "computer",
+     "beep",
+     "scan"
+    ],
+    "max": 2
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "tone1.mp3",
+    "name": "beep-1",
+    "tags": [
+     "data",
+     "beep",
+     "scan",
+     "digital"
+    ],
+    "max": 2
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "pepSound1.mp3",
+    "name": "beep-2",
+    "tags": [
+     "data",
+     "beep",
+     "scan",
+     "digital"
+    ],
+    "max": 2
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "pepSound2.mp3",
+    "name": "beep-3",
+    "tags": [
+     "data",
+     "beep",
+     "scan",
+     "digital"
+    ],
+    "max": 2
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "pepSound3.mp3",
+    "name": "beep-4",
+    "tags": [
+     "data",
+     "beep",
+     "scan",
+     "digital"
+    ],
+    "max": 2
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "pepSound4.mp3",
+    "name": "beep-5",
+    "tags": [
+     "data",
+     "beep",
+     "scan",
+     "digital"
+    ],
+    "max": 2
+   },
+   {
+    "from": "60-cc0-sci-fi-sfx",
+    "file": "sfx_05a.ogg",
+    "name": "scan-1",
+    "tags": [
+     "data",
+     "scan",
+     "processing",
+     "hud"
+    ],
+    "max": 3
+   },
+   {
+    "from": "60-cc0-sci-fi-sfx",
+    "file": "sfx_08a.ogg",
+    "name": "scan-2",
+    "tags": [
+     "data",
+     "scan",
+     "processing",
+     "hud"
+    ],
+    "max": 3
+   },
+   {
+    "from": "60-cc0-sci-fi-sfx",
+    "file": "sfx_12c.ogg",
+    "name": "scan-3",
+    "tags": [
+     "data",
+     "scan",
+     "processing",
+     "hud"
+    ],
+    "max": 3
+   }
+  ],
+  "static": [
+   {
+    "from": "static",
+    "file": "ScatterNoise1.mp3",
+    "name": "scatter-1",
+    "tags": [
+     "static",
+     "noise",
+     "tv",
+     "radio"
+    ],
+    "max": 3
+   },
+   {
+    "from": "frequency-static-sound-effects",
+    "file": "static1.wav",
+    "name": "radio-1",
+    "tags": [
+     "static",
+     "radio",
+     "noise",
+     "tune"
+    ],
+    "max": 3
+   },
+   {
+    "from": "sci-fi-sounds",
+    "file": "forceField_000.ogg",
+    "name": "electric-1",
+    "tags": [
+     "static",
+     "electric",
+     "hum",
+     "noise"
+    ],
+    "max": 3
+   },
+   {
+    "from": "sci-fi-sounds",
+    "file": "forceField_001.ogg",
+    "name": "electric-2",
+    "tags": [
+     "static",
+     "electric",
+     "hum",
+     "noise"
+    ],
+    "max": 3
+   },
+   {
+    "from": "sci-fi-sounds",
+    "file": "computerNoise_000.ogg",
+    "name": "electric-3",
+    "tags": [
+     "static",
+     "electric",
+     "hum",
+     "noise"
+    ],
+    "max": 3
+   },
+   {
+    "from": "sci-fi-sounds",
+    "file": "computerNoise_001.ogg",
+    "name": "electric-4",
+    "tags": [
+     "static",
+     "electric",
+     "hum",
+     "noise"
+    ],
+    "max": 3
+   },
+   {
+    "from": "sci-fi-sounds",
+    "file": "computerNoise_002.ogg",
+    "name": "electric-5",
+    "tags": [
+     "static",
+     "electric",
+     "hum",
+     "noise"
+    ],
+    "max": 3
+   },
+   {
+    "from": "sci-fi-sounds",
+    "file": "computerNoise_003.ogg",
+    "name": "electric-6",
+    "tags": [
+     "static",
+     "electric",
+     "hum",
+     "noise"
+    ],
+    "max": 3
+   }
+  ],
+  "coin": [
+   {
+    "from": "12-coin-sound-effects",
+    "file": "coin.1.ogg",
+    "name": "coin-1",
+    "tags": [
+     "coin",
+     "money",
+     "cash",
+     "reward",
+     "sale"
+    ],
+    "max": 2
+   },
+   {
+    "from": "12-coin-sound-effects",
+    "file": "coin.2.ogg",
+    "name": "coin-2",
+    "tags": [
+     "coin",
+     "money",
+     "cash",
+     "reward",
+     "sale"
+    ],
+    "max": 2
+   },
+   {
+    "from": "12-coin-sound-effects",
+    "file": "coin.3.ogg",
+    "name": "coin-3",
+    "tags": [
+     "coin",
+     "money",
+     "cash",
+     "reward",
+     "sale"
+    ],
+    "max": 2
+   },
+   {
+    "from": "12-coin-sound-effects",
+    "file": "coin.4.ogg",
+    "name": "coin-4",
+    "tags": [
+     "coin",
+     "money",
+     "cash",
+     "reward",
+     "sale"
+    ],
+    "max": 2
+   },
+   {
+    "from": "12-coin-sound-effects",
+    "file": "coin.5.ogg",
+    "name": "coin-5",
+    "tags": [
+     "coin",
+     "money",
+     "cash",
+     "reward",
+     "sale"
+    ],
+    "max": 2
+   },
+   {
+    "from": "12-coin-sound-effects",
+    "file": "coin.6.ogg",
+    "name": "coin-6",
+    "tags": [
+     "coin",
+     "money",
+     "cash",
+     "reward",
+     "sale"
+    ],
+    "max": 2
+   },
+   {
+    "from": "12-coin-sound-effects",
+    "file": "coin.7.ogg",
+    "name": "coin-7",
+    "tags": [
+     "coin",
+     "money",
+     "cash",
+     "reward",
+     "sale"
+    ],
+    "max": 2
+   },
+   {
+    "from": "12-coin-sound-effects",
+    "file": "coin.8.ogg",
+    "name": "coin-8",
+    "tags": [
+     "coin",
+     "money",
+     "cash",
+     "reward",
+     "sale"
+    ],
+    "max": 2
+   },
+   {
+    "from": "50-cc0-retro-synth-sfx",
+    "file": "retro_coin_01.ogg",
+    "name": "retro-1",
+    "tags": [
+     "coin",
+     "retro",
+     "game",
+     "reward"
+    ],
+    "max": 2
+   },
+   {
+    "from": "50-cc0-retro-synth-sfx",
+    "file": "retro_coin_02.ogg",
+    "name": "retro-2",
+    "tags": [
+     "coin",
+     "retro",
+     "game",
+     "reward"
+    ],
+    "max": 2
+   },
+   {
+    "from": "54-casino-sound-effects-cards-dice-chips",
+    "file": "chip-lay-1.ogg",
+    "name": "chips-1",
+    "tags": [
+     "coin",
+     "chips",
+     "money",
+     "stack"
+    ],
+    "max": 2
+   },
+   {
+    "from": "54-casino-sound-effects-cards-dice-chips",
+    "file": "chips-stack-1.ogg",
+    "name": "chips-2",
+    "tags": [
+     "coin",
+     "chips",
+     "money",
+     "stack"
+    ],
+    "max": 2
+   },
+   {
+    "from": "54-casino-sound-effects-cards-dice-chips",
+    "file": "chips-stack-2.ogg",
+    "name": "chips-3",
+    "tags": [
+     "coin",
+     "chips",
+     "money",
+     "stack"
+    ],
+    "max": 2
+   },
+   {
+    "from": "54-casino-sound-effects-cards-dice-chips",
+    "file": "chips-stack-3.ogg",
+    "name": "chips-4",
+    "tags": [
+     "coin",
+     "chips",
+     "money",
+     "stack"
+    ],
+    "max": 2
+   }
+  ],
+  "laser": [
+   {
+    "from": "sci-fi-sounds",
+    "file": "laserRetro_000.ogg",
+    "name": "scifi-1",
+    "tags": [
+     "laser",
+     "shoot",
+     "game",
+     "sci-fi"
+    ],
+    "max": 2
+   },
+   {
+    "from": "sci-fi-sounds",
+    "file": "laserRetro_001.ogg",
+    "name": "scifi-2",
+    "tags": [
+     "laser",
+     "shoot",
+     "game",
+     "sci-fi"
+    ],
+    "max": 2
+   },
+   {
+    "from": "sci-fi-sounds",
+    "file": "laserSmall_000.ogg",
+    "name": "scifi-3",
+    "tags": [
+     "laser",
+     "shoot",
+     "game",
+     "sci-fi"
+    ],
+    "max": 2
+   },
+   {
+    "from": "sci-fi-sounds",
+    "file": "laserSmall_001.ogg",
+    "name": "scifi-4",
+    "tags": [
+     "laser",
+     "shoot",
+     "game",
+     "sci-fi"
+    ],
+    "max": 2
+   },
+   {
+    "from": "sci-fi-sounds",
+    "file": "laserSmall_002.ogg",
+    "name": "scifi-5",
+    "tags": [
+     "laser",
+     "shoot",
+     "game",
+     "sci-fi"
+    ],
+    "max": 2
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "laser1.mp3",
+    "name": "digital-1",
+    "tags": [
+     "laser",
+     "zap",
+     "game"
+    ],
+    "max": 2
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "laser2.mp3",
+    "name": "digital-2",
+    "tags": [
+     "laser",
+     "zap",
+     "game"
+    ],
+    "max": 2
+   },
+   {
+    "from": "63-digital-sound-effects-lasers-phasers-space-etc",
+    "file": "laser3.mp3",
+    "name": "digital-3",
+    "tags": [
+     "laser",
+     "zap",
+     "game"
+    ],
+    "max": 2
+   }
+  ],
+  "card": [
+   {
+    "from": "54-casino-sound-effects-cards-dice-chips",
+    "file": "card-fan-1.ogg",
+    "name": "card-1",
+    "tags": [
+     "card",
+     "paper",
+     "slide",
+     "flip",
+     "dice"
+    ],
+    "max": 3
+   },
+   {
+    "from": "54-casino-sound-effects-cards-dice-chips",
+    "file": "card-place-1.ogg",
+    "name": "card-2",
+    "tags": [
+     "card",
+     "paper",
+     "slide",
+     "flip",
+     "dice"
+    ],
+    "max": 3
+   },
+   {
+    "from": "54-casino-sound-effects-cards-dice-chips",
+    "file": "card-place-2.ogg",
+    "name": "card-3",
+    "tags": [
+     "card",
+     "paper",
+     "slide",
+     "flip",
+     "dice"
+    ],
+    "max": 3
+   },
+   {
+    "from": "54-casino-sound-effects-cards-dice-chips",
+    "file": "card-shuffle.ogg",
+    "name": "card-4",
+    "tags": [
+     "card",
+     "paper",
+     "slide",
+     "flip",
+     "dice"
+    ],
+    "max": 3
+   },
+   {
+    "from": "54-casino-sound-effects-cards-dice-chips",
+    "file": "card-slide-1.ogg",
+    "name": "card-5",
+    "tags": [
+     "card",
+     "paper",
+     "slide",
+     "flip",
+     "dice"
+    ],
+    "max": 3
+   },
+   {
+    "from": "54-casino-sound-effects-cards-dice-chips",
+    "file": "card-slide-2.ogg",
+    "name": "card-6",
+    "tags": [
+     "card",
+     "paper",
+     "slide",
+     "flip",
+     "dice"
+    ],
+    "max": 3
+   },
+   {
+    "from": "54-casino-sound-effects-cards-dice-chips",
+    "file": "dice-throw-1.ogg",
+    "name": "card-7",
+    "tags": [
+     "card",
+     "paper",
+     "slide",
+     "flip",
+     "dice"
+    ],
+    "max": 3
+   }
+  ]
+ }
 }
