@@ -1,0 +1,21 @@
+{
+ "fonts": [
+  {"name": "anton", "file": "anton/Anton-Regular.ttf", "upstream": "ofl/anton", "category": "headline", "tags": ["condensed", "bold", "headline", "impact", "youtube"], "what": "tall condensed heavy sans: thumbnails, punchy titles"},
+  {"name": "bebas-neue", "file": "bebasneue/BebasNeue-Regular.ttf", "upstream": "ofl/bebasneue", "category": "headline", "tags": ["condensed", "caps", "headline", "poster"], "what": "all-caps condensed display: posters, lower thirds"},
+  {"name": "league-gothic", "file": "leaguegothic/LeagueGothic[wdth].ttf", "upstream": "ofl/leaguegothic", "category": "headline", "tags": ["condensed", "headline", "news", "variable"], "what": "narrow gothic with a width axis: dense headlines, news"},
+  {"name": "archivo-black", "file": "archivoblack/ArchivoBlack-Regular.ttf", "upstream": "ofl/archivoblack", "category": "headline", "tags": ["heavy", "grotesque", "headline", "brand"], "what": "wide heavy grotesque: bold brand statements"},
+  {"name": "oswald", "file": "oswald/Oswald[wght].ttf", "upstream": "ofl/oswald", "category": "headline", "tags": ["condensed", "variable", "headline", "sports"], "what": "condensed sans 200-700: sports, data labels"},
+  {"name": "montserrat", "file": "montserrat/Montserrat[wght].ttf", "upstream": "ofl/montserrat", "category": "sans", "tags": ["geometric", "variable", "captions", "body", "ui"], "what": "geometric sans 100-900: captions, UI, body text"},
+  {"name": "poppins-bold", "file": "poppins/Poppins-Bold.ttf", "upstream": "ofl/poppins", "category": "sans", "tags": ["geometric", "captions", "social", "tiktok"], "what": "rounded geometric bold: social captions"},
+  {"name": "poppins-extrabold", "file": "poppins/Poppins-ExtraBold.ttf", "upstream": "ofl/poppins", "category": "sans", "tags": ["geometric", "captions", "social", "heavy"], "what": "heavier Poppins for word-pop captions"},
+  {"name": "playfair-display", "file": "playfairdisplay/PlayfairDisplay[wght].ttf", "upstream": "ofl/playfairdisplay", "category": "serif", "tags": ["serif", "elegant", "luxury", "editorial", "variable"], "what": "high-contrast serif 400-900: luxury, editorial, beauty"},
+  {"name": "dm-serif-display", "file": "dmserifdisplay/DMSerifDisplay-Regular.ttf", "upstream": "ofl/dmserifdisplay", "category": "serif", "tags": ["serif", "display", "magazine", "elegant"], "what": "display serif: magazine titles, quotes"},
+  {"name": "caveat", "file": "caveat/Caveat[wght].ttf", "upstream": "ofl/caveat", "category": "hand", "tags": ["handwritten", "casual", "notes", "variable"], "what": "handwriting 400-700: notes, annotations, friendly captions"},
+  {"name": "permanent-marker", "file": "permanentmarker/PermanentMarker-Regular.ttf", "upstream": "apache/permanentmarker", "category": "hand", "tags": ["marker", "handwritten", "street", "fun"], "what": "felt-tip marker: playful callouts, street style"},
+  {"name": "luckiest-guy", "file": "luckiestguy/LuckiestGuy-Regular.ttf", "upstream": "apache/luckiestguy", "category": "fun", "tags": ["cartoon", "kids", "fun", "gaming", "heavy"], "what": "chunky cartoon caps: kids, gaming, meme captions"},
+  {"name": "bangers", "file": "bangers/Bangers-Regular.ttf", "upstream": "ofl/bangers", "category": "fun", "tags": ["comic", "caps", "fun", "action"], "what": "comic-book caps: action words, POW moments"},
+  {"name": "jetbrains-mono", "file": "jetbrainsmono/JetBrainsMono[wght].ttf", "upstream": "ofl/jetbrainsmono", "category": "mono", "tags": ["mono", "code", "tech", "variable"], "what": "monospace 100-800: code, terminals, tech explainers"},
+  {"name": "space-mono-bold", "file": "spacemono/SpaceMono-Bold.ttf", "upstream": "ofl/spacemono", "category": "mono", "tags": ["mono", "retro", "tech", "display"], "what": "retro-futurist mono bold: tech titles, data"}
+ ],
+ "sfx": {}
+}

@@ -1,0 +1,546 @@
+{
+ "version": 1,
+ "sfx_sources": {},
+ "items": [
+  {
+   "id": "font/anton",
+   "kind": "font",
+   "category": "headline",
+   "tags": [
+    "condensed",
+    "bold",
+    "headline",
+    "impact",
+    "youtube"
+   ],
+   "family": "Anton",
+   "weights": [
+    400
+   ],
+   "variable": false,
+   "axes": {},
+   "scripts": [
+    "latin",
+    "latin-ext",
+    "greek",
+    "vietnamese"
+   ],
+   "description": "tall condensed heavy sans: thumbnails, punchy titles",
+   "file": "fonts/Anton-Regular.ttf",
+   "license": "OFL-1.1",
+   "license_file": "fonts/licenses/Anton-Regular.txt",
+   "source": "https://github.com/google/fonts/tree/main/ofl/anton",
+   "author": "Copyright 2020 The Anton Project Authors (https://github.com/googlefonts/AntonFont.git)",
+   "bytes": 170812,
+   "sha256": "a4ba3a92350ebb031da0cb47630ac49eb265082ca1bc0450442f4a83ab947cab"
+  },
+  {
+   "id": "font/bebas-neue",
+   "kind": "font",
+   "category": "headline",
+   "tags": [
+    "condensed",
+    "caps",
+    "headline",
+    "poster"
+   ],
+   "family": "Bebas Neue",
+   "weights": [
+    400
+   ],
+   "variable": false,
+   "axes": {},
+   "scripts": [
+    "latin",
+    "latin-ext"
+   ],
+   "description": "all-caps condensed display: posters, lower thirds",
+   "file": "fonts/BebasNeue-Regular.ttf",
+   "license": "OFL-1.1",
+   "license_file": "fonts/licenses/BebasNeue-Regular.txt",
+   "source": "https://github.com/google/fonts/tree/main/ofl/bebasneue",
+   "author": "Copyright 2019 The Bebas Neue Project Authors (https://github.com/dharmatype/Bebas-Neue)",
+   "bytes": 61400,
+   "sha256": "08e4623805102d819f58601e46e345648846075e363b2ceb23313c2d1c83ec73"
+  },
+  {
+   "id": "font/league-gothic",
+   "kind": "font",
+   "category": "headline",
+   "tags": [
+    "condensed",
+    "headline",
+    "news",
+    "variable"
+   ],
+   "family": "League Gothic",
+   "weights": [
+    400
+   ],
+   "variable": false,
+   "axes": {
+    "wdth": [
+     75,
+     100
+    ]
+   },
+   "scripts": [
+    "latin",
+    "latin-ext",
+    "vietnamese"
+   ],
+   "description": "narrow gothic with a width axis: dense headlines, news",
+   "file": "fonts/LeagueGothic-wdth.ttf",
+   "license": "OFL-1.1",
+   "license_file": "fonts/licenses/LeagueGothic-wdth.txt",
+   "source": "https://github.com/google/fonts/tree/main/ofl/leaguegothic",
+   "author": "Copyright 2020 The League Gothic Project Authors (https://github.com/theleagueof/league-gothic)",
+   "bytes": 65972,
+   "sha256": "3b0e998c9a0034222394ffecdd383e6948259ad037b95555b139a217629ce1d0"
+  },
+  {
+   "id": "font/archivo-black",
+   "kind": "font",
+   "category": "headline",
+   "tags": [
+    "heavy",
+    "grotesque",
+    "headline",
+    "brand"
+   ],
+   "family": "Archivo Black",
+   "weights": [
+    400
+   ],
+   "variable": false,
+   "axes": {},
+   "scripts": [
+    "latin",
+    "latin-ext"
+   ],
+   "description": "wide heavy grotesque: bold brand statements",
+   "file": "fonts/ArchivoBlack-Regular.ttf",
+   "license": "OFL-1.1",
+   "license_file": "fonts/licenses/ArchivoBlack-Regular.txt",
+   "source": "https://github.com/google/fonts/tree/main/ofl/archivoblack",
+   "author": "Copyright 2017 The Archivo Black Project Authors (https://github.com/Omnibus-Type/ArchivoBlack)",
+   "bytes": 90988,
+   "sha256": "dd9a89a019b4849f66ab75455fe7bdf931311042cbb0f0f97acc061539703180"
+  },
+  {
+   "id": "font/oswald",
+   "kind": "font",
+   "category": "headline",
+   "tags": [
+    "condensed",
+    "variable",
+    "headline",
+    "sports"
+   ],
+   "family": "Oswald",
+   "weights": [
+    200,
+    300,
+    400,
+    500,
+    600,
+    700
+   ],
+   "variable": true,
+   "axes": {
+    "wght": [
+     200,
+     700
+    ]
+   },
+   "scripts": [
+    "latin",
+    "latin-ext",
+    "cyrillic",
+    "vietnamese"
+   ],
+   "description": "condensed sans 200-700: sports, data labels",
+   "file": "fonts/Oswald-wght.ttf",
+   "license": "OFL-1.1",
+   "license_file": "fonts/licenses/Oswald-wght.txt",
+   "source": "https://github.com/google/fonts/tree/main/ofl/oswald",
+   "author": "Copyright 2016 The Oswald Project Authors (https://github.com/googlefonts/OswaldFont)",
+   "bytes": 172088,
+   "sha256": "5b38c246e255a12f5712d640d56bcced0472466fc68983d2d0410ec0457c2817"
+  },
+  {
+   "id": "font/montserrat",
+   "kind": "font",
+   "category": "sans",
+   "tags": [
+    "geometric",
+    "variable",
+    "captions",
+    "body",
+    "ui"
+   ],
+   "family": "Montserrat",
+   "weights": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ],
+   "variable": true,
+   "axes": {
+    "wght": [
+     100,
+     900
+    ]
+   },
+   "scripts": [
+    "latin",
+    "latin-ext",
+    "cyrillic",
+    "vietnamese"
+   ],
+   "description": "geometric sans 100-900: captions, UI, body text",
+   "file": "fonts/Montserrat-wght.ttf",
+   "license": "OFL-1.1",
+   "license_file": "fonts/licenses/Montserrat-wght.txt",
+   "source": "https://github.com/google/fonts/tree/main/ofl/montserrat",
+   "author": "Copyright 2011 The Montserrat Project Authors (https://github.com/JulietaUla/Montserrat)",
+   "bytes": 744936,
+   "sha256": "0f7b311b2f3279e4eef9b2f968bcdbab6e28f4daeb1f049f4f278a902bcd82f7"
+  },
+  {
+   "id": "font/poppins-bold",
+   "kind": "font",
+   "category": "sans",
+   "tags": [
+    "geometric",
+    "captions",
+    "social",
+    "tiktok"
+   ],
+   "family": "Poppins",
+   "weights": [
+    700
+   ],
+   "variable": false,
+   "axes": {},
+   "scripts": [
+    "latin",
+    "latin-ext"
+   ],
+   "description": "rounded geometric bold: social captions",
+   "file": "fonts/Poppins-Bold.ttf",
+   "license": "OFL-1.1",
+   "license_file": "fonts/licenses/Poppins-Bold.txt",
+   "source": "https://github.com/google/fonts/tree/main/ofl/poppins",
+   "author": "Copyright 2020 The Poppins Project Authors (https://github.com/itfoundry/Poppins)",
+   "bytes": 155996,
+   "sha256": "983676516167748b74de6f4771fb384c664fd913acb8b471122ecacf5da5ea6c"
+  },
+  {
+   "id": "font/poppins-extrabold",
+   "kind": "font",
+   "category": "sans",
+   "tags": [
+    "geometric",
+    "captions",
+    "social",
+    "heavy"
+   ],
+   "family": "Poppins",
+   "weights": [
+    800
+   ],
+   "variable": false,
+   "axes": {},
+   "scripts": [
+    "latin",
+    "latin-ext"
+   ],
+   "description": "heavier Poppins for word-pop captions",
+   "file": "fonts/Poppins-ExtraBold.ttf",
+   "license": "OFL-1.1",
+   "license_file": "fonts/licenses/Poppins-ExtraBold.txt",
+   "source": "https://github.com/google/fonts/tree/main/ofl/poppins",
+   "author": "Copyright 2020 The Poppins Project Authors (https://github.com/itfoundry/Poppins)",
+   "bytes": 154836,
+   "sha256": "f2ab17c1a63a0ecc12c2461848fc8a469395e3cd2d641803e889c643d9f958e1"
+  },
+  {
+   "id": "font/playfair-display",
+   "kind": "font",
+   "category": "serif",
+   "tags": [
+    "serif",
+    "elegant",
+    "luxury",
+    "editorial",
+    "variable"
+   ],
+   "family": "Playfair Display",
+   "weights": [
+    400,
+    500,
+    600,
+    700,
+    800,
+    900
+   ],
+   "variable": true,
+   "axes": {
+    "wght": [
+     400,
+     900
+    ]
+   },
+   "scripts": [
+    "latin",
+    "latin-ext",
+    "cyrillic",
+    "vietnamese"
+   ],
+   "description": "high-contrast serif 400-900: luxury, editorial, beauty",
+   "file": "fonts/PlayfairDisplay-wght.ttf",
+   "license": "OFL-1.1",
+   "license_file": "fonts/licenses/PlayfairDisplay-wght.txt",
+   "source": "https://github.com/google/fonts/tree/main/ofl/playfairdisplay",
+   "author": "Copyright 2017 The Playfair Display Project Authors (https://github.com/clauseggers/Playfair-Display), with Reserved Font Name \"Playfair Display\".",
+   "bytes": 300724,
+   "sha256": "c40f2293766a503bc70cce9e512ef844a4ccb7cbcde792fe2ea31d191917d8d6"
+  },
+  {
+   "id": "font/dm-serif-display",
+   "kind": "font",
+   "category": "serif",
+   "tags": [
+    "serif",
+    "display",
+    "magazine",
+    "elegant"
+   ],
+   "family": "DM Serif Display",
+   "weights": [
+    400
+   ],
+   "variable": false,
+   "axes": {},
+   "scripts": [
+    "latin",
+    "latin-ext"
+   ],
+   "description": "display serif: magazine titles, quotes",
+   "file": "fonts/DMSerifDisplay-Regular.ttf",
+   "license": "OFL-1.1",
+   "license_file": "fonts/licenses/DMSerifDisplay-Regular.txt",
+   "source": "https://github.com/google/fonts/tree/main/ofl/dmserifdisplay",
+   "author": "Copyright 2014 - 2017 Adobe Systems Incorporated (http://www.adobe.com/), with Reserved Font Name 'Source'. Copyright 2019 Google LLC.",
+   "bytes": 76580,
+   "sha256": "8cc3643535edf039aa5d95440a8542735e9197e4f4b8d9303e980fefbf5ab616"
+  },
+  {
+   "id": "font/caveat",
+   "kind": "font",
+   "category": "hand",
+   "tags": [
+    "handwritten",
+    "casual",
+    "notes",
+    "variable"
+   ],
+   "family": "Caveat",
+   "weights": [
+    400,
+    500,
+    600,
+    700
+   ],
+   "variable": true,
+   "axes": {
+    "wght": [
+     400,
+     700
+    ]
+   },
+   "scripts": [
+    "latin",
+    "latin-ext",
+    "cyrillic"
+   ],
+   "description": "handwriting 400-700: notes, annotations, friendly captions",
+   "file": "fonts/Caveat-wght.ttf",
+   "license": "OFL-1.1",
+   "license_file": "fonts/licenses/Caveat-wght.txt",
+   "source": "https://github.com/google/fonts/tree/main/ofl/caveat",
+   "author": "Copyright 2014 The Caveat Project Authors (https://github.com/googlefonts/caveat)",
+   "bytes": 403648,
+   "sha256": "0bdb6b660482d31531b3945849fba5916b3ef8695da7024a9e6b9ee3c4157988"
+  },
+  {
+   "id": "font/permanent-marker",
+   "kind": "font",
+   "category": "hand",
+   "tags": [
+    "marker",
+    "handwritten",
+    "street",
+    "fun"
+   ],
+   "family": "Permanent Marker",
+   "weights": [
+    400
+   ],
+   "variable": false,
+   "axes": {},
+   "scripts": [
+    "latin"
+   ],
+   "description": "felt-tip marker: playful callouts, street style",
+   "file": "fonts/PermanentMarker-Regular.ttf",
+   "license": "Apache-2.0",
+   "license_file": "fonts/licenses/PermanentMarker-Regular.txt",
+   "source": "https://github.com/google/fonts/tree/main/apache/permanentmarker",
+   "author": "Copyright (c) 2010 by Font Diner, Inc. All rights reserved.",
+   "bytes": 74632,
+   "sha256": "28f82c8a7943cb8e9d599f8554da1d4fc75dbcf69b9885ad6c0611d20c6946c5"
+  },
+  {
+   "id": "font/luckiest-guy",
+   "kind": "font",
+   "category": "fun",
+   "tags": [
+    "cartoon",
+    "kids",
+    "fun",
+    "gaming",
+    "heavy"
+   ],
+   "family": "Luckiest Guy",
+   "weights": [
+    400
+   ],
+   "variable": false,
+   "axes": {},
+   "scripts": [
+    "latin",
+    "latin-ext"
+   ],
+   "description": "chunky cartoon caps: kids, gaming, meme captions",
+   "file": "fonts/LuckiestGuy-Regular.ttf",
+   "license": "Apache-2.0",
+   "license_file": "fonts/licenses/LuckiestGuy-Regular.txt",
+   "source": "https://github.com/google/fonts/tree/main/apache/luckiestguy",
+   "author": "Copyright (c) 2010 by Brian J. Bonislawsky DBA Astigmatic (AOETI). All rights reserved. Available under the Apache 2.0 licence.\rhttp://www.apache.org/licenses/LICENSE-2.0.html",
+   "bytes": 73320,
+   "sha256": "cfbdd68a039f92df51cf3721506af6242e64594c6325fe0bedbeff3fe385d980"
+  },
+  {
+   "id": "font/bangers",
+   "kind": "font",
+   "category": "fun",
+   "tags": [
+    "comic",
+    "caps",
+    "fun",
+    "action"
+   ],
+   "family": "Bangers",
+   "weights": [
+    400
+   ],
+   "variable": false,
+   "axes": {},
+   "scripts": [
+    "latin",
+    "latin-ext",
+    "vietnamese"
+   ],
+   "description": "comic-book caps: action words, POW moments",
+   "file": "fonts/Bangers-Regular.ttf",
+   "license": "OFL-1.1",
+   "license_file": "fonts/licenses/Bangers-Regular.txt",
+   "source": "https://github.com/google/fonts/tree/main/ofl/bangers",
+   "author": "Copyright 2010 The Bangers Project Authors (https://github.com/googlefonts/bangers)",
+   "bytes": 93148,
+   "sha256": "4160a7311de9342674cce9160cde9fcbb30f48190397d86ff1b70b455af65824"
+  },
+  {
+   "id": "font/jetbrains-mono",
+   "kind": "font",
+   "category": "mono",
+   "tags": [
+    "mono",
+    "code",
+    "tech",
+    "variable"
+   ],
+   "family": "JetBrains Mono",
+   "weights": [
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800
+   ],
+   "variable": true,
+   "axes": {
+    "wght": [
+     100,
+     800
+    ]
+   },
+   "scripts": [
+    "latin",
+    "latin-ext",
+    "cyrillic",
+    "greek",
+    "vietnamese"
+   ],
+   "description": "monospace 100-800: code, terminals, tech explainers",
+   "file": "fonts/JetBrainsMono-wght.ttf",
+   "license": "OFL-1.1",
+   "license_file": "fonts/licenses/JetBrainsMono-wght.txt",
+   "source": "https://github.com/google/fonts/tree/main/ofl/jetbrainsmono",
+   "author": "Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)",
+   "bytes": 187208,
+   "sha256": "48715a42ec242c21e9f02692891e147d022299a52e48d5e413e1a942193ffeda"
+  },
+  {
+   "id": "font/space-mono-bold",
+   "kind": "font",
+   "category": "mono",
+   "tags": [
+    "mono",
+    "retro",
+    "tech",
+    "display"
+   ],
+   "family": "Space Mono",
+   "weights": [
+    700
+   ],
+   "variable": false,
+   "axes": {},
+   "scripts": [
+    "latin",
+    "latin-ext",
+    "vietnamese"
+   ],
+   "description": "retro-futurist mono bold: tech titles, data",
+   "file": "fonts/SpaceMono-Bold.ttf",
+   "license": "OFL-1.1",
+   "license_file": "fonts/licenses/SpaceMono-Bold.txt",
+   "source": "https://github.com/google/fonts/tree/main/ofl/spacemono",
+   "author": "Copyright 2016 The Space Mono Project Authors (https://github.com/googlefonts/spacemono)",
+   "bytes": 98232,
+   "sha256": "405e73d41afb7e5906efce206a326af5c956f38e255f35421c260e861e599c59"
+  }
+ ]
+}

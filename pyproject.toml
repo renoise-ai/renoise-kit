@@ -41,7 +41,8 @@ build-backend = "setuptools.build_meta"
 packages = ["rn", "rn.fx"]
 
 [tool.setuptools.package-data]
-"rn" = ["ref_guide.md", "edit.schema.json"]
+"rn" = ["ref_guide.md", "edit.schema.json", "packs/catalog.json", "packs/LICENSES.md", "packs/sfx/*/*.ogg",
+        "packs/fonts/*.ttf", "packs/fonts/licenses/*.txt", "packs/icons/*"]
 "rn.fx" = ["fx.js"]
 
 [tool.setuptools.dynamic]

@@ -19,10 +19,28 @@ READY_TIMEOUT_MS = 30_000
 FRAME_TIMEOUT_MS = 20_000
 
 
+PACK_FONTS = 'https://rn.pack/fonts/'  # answered from rn/packs/fonts by a route, never fetched from the network
+
+
 def _init_script(fps: float, frames: int, width: int, height: int, shard: int) -> str:
     from .fx import js_path
-    meta = json.dumps({'fps': fps, 'frames': frames, 'width': width, 'height': height, 'shard': shard})
-    return f'window.RN = {meta};\n' + js_path().read_text(encoding='utf-8')
+    from .pack import font_faces
+    faces = [{'family': f['family'], 'url': PACK_FONTS + Path(f['file']).name, 'weight': f['weight']} for f in font_faces()]
+    meta = json.dumps({'fps': fps, 'frames': frames, 'width': width, 'height': height, 'shard': shard,
+                       'fonts': sorted({f['family'] for f in faces})})
+    # Every rn pack font is registered and loaded before the page's frames, so canvas text can use it at once.
+    fonts = ('window.rnPackFonts = Promise.all(' + json.dumps(faces) + '.map(f => { const face = new FontFace(f.family, '
+             '`url(${f.url})`, {weight: f.weight}); document.fonts.add(face); return face.load().catch(() => null); }));\n')
+    return f'window.RN = {meta};\n' + fonts + js_path().read_text(encoding='utf-8')
+
+
+def _serve_pack_font(route) -> None:
+    from .pack import font_dir
+    path = font_dir() / route.request.url.removeprefix(PACK_FONTS).split('?')[0]
+    if path.parent != font_dir() or not path.is_file():
+        route.fulfill(status=404)
+        return
+    route.fulfill(status=200, body=path.read_bytes(), headers={'Content-Type': 'font/ttf', 'Access-Control-Allow-Origin': '*'})
 
 
 def _shard(args: tuple) -> dict:
@@ -36,9 +54,10 @@ def _shard(args: tuple) -> dict:
         try:
             page = browser.new_page(viewport={'width': width, 'height': height}, device_scale_factor=scale)
             page.on('pageerror', lambda error: errors.append(str(error)))
+            page.route(PACK_FONTS + '**', _serve_pack_font)
             page.add_init_script(_init_script(fps, frames, width, height, shard))
             page.goto(url, wait_until='load', timeout=READY_TIMEOUT_MS)
-            page.evaluate('async () => { if (window.rnReady) await window.rnReady; await document.fonts.ready; }')
+            page.evaluate('async () => { await window.rnPackFonts; if (window.rnReady) await window.rnReady; await document.fonts.ready; }')
             if not page.evaluate('typeof window.renderFrame === "function"'):
                 raise RnError(f'{url}: the page does not define window.renderFrame(i)')
             for index in indices:

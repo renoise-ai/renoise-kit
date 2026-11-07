@@ -334,7 +334,14 @@ def _render_video(edit: Edit, slots: list[Path], work: Path, out: Path, span: tu
     if edit.subtitles:
         shutil.copyfile(edit.subtitles, work / f'subs{edit.subtitles.suffix.lower()}')
         style = f":force_style='{edit.subtitle_style}'" if edit.subtitle_style else ''
-        lines.append(f"{tail}subtitles=filename=subs{edit.subtitles.suffix.lower()}{style}[sub]")
+        # rn pack fonts (Anton, Bebas Neue, ...) by family name, besides the system's: libass adds fontsdir to fontconfig.
+        from .pack import font_dir
+        if not (work / 'packfonts').exists():
+            try:
+                (work / 'packfonts').symlink_to(font_dir(), target_is_directory=True)
+            except OSError:  # Windows without symlink rights
+                shutil.copytree(font_dir(), work / 'packfonts', dirs_exist_ok=True)
+        lines.append(f"{tail}subtitles=filename=subs{edit.subtitles.suffix.lower()}:fontsdir=packfonts{style}[sub]")
         tail = '[sub]'
     lines.append(f'{tail}format=yuv420p,{audio_mod.BT709},trim=start_frame={span[0]}:end_frame={span[1]},setpts=N/({edit.fps}*TB)[out]')
     run(['ffmpeg', *inputs, '-filter_complex', ';'.join(lines), '-map', '[out]', *audio_mod.VIDEO_ENCODE, *audio_mod.CFR_VUI,
