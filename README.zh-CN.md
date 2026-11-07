@@ -175,6 +175,7 @@ EOF
 |---|---|
 | `rn edit EDL ids\|set\|split\|delete\|insert\|move\|upgrade` | 按 clip id 修改 EDL，每一步都先校验整条时间线，通过了才写入文件 |
 | `rn edit EDL batch ["OP ..." ...]` | 把多步修改合成一次：步骤写在参数里，或从 stdin 每行一步；全部通过才写入，有一步失败就不写 |
+| `rn edit EDL hits SFX --at cuts\|beats\|T1,T2,..` | 把同一个音效放到多个点上，每个点一条音频项：主轨的每个剪点（按片段 id 锚定，之后改剪辑会跟着走）、`rn listen --json` 结果的每个拍点，或给定秒数。可加 `--offset`、`--pivot`（让 whoosh 的峰值落在点上）、`--gain`、`--every N`。音效可以用 `rn assets get` 下载 |
 | `rn assemble EDL -o OUT [--preview] [--range A-B] [--placeholders]` | 帧精确地渲染 EDL；`--placeholders` 会把还没生成的镜头渲染成带说明的卡片 |
 
 **验与交付**

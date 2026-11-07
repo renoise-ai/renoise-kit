@@ -54,6 +54,26 @@ def _edit_ops(ops) -> None:
         op.add_argument('--before', metavar='ID')
         op.add_argument('--after', metavar='ID')
         op.add_argument('--track', metavar='N|audio', help='append to track N (one past the last adds a track) or to audio')
+    hits_text = 'one sound effect at many points: every cut, every (Nth) beat, or given seconds (audio items, role sfx)'
+    op_hits = ops.add_parser(
+        'hits', help=hits_text, description=f'{hits_text[0].upper()}{hits_text[1:]}.\n'
+        'Cuts are the start of every main-track clip but the first (with a transition, where it begins), written as\n'
+        '{"clip": "<id>"} (or {"clip": i} for a clip without an id), so the items follow later edits; beats are\n'
+        '{"beat": n, "listen": LISTEN.json}; given seconds stay where they are. A point before 0 s or past the end of\n'
+        'the main track is not placed and is listed. Beat times are the analysed file\'s: when the music starts later in\n'
+        'the edit, add its start to --offset. The sound can come from rn assets get <id> -o assets/.',
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    op_hits.add_argument('sfx', metavar='SFX_FILE', help='the sound, relative to the current folder (or to the EDL)')
+    op_hits.add_argument('--at', required=True, metavar='cuts|beats|T1,T2,..',
+                         help='main-track cuts, the beats of --listen, or timeline seconds')
+    op_hits.add_argument('--listen', metavar='LISTEN.json', help='rn listen MUSIC --json LISTEN.json, for --at beats')
+    op_hits.add_argument('--offset', type=float, default=0.0, metavar='S',
+                         help='seconds added to every point (negative: earlier); kept in the anchor')
+    op_hits.add_argument('--pivot', type=float, metavar='S',
+                         help='the second of the sound that lands on each point, e.g. a whoosh\'s peak ("pivot")')
+    op_hits.add_argument('--gain', type=float, metavar='DB', help='"gain_db" of every item')
+    op_hits.add_argument('--every', type=int, default=1, metavar='N', help='only the 1st, (N+1)th, (2N+1)th, ... point')
+    op_hits.add_argument('--id-prefix', default='sfx', metavar='P', help='item ids P1, P2, ... skipping ids already used (default sfx)')
 
 
 def _crop(text: str) -> tuple[int, int, int, int]:
@@ -342,6 +362,10 @@ def _parser() -> argparse.ArgumentParser:
                '  rn edit e.json delete c4 --lift\n'
                '  rn edit e.json insert --after c2 --clip \'{"id": "c9", "src": "s9.mp4", "out": 2}\'\n'
                '  rn edit e.json move t1 --track 2\n'
+               'One sound at many points (audio items anchored to each cut or beat; the file can come from rn assets get):\n'
+               '  rn edit e.json hits assets/whoosh.wav --at cuts --pivot 0.18 --gain -6   # its peak on every cut\n'
+               '  rn edit e.json hits hit.wav --at beats --listen music.json --every 4 --offset 2.0   # music starts at 2 s\n'
+               '  rn edit e.json hits boom.wav --at 1.5,4.25 --id-prefix boom\n'
                'Several changes in one call, checked step by step and written once (a failing step writes nothing):\n'
                '  rn edit e.json batch \'set c2 transition.type=dissolve transition.duration=0.25\' \'set c1 out=3.2\'\n'
                "  rn edit e.json batch <<'EOF'   # one operation per line\n"
@@ -489,6 +513,9 @@ def _edit_step(path: Path, args) -> dict:
         return editops.delete_op(path, args.ref, args.lift)
     if args.op == 'insert':
         return editops.insert_op(path, args.clip, args.before, args.after, args.track)
+    if args.op == 'hits':
+        return editops.hits_op(path, args.sfx, args.at, listen=args.listen, offset=args.offset, pivot=args.pivot, gain=args.gain,
+                               every=args.every, prefix=args.id_prefix)
     return editops.move_op(path, args.ref, args.before, args.after, args.track)
 
 

@@ -2,6 +2,7 @@
 whole edit out again (as rn assemble --dry-run would) and only then written back, so a bad step never lands.
 
 `rn edit EDL batch` runs several operations as one and writes the file once, only if every step passes.
+`rn edit EDL hits` places one sound effect at many points (cuts, beats, given seconds) as audio items.
 
 The main track always plays back to back, so removing or trimming a clip there ripples everything after it; overlays and
 audio anchored by clip id ({"clip": "id"}) follow, ones placed at fixed seconds do not.
@@ -13,8 +14,8 @@ import os
 from fractions import Fraction
 from pathlib import Path
 
-from .edl import Clip, load, upgrade
-from .ff import RnError
+from .edl import ID, Clip, load, upgrade
+from .ff import RnError, probe
 
 
 def _read(path: Path) -> dict:
@@ -246,6 +247,118 @@ def upgrade_op(path: Path) -> dict:
     return {'op': 'upgrade', 'timeline': _write_checked(path, upgrade(raw))}
 
 
+def _edl_relative(path: Path, given: str, flag: str) -> str:
+    """A file named on the command line (relative to the current folder) as the edit refers to it: relative to the
+    EDL's folder. A path that exists only relative to the EDL is kept as given."""
+    here = Path(given).expanduser()
+    if here.is_file():
+        try:
+            return Path(os.path.relpath(os.path.abspath(here), os.path.abspath(path.parent))).as_posix()
+        except ValueError:  # another drive (Windows)
+            return Path(os.path.abspath(here)).as_posix()
+    if (path.parent / here).is_file():
+        return here.as_posix()
+    raise RnError(f'{flag}{given}: no such file (relative to the current folder or to {path.name})')
+
+
+def _beat_times(path: Path, listen: str) -> tuple[list[float], bool]:
+    try:
+        data = json.loads((path.parent / listen).read_text(encoding='utf-8-sig'))
+    except json.JSONDecodeError as error:
+        raise RnError(f'--listen {listen}: not JSON ({error}); write it with rn listen --json') from None
+    beats = data.get('beats') if isinstance(data, dict) else None
+    times = beats.get('times') if isinstance(beats, dict) else None
+    if not times:
+        raise RnError(f'--listen {listen}: no beats.times (rn listen MUSIC --json {Path(listen).name} writes them)')
+    if not isinstance(times, list) or not all(isinstance(t, (int, float)) and not isinstance(t, bool) for t in times):
+        raise RnError(f'--listen {listen}: beats.times is not a list of seconds')
+    return [float(t) for t in times], bool(beats.get('clear', True))
+
+
+def hits_op(path: Path, sfx: str, at: str, *, listen: str | None = None, offset: float = 0.0, pivot: float | None = None,
+            gain: float | None = None, every: int = 1, prefix: str = 'sfx') -> dict:
+    """One sound effect as an audio item (role sfx) at each hit point: every main-track cut (each clip's start but the
+    first's), every beat of a rn listen result, or given seconds; --every N keeps the 1st, (N+1)th, ... of them.
+    Cuts and beats are written as anchors ({"clip": id}, or {"clip": i} for a clip without an id; {"beat": n, "listen":
+    f}), so the items follow later edits; given seconds stay put. offset moves every hit point (negative: earlier) and
+    goes into the anchor; pivot puts that second of the sound (a whoosh's peak) on the point. A point before 0 s or at or
+    after the end of the main track is not placed and is listed under "skipped"."""
+    if every < 1:
+        raise RnError('--every: 1 or more')
+    if not ID.match(f'{prefix}1'):
+        raise RnError(f'--id-prefix {prefix}: letters, digits, "_", "-" and "." (starting with a letter or digit)')
+    raw = _read(path)
+    src = _edl_relative(path, sfx, '')
+    edit = load(path)
+    info = probe(path.parent / src)
+    if not info['audio']:
+        raise RnError(f'{sfx}: has no audio stream')
+    if pivot is not None:
+        length = info['audio']['duration'] or info['duration'] or 0
+        if not 0 <= pivot < length:
+            raise RnError(f'--pivot {pivot}: a second inside {Path(src).name} (0..{length:.3f})')
+    if at == 'beats' and listen is None:
+        raise RnError('--at beats needs --listen LISTEN.json (a rn listen --json result)')
+    if at != 'beats' and listen is not None:
+        raise RnError('--listen goes with --at beats')
+    warnings, points = [], []  # points: (label, anchor or None for plain seconds, seconds)
+    if at == 'cuts':
+        for i, clip in enumerate(edit.base[1:], 1):
+            points.append((clip.id or f'clip {i}', {'clip': clip.id or i}, float(clip.timeline_start / edit.fps)))
+        if not points:
+            raise RnError('--at cuts: the main track has one clip, so no cuts')
+    elif at == 'beats':
+        listen = _edl_relative(path, listen, '--listen ')
+        times, clear = _beat_times(path, listen)
+        if not clear:
+            warnings.append(f'{Path(listen).name}: no clear pulse (beats.clear is false)')
+        points = [(f'beat {n}', {'beat': n, 'listen': listen}, t) for n, t in enumerate(times)]
+    else:
+        try:
+            given = [float(part) for part in at.split(',') if part.strip()]
+        except ValueError:
+            raise RnError(f'--at {at}: cuts, beats, or seconds like 1.2,3.5') from None
+        if not given or any(t < 0 for t in given):
+            raise RnError(f'--at {at}: cuts, beats, or seconds >= 0 like 1.2,3.5')
+        points = [(f'{t:g}s', None, t) for t in given]
+    if any(isinstance(anchor, dict) and isinstance(anchor.get('clip'), int) for _, anchor, _ in points[::every]):
+        warnings.append('clips without an id are anchored by index ({"clip": i}), which points at another clip once one is '
+                        'added or removed before it; rn edit EDL ids gives every clip one')
+
+    taken = _all_ids(raw) | {c.id for c in edit.base + edit.overlays if c.id}
+    n, items, placed, skipped = 1, [], [], []
+    for label, anchor, seconds in points[::every]:
+        point = seconds + offset
+        if not 0 <= point < edit.duration:
+            where = 'before 0 s' if point < 0 else f'at or after the end of the main track ({edit.duration:.3f}s)'
+            skipped.append({'hit': label, 'time': round(point, 4), 'reason': where})
+            continue
+        while f'{prefix}{n}' in taken:
+            n += 1
+        ident = f'{prefix}{n}'
+        taken.add(ident)
+        if anchor is None:
+            position = round(point, 6)
+        else:
+            position = {**anchor, 'offset': offset} if offset else anchor
+        item = {'id': ident, 'src': src, 'role': 'sfx', 'at': position}
+        if pivot is not None:
+            item['pivot'] = pivot
+        if gain is not None:
+            item['gain_db'] = gain
+        items.append(item)
+        placed.append({'id': ident, 'hit': label, 'time': round(point, 4)})
+    if not items:
+        raise RnError(f'no hit lands inside the main track (0..{edit.duration:.3f}s): '
+                      + ', '.join(f'{s["hit"]} at {s["time"]}s' for s in skipped[:8]) + ('...' if len(skipped) > 8 else ''))
+    audio = raw.get('audio') or []
+    audio.extend(items)
+    raw['audio'] = audio
+    summary = _write_checked(path, raw)
+    return {'op': 'hits', 'src': src, 'at': at if at in ('cuts', 'beats') else 'times', 'added': [p['id'] for p in placed],
+            'hits': placed, 'skipped': skipped, 'warnings': warnings, 'timeline': summary}
+
+
 def batch_op(path: Path, steps: list[str], apply) -> dict:
     """Several operations as one: each is applied and checked in turn on a working copy next to the EDL (so relative
     paths resolve the same), which replaces the EDL only after the last step passes. A failing step writes nothing.
@@ -277,9 +390,21 @@ def summary_lines(result: dict) -> list[str]:
             'delete': lambda r: f'deleted {r["clip"]}' + (' (lifted: gap kept)' if r['lift'] else ''),
             'insert': lambda r: f'inserted {r["clip"] or "clip"}',
             'move': lambda r: f'moved {r["clip"]}',
+            'hits': lambda r: f'added {len(r["added"])} x {Path(r["src"]).name} at {r["at"]}: '
+                              + (r['added'][0] if len(r['added']) == 1 else f'{r["added"][0]}..{r["added"][-1]}'),
             'batch': lambda r: f'{len(r["steps"])} steps: ' + '; '.join(r['steps'])}[result['op']](result)
     out = result['timeline']['output']
-    lines = [head, f'timeline {out["width"]}x{out["height"]} {out["fps"]}fps  {out["frames"]} frames  {out["duration"]}s']
+    lines = [head]
+    if result['op'] == 'hits':
+        def listed(entries: list[str]) -> str:
+            return ', '.join(entries[:24]) + (f', ... ({len(entries)} in all; --json lists each)' if len(entries) > 24 else '')
+        lines.append('  hits at ' + listed([f'{h["time"]:g}' for h in result['hits']]) + ' s')
+        skipped = result['skipped']
+        if skipped:
+            reasons = '; '.join(dict.fromkeys(s['reason'] for s in skipped))
+            lines.append(f'  not placed, {reasons}: ' + listed([f'{s["hit"]} ({s["time"]:g}s)' for s in skipped]))
+        lines += [f'warning: {w}' for w in result['warnings']]
+    lines.append(f'timeline {out["width"]}x{out["height"]} {out["fps"]}fps  {out["frames"]} frames  {out["duration"]}s')
     lines += [f'  {c["id"] or c["where"]}: frames {c["start_frame"]}..{c["start_frame"] + c["frames"] - 1}' for c in result['timeline']['base']]
     lines += [f'  {c["id"] or c["where"]}: overlay frames {c["start_frame"]}..{c["start_frame"] + c["frames"] - 1}'
               for c in result['timeline']['overlays']]

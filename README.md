@@ -189,6 +189,7 @@ EOF
 |---|---|
 | `rn edit EDL ids\|set\|split\|delete\|insert\|move\|upgrade` | Changes an EDL by clip id. Each step is checked against the whole timeline before the file is written |
 | `rn edit EDL batch ["OP ..." ...]` | Several of those operations as one, from arguments or one per line on stdin; written once, nothing on a failure |
+| `rn edit EDL hits SFX --at cuts\|beats\|T1,T2,..` | One sound effect as an audio item at many points: every main-track cut (anchored to the clip's id, so it follows later edits), every beat of an `rn listen --json` result, or given seconds. `--offset`, `--pivot` (the whoosh's peak on the point), `--gain`, `--every N`. The sound can come from `rn assets get` |
 | `rn assemble EDL -o OUT [--preview] [--range A-B] [--placeholders]` | Renders the EDL frame-exactly. `--placeholders` turns missing shots into labelled cards |
 
 **Check and deliver**
