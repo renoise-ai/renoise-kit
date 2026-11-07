@@ -41,7 +41,7 @@ build-backend = "setuptools.build_meta"
 packages = ["rn", "rn.fx"]
 
 [tool.setuptools.package-data]
-"rn" = ["ref_guide.md", "edit.schema.json"]
+"rn" = ["ref_guide.md", "edit.schema.json", "templates/*.html"]
 "rn.fx" = ["fx.js"]
 
 [tool.setuptools.dynamic]

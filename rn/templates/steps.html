@@ -1,0 +1,94 @@
+<!doctype html><meta charset="utf-8"><style>html,body{margin:0;background:transparent;overflow:hidden}</style>
+<canvas id="c"></canvas>
+<script type="application/json" id="rn-template">{
+ "what": "step bar: numbered dots joined by a line; the line fills and each step lights up in turn",
+ "params": {
+  "in": {
+   "default": 0.6,
+   "doc": "seconds of the entrance"
+  },
+  "out": {
+   "default": 0.3,
+   "doc": "fade-out seconds at the end (0: stays)"
+  },
+  "steps": {
+   "default": [
+    "Upload",
+    "Generate",
+    "Edit",
+    "Post"
+   ],
+   "doc": "step labels, left to right"
+  },
+  "active": {
+   "default": "auto",
+   "doc": "auto: advance evenly over the clip; a number: that step (0-based) stays lit"
+  },
+  "color": {
+   "default": "#ffffff",
+   "doc": "labels and reached dots"
+  },
+  "accent": {
+   "default": "#ffe000",
+   "doc": "progress line and the current step"
+  },
+  "dim": {
+   "default": "rgba(255,255,255,0.35)",
+   "doc": "steps not reached yet"
+  },
+  "y": {
+   "default": 0.84,
+   "doc": "line height, share of the frame height"
+  },
+  "margin": {
+   "default": 0.1,
+   "doc": "left/right margin, share of the frame width"
+  },
+  "size": {
+   "default": 0.034,
+   "doc": "label font size, share of the frame width"
+  },
+  "font": {
+   "default": "Inter, 'Noto Sans', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif",
+   "doc": "CSS font family list"
+  },
+  "font_file": {
+   "default": "",
+   "doc": "a .ttf/.otf/.woff2 to use first (rn template render resolves the path)"
+  }
+ }
+}</script>
+<script>
+const SPEC = JSON.parse(document.getElementById('rn-template').textContent);
+const P = Object.assign(Object.fromEntries(Object.entries(SPEC.params).map(([k, v]) => [k, v.default])), RN.params || {});
+const c = document.getElementById('c'); c.width = RN.width; c.height = RN.height; const x = c.getContext('2d');
+const W = RN.width, H = RN.height, FPS = RN.fps, T = RN.frames / RN.fps, E = RNFX.ease;
+// Font hook: font_file (a URL; rn template render passes a file:// URI) is loaded and put first in the family list.
+const FONT = (P.font_file ? "'rn-font', " : '') + P.font;
+const fontReady = P.font_file ? new FontFace('rn-font', `url("${P.font_file}")`).load().then((f) => { document.fonts.add(f); }) : Promise.resolve();
+window.rnReady = fontReady;
+const n = P.steps.length, px = Math.round(P.size * W), r = px * 0.55, Y = P.y * H, X0 = P.margin * W, X1 = W - P.margin * W;
+const at = (k) => (n === 1 ? (X0 + X1) / 2 : X0 + (X1 - X0) * k / (n - 1));
+window.renderFrame = (i) => {
+  const t = i / FPS;
+  x.clearRect(0, 0, W, H);
+  const fade = P.out > 0 ? 1 - E('in2', (t - (T - P.out)) / P.out) : 1, enter = E('out3', t / P.in);
+  const span = Math.max(0.001, T - P.in - P.out);
+  // pos: a continuous step position; the progress line runs to it.
+  const pos = P.active === 'auto' ? Math.min(n - 1, Math.max(0, ((t - P.in) / span) * n - 0.5)) : Number(P.active);
+  x.globalAlpha = Math.max(0, fade * enter);
+  x.lineWidth = Math.max(3, px * 0.14); x.lineCap = 'round';
+  x.strokeStyle = P.dim; x.beginPath(); x.moveTo(X0, Y); x.lineTo(X0 + (X1 - X0) * enter, Y); x.stroke();
+  x.strokeStyle = P.accent; x.beginPath(); x.moveTo(X0, Y); x.lineTo(n === 1 ? X0 : X0 + (X1 - X0) * pos / (n - 1), Y); x.stroke();
+  P.steps.forEach((label, k) => {
+    const current = Math.round(pos) === k, reached = k <= pos + 1e-6;
+    x.fillStyle = current ? P.accent : reached ? P.color : P.dim;
+    x.beginPath(); x.arc(at(k), Y, Math.max(0, r * (current ? 1.25 : 1) * E('outBack', (t - k * 0.08) / 0.4)), 0, Math.PI * 2); x.fill();
+    x.fillStyle = 'rgba(0,0,0,0.75)'; x.font = `800 ${Math.round(px * 0.6)}px ${FONT}`;
+    x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(String(k + 1), at(k), Y + px * 0.03);
+    x.fillStyle = reached ? P.color : P.dim; x.font = `${current ? 800 : 600} ${px}px ${FONT}`;
+    x.textBaseline = 'top'; x.fillText(label, at(k), Y + r * 1.6);
+  });
+  x.globalAlpha = 1; x.textAlign = 'start';
+};
+</script>

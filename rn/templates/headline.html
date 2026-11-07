@@ -1,0 +1,76 @@
+<!doctype html><meta charset="utf-8"><style>html,body{margin:0;background:transparent;overflow:hidden}</style>
+<canvas id="c"></canvas>
+<script type="application/json" id="rn-template">{
+ "what": "kinetic headline: words rise in one after another, accent on chosen words, fades out at the end",
+ "params": {
+  "text": {"default": "Make every frame count", "doc": "the headline; wraps to max_width"},
+  "highlight": {"default": "", "doc": "words drawn in the accent colour, comma-separated (case-insensitive)"},
+  "color": {"default": "#ffffff", "doc": "text colour"},
+  "accent": {"default": "#ffe000", "doc": "colour of the highlighted words"},
+  "size": {"default": 0.09, "doc": "font size as a share of the frame width"},
+  "y": {"default": 0.5, "doc": "vertical centre of the block, share of the frame height"},
+  "max_width": {"default": 0.86, "doc": "line width, share of the frame width"},
+  "weight": {"default": 800, "doc": "CSS font weight"},
+  "upper": {"default": false, "doc": "all caps"},
+  "shadow": {"default": true, "doc": "soft drop shadow for legibility over footage"},
+  "stagger": {"default": 0.08, "doc": "seconds between words"},
+  "in": {"default": 0.45, "doc": "seconds each word takes to land"},
+  "out": {"default": 0.3, "doc": "fade-out seconds at the end (0: none)"},
+  "font": {"default": "Inter, 'Noto Sans', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif", "doc": "CSS font family list"},
+  "font_file": {"default": "", "doc": "a .ttf/.otf/.woff2 to use first (rn template render resolves the path)"}
+ }}</script>
+<script>
+const SPEC = JSON.parse(document.getElementById('rn-template').textContent);
+const P = Object.assign(Object.fromEntries(Object.entries(SPEC.params).map(([k, v]) => [k, v.default])), RN.params || {});
+const c = document.getElementById('c'); c.width = RN.width; c.height = RN.height; const x = c.getContext('2d');
+const W = RN.width, H = RN.height, FPS = RN.fps, T = RN.frames / RN.fps, E = RNFX.ease;
+// Font hook: font_file (a URL; rn template render passes a file:// URI) is loaded and put first in the family list.
+const FONT = (P.font_file ? "'rn-font', " : '') + P.font;
+const fontReady = P.font_file ? new FontFace('rn-font', `url("${P.font_file}")`).load().then((f) => { document.fonts.add(f); }) : Promise.resolve();
+
+const px = Math.round(P.size * W), lineH = px * 1.15;
+let lines, gap, topY;
+const marks = new Set(String(P.highlight).toLowerCase().split(',').map((s) => s.trim()).filter(Boolean));
+function setup() {
+x.font = `${P.weight} ${px}px ${FONT}`;
+const text = P.upper ? String(P.text).toUpperCase() : String(P.text);
+// Words: split on spaces; CJK text without spaces is laid out per character.
+const words = /\s/.test(text.trim()) ? text.trim().split(/\s+/) : [...text.trim()];
+gap = /\s/.test(text.trim()) ? x.measureText(' ').width : 0;
+lines = [[]];
+let used = 0;
+for (const w of words) {
+  const width = x.measureText(w).width;
+  if (lines[lines.length - 1].length && used + gap + width > P.max_width * W) { lines.push([]); used = 0; }
+  const line = lines[lines.length - 1];
+  used += (line.length ? gap : 0) + width;
+  line.push({ w, width });
+}
+topY = P.y * H - (lines.length * lineH) / 2;
+}
+window.rnReady = fontReady.then(setup);
+
+window.renderFrame = (i) => {
+  const t = i / FPS;
+  x.clearRect(0, 0, W, H);
+  const exit = P.out > 0 ? E('in2', (t - (T - P.out)) / P.out) : 0;
+  x.font = `${P.weight} ${px}px ${FONT}`;
+  x.textBaseline = 'middle';
+  if (P.shadow) { x.shadowColor = 'rgba(0,0,0,0.55)'; x.shadowBlur = px * 0.18; x.shadowOffsetY = px * 0.05; }
+  let k = 0;
+  lines.forEach((line, row) => {
+    const total = line.reduce((s, w) => s + w.width, 0) + gap * (line.length - 1);
+    let cx = (W - total) / 2;
+    const cy = topY + lineH * (row + 0.5);
+    for (const word of line) {
+      const p = E('outBack', (t - k * P.stagger) / P.in), a = E('out2', (t - k * P.stagger) / (P.in * 0.6));
+      x.globalAlpha = Math.max(0, a * (1 - exit));
+      x.fillStyle = marks.has(word.w.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')) || marks.has(word.w.toLowerCase()) ? P.accent : P.color;
+      x.fillText(word.w, cx, cy + (1 - p) * px * 0.6);
+      cx += word.width + gap;
+      k += 1;
+    }
+  });
+  x.globalAlpha = 1;
+};
+</script>

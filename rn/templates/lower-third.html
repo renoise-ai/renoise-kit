@@ -1,0 +1,55 @@
+<!doctype html><meta charset="utf-8"><style>html,body{margin:0;background:transparent;overflow:hidden}</style>
+<canvas id="c"></canvas>
+<script type="application/json" id="rn-template">{
+ "what": "lower third: an accent bar grows, a panel wipes open behind a name and a title line, then closes",
+ "params": {
+  "name": {"default": "Ada Lovelace", "doc": "first line, bold"},
+  "title": {"default": "Founder, Analytical Engines", "doc": "second line (empty: none)"},
+  "color": {"default": "#ffffff", "doc": "text colour"},
+  "accent": {"default": "#ff3b30", "doc": "bar colour"},
+  "panel": {"default": "rgba(0,0,0,0.62)", "doc": "panel colour (any CSS colour; transparent for none)"},
+  "x": {"default": 0.06, "doc": "left edge, share of the frame width"},
+  "y": {"default": 0.76, "doc": "top edge, share of the frame height"},
+  "size": {"default": 0.055, "doc": "name font size, share of the frame width (title is 0.62 of it)"},
+  "in": {"default": 0.6, "doc": "seconds to open"},
+  "out": {"default": 0.35, "doc": "seconds to close at the end (0: stays)"},
+  "font": {"default": "Inter, 'Noto Sans', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif", "doc": "CSS font family list"},
+  "font_file": {"default": "", "doc": "a .ttf/.otf/.woff2 to use first (rn template render resolves the path)"}
+ }}</script>
+<script>
+const SPEC = JSON.parse(document.getElementById('rn-template').textContent);
+const P = Object.assign(Object.fromEntries(Object.entries(SPEC.params).map(([k, v]) => [k, v.default])), RN.params || {});
+const c = document.getElementById('c'); c.width = RN.width; c.height = RN.height; const x = c.getContext('2d');
+const W = RN.width, H = RN.height, FPS = RN.fps, T = RN.frames / RN.fps, E = RNFX.ease;
+// Font hook: font_file (a URL; rn template render passes a file:// URI) is loaded and put first in the family list.
+const FONT = (P.font_file ? "'rn-font', " : '') + P.font;
+const fontReady = P.font_file ? new FontFace('rn-font', `url("${P.font_file}")`).load().then((f) => { document.fonts.add(f); }) : Promise.resolve();
+
+const nameSize = Math.round(P.size * W), titleSize = Math.round(nameSize * 0.62), pad = nameSize * 0.45, bar = Math.max(4, nameSize * 0.14);
+let boxW, boxH;
+function setup() {
+x.font = `800 ${nameSize}px ${FONT}`; const nameW = x.measureText(P.name).width;
+x.font = `500 ${titleSize}px ${FONT}`; const titleW = P.title ? x.measureText(P.title).width : 0;
+boxW = Math.max(nameW, titleW) + pad * 2; boxH = pad * 1.6 + nameSize + (P.title ? titleSize * 1.35 : 0);
+}
+window.rnReady = fontReady.then(setup);
+const X = P.x * W, Y = P.y * H;
+
+window.renderFrame = (i) => {
+  const t = i / FPS;
+  x.clearRect(0, 0, W, H);
+  const close = P.out > 0 ? E('inout2', (t - (T - P.out)) / P.out) : 0;
+  const barP = E('out3', t / (P.in * 0.45)) * (1 - close), wipe = E('out3', (t - P.in * 0.25) / (P.in * 0.75)) * (1 - close);
+  x.fillStyle = P.accent;
+  x.fillRect(X, Y + boxH * (1 - barP), bar, boxH * barP);
+  if (wipe <= 0) return;
+  x.save();
+  x.beginPath(); x.rect(X + bar, Y, boxW * wipe, boxH); x.clip();
+  x.fillStyle = P.panel; x.fillRect(X + bar, Y, boxW, boxH);
+  x.fillStyle = P.color; x.textBaseline = 'top';
+  const slide = (1 - wipe) * -boxW * 0.25;
+  x.font = `800 ${nameSize}px ${FONT}`; x.fillText(P.name, X + bar + pad + slide, Y + pad * 0.8);
+  if (P.title) { x.globalAlpha = 0.85; x.font = `500 ${titleSize}px ${FONT}`; x.fillText(P.title, X + bar + pad + slide, Y + pad * 0.8 + nameSize * 1.2); }
+  x.restore();
+};
+</script>

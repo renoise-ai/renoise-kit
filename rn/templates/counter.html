@@ -1,0 +1,112 @@
+<!doctype html><meta charset="utf-8"><style>html,body{margin:0;background:transparent;overflow:hidden}</style>
+<canvas id="c"></canvas>
+<script type="application/json" id="rn-template">{
+ "what": "stat reveal: a number counts up to its value with a punch at the end, a label fades in under it",
+ "params": {
+  "in": {
+   "default": 0.6,
+   "doc": "seconds of the entrance"
+  },
+  "out": {
+   "default": 0.3,
+   "doc": "fade-out seconds at the end (0: stays)"
+  },
+  "from": {
+   "default": 0,
+   "doc": "start value"
+  },
+  "to": {
+   "default": 12000,
+   "doc": "end value"
+  },
+  "decimals": {
+   "default": 0,
+   "doc": "digits after the point"
+  },
+  "prefix": {
+   "default": "",
+   "doc": "before the number, e.g. $"
+  },
+  "suffix": {
+   "default": "+",
+   "doc": "after the number, e.g. %"
+  },
+  "separator": {
+   "default": ",",
+   "doc": "thousands separator ('' for none)"
+  },
+  "label": {
+   "default": "creators this month",
+   "doc": "line under the number ('' for none)"
+  },
+  "count": {
+   "default": 1.2,
+   "doc": "seconds the count takes"
+  },
+  "color": {
+   "default": "#ffffff",
+   "doc": "label colour"
+  },
+  "accent": {
+   "default": "#ffe000",
+   "doc": "number colour"
+  },
+  "size": {
+   "default": 0.18,
+   "doc": "number font size, share of the frame width"
+  },
+  "x": {
+   "default": 0.5,
+   "doc": "centre, share of the frame width"
+  },
+  "y": {
+   "default": 0.45,
+   "doc": "number centre, share of the frame height"
+  },
+  "font": {
+   "default": "Inter, 'Noto Sans', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif",
+   "doc": "CSS font family list"
+  },
+  "font_file": {
+   "default": "",
+   "doc": "a .ttf/.otf/.woff2 to use first (rn template render resolves the path)"
+  }
+ }
+}</script>
+<script>
+const SPEC = JSON.parse(document.getElementById('rn-template').textContent);
+const P = Object.assign(Object.fromEntries(Object.entries(SPEC.params).map(([k, v]) => [k, v.default])), RN.params || {});
+const c = document.getElementById('c'); c.width = RN.width; c.height = RN.height; const x = c.getContext('2d');
+const W = RN.width, H = RN.height, FPS = RN.fps, T = RN.frames / RN.fps, E = RNFX.ease;
+// Font hook: font_file (a URL; rn template render passes a file:// URI) is loaded and put first in the family list.
+const FONT = (P.font_file ? "'rn-font', " : '') + P.font;
+const fontReady = P.font_file ? new FontFace('rn-font', `url("${P.font_file}")`).load().then((f) => { document.fonts.add(f); }) : Promise.resolve();
+window.rnReady = fontReady;
+const px = Math.round(P.size * W);
+const fmt = (v) => {
+  const [int, dec] = Math.abs(v).toFixed(P.decimals).split('.');
+  const grouped = P.separator ? int.replace(/\B(?=(\d{3})+(?!\d))/g, P.separator) : int;
+  return (v < 0 ? '-' : '') + P.prefix + grouped + (dec ? '.' + dec : '') + P.suffix;
+};
+window.renderFrame = (i) => {
+  const t = i / FPS;
+  x.clearRect(0, 0, W, H);
+  const fade = P.out > 0 ? 1 - E('in2', (t - (T - P.out)) / P.out) : 1;
+  const enter = E('out3', t / (P.in * 0.5)), p = E('out3', t / P.count);
+  const s = RNFX.punch(t, { at: P.count, amount: 0.08, decay: 0.3 }) * (0.85 + 0.15 * enter);
+  x.save(); x.globalAlpha = Math.max(0, enter * fade);
+  x.translate(P.x * W, P.y * H); x.scale(s, s);
+  x.shadowColor = 'rgba(0,0,0,0.5)'; x.shadowBlur = px * 0.12; x.shadowOffsetY = px * 0.03;
+  x.font = `900 ${px}px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = P.accent;
+  x.fillText(fmt(P.from + (P.to - P.from) * p), 0, 0);
+  x.restore();
+  if (P.label) {
+    const la = E('out2', (t - P.count * 0.6) / 0.4);
+    x.save(); x.globalAlpha = Math.max(0, la * fade);
+    x.shadowColor = 'rgba(0,0,0,0.5)'; x.shadowBlur = px * 0.06;
+    x.font = `600 ${Math.round(px * 0.28)}px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'top'; x.fillStyle = P.color;
+    x.fillText(P.label, P.x * W, P.y * H + px * 0.62 + (1 - la) * px * 0.15);
+    x.restore();
+  }
+};
+</script>
