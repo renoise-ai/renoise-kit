@@ -8,7 +8,7 @@ from conftest import ffmpeg, write_edl
 from PIL import Image
 
 from rn.cli import main
-from rn.edl import load
+from rn.edl import filter_files, load
 
 
 
@@ -125,7 +125,8 @@ def test_edl_lut_paths_are_relative_to_the_edl_on_main_track_and_overlays(tmp_pa
     monkeypatch.chdir(elsewhere)  # not the EDL's folder: the LUT must still be found
     out = project / 'out.mp4'
     assert rn('assemble', edl, '-o', out) == 0
-    assert str((project / 'looks' / 's.cube').resolve().as_posix()) in load(edl).base[0].vf
+    # the path is absolute after load, and quoted for ffmpeg (a Windows drive colon escaped): read it back as rn does
+    assert [f.resolve() for f in filter_files(load(edl).base[0].vf)] == [(project / 'looks' / 's.cube').resolve()]
     graded = look(capsys, out, '--ref', clips / 'ref.mp4', tmp_path / 'o.json')['inputs'][0]['vs_ref']['distance']
     raw = look(capsys, clips / 'src.mp4', '--ref', clips / 'ref.mp4', tmp_path / 'r.json')['inputs'][0]['vs_ref']['distance']
     assert graded < raw / 2
