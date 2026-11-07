@@ -140,6 +140,7 @@ rn edit edit.json delete end --lift
 | `rn frame FILE --index N \| --time T \| --last -o out.png` | 精确取一帧，例如取尾帧来接续镜头 |
 | `rn sheet FILE... [--fps R \| --every N \| --indices ... \| --around T,.. --diff]` | 带帧号和时间码的接触表，每张不超过 125 KB |
 | `rn cuts FILE [--sheet JPG]` | 按解码帧号给出镜头边界，较弱的变化列为待确认的 suspects |
+| `rn shots FILE [--jobs N] [--sheet JPG]` | 全部镜头（含叠化、淡变），以及每个镜头画面在做什么，全是数字：静止帧、24→30 重复帧节奏、整帧单一缩放 / 平移能解释多少、质感（平坦块、颜色数、横竖直边、噪声）。只给数字，不下结论 |
 | `rn listen FILE [--transcribe]` | 响度、静音、起音、速度（附半速 / 倍速候选）、拍点时间、Whisper 字词时间，外加一张图 |
 | `rn signal FILE [-o PNG]` | 逐帧的亮度、运动、饱和度、响度、低 / 中 / 高频段、起音强度，以及闪帧和爆音位置 |
 | `rn align A B` | 通过声音判断录音 B 在 A 里的位置：偏移量、`match`、`distinct` |
@@ -169,7 +170,7 @@ rn edit edit.json delete end --lift
 
 | 命令 | 作用 |
 |---|---|
-| `rn qa FILE [--edl EDL] [--accept CHECK[@T]]` | 交付检查。格式：帧数、帧率、尺寸、编码、色彩、faststart、固定帧率。声音：音画时长、响度、true peak、片中无声、电平跳变、爆音。画面：黑场、冻帧、黑边 |
+| `rn qa FILE [--edl EDL] [--accept CHECK[@T]]` | 交付检查。格式：帧数、帧率、尺寸、编码、色彩、faststart、固定帧率。声音：音画时长、响度、true peak、片中无声、电平跳变、爆音。画面：黑场、冻帧、黑边。`--placeholders` 按 `rn assemble --placeholders` 的方式读 EDL。 |
 | `rn compare A B [--cuts] [--video sbs.mp4]` | 两个视频按同一时间点对齐到一张图上，并配对比较剪点时间；可另外输出左右并排的视频 |
 | `rn finish FILE -o OUT [--height N]` | 把任意视频处理成交付标准；`--height` 另出一个缩放版本 |
 | `rn export EDL -o cut.otio\|.fcpxml\|.xml [--srt]` | 导出成 Final Cut、Premiere、达芬奇或任何 OTIO 工具能打开的工程 |

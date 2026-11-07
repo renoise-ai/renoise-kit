@@ -1,0 +1,8 @@
+renoise-kit
+Copyright (c) 2026 Renoise. Licensed under the MIT License (LICENSE), except as noted below.
+
+rn/shots.py is ported from rea-video (https://github.com/JuneYaooo/rea-video):
+  rea-video
+  Copyright 2026 JuneYaooo
+  Licensed under the Apache License, Version 2.0 (LICENSES/Apache-2.0.txt).
+The changes are described at the top of rn/shots.py.

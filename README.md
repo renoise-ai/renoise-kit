@@ -153,6 +153,7 @@ rn edit edit.json delete end --lift
 | `rn frame FILE --index N \| --time T \| --last -o out.png` | One exact frame, e.g. a tail frame to continue a shot |
 | `rn sheet FILE... [--fps R \| --every N \| --indices ... \| --around T,.. --diff]` | Contact sheets labelled with frame number and timecode, each under 125 KB |
 | `rn cuts FILE [--sheet JPG]` | Shot boundaries by decoded frame, plus weaker "suspects" to check |
+| `rn shots FILE [--jobs N] [--sheet JPG]` | Every shot, dissolves and fades included, and what its picture does as numbers: still frames, 24→30 repeat cadence, how well one zoom / pan of the whole frame explains it, texture (flat blocks, colours, straight edges, noise). Numbers only, no labels |
 | `rn listen FILE [--transcribe]` | Loudness, silences, onsets, tempo with half/double candidates, beat times, Whisper word times, one picture |
 | `rn signal FILE [-o PNG]` | Per-frame luma, motion, saturation, loudness, low/mid/high bands, onset strength; flash frames, clicks |
 | `rn align A B` | Where recording B sits inside A, by sound: offset, `match`, `distinct` |
@@ -182,7 +183,7 @@ rn edit edit.json delete end --lift
 
 | Command | What it gives |
 |---|---|
-| `rn qa FILE [--edl EDL] [--accept CHECK[@T]]` | Delivery checks. Format: frames, fps, size, codec, color, faststart, fixed frame rate. Sound: A/V length, loudness, true peak, dead air, level jumps, clicks. Picture: black, frozen, bars |
+| `rn qa FILE [--edl EDL] [--accept CHECK[@T]]` | Delivery checks. Format: frames, fps, size, codec, color, faststart, fixed frame rate. Sound: A/V length, loudness, true peak, dead air, level jumps, clicks. Picture: black, frozen, bars. `--placeholders` reads the EDL as `rn assemble --placeholders` does |
 | `rn compare A B [--cuts] [--video sbs.mp4]` | Two videos at the same times on one sheet, cut timing paired, optional side-by-side video |
 | `rn finish FILE -o OUT [--height N]` | Brings any video to the delivery standard; `--height` makes a scaled copy |
 | `rn export EDL -o cut.otio\|.fcpxml\|.xml [--srt]` | The edit as a project for Final Cut, Premiere, Resolve or any OTIO tool |

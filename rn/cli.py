@@ -1,4 +1,4 @@
-"""rn: Renoise media kit. Measure (probe, frame, sheet, cuts, listen, faces, ref, signal, align, text, matte), render
+"""rn: Renoise media kit. Measure (probe, frame, sheet, cuts, shots, listen, faces, ref, signal, align, text, matte), render
 (capture, fx, fonts, assets, captions), edit and assemble an EDL frame-exactly, compare, finish, QA and export. It measures
 and guarantees the mechanics; every creative decision stays yours.
 
@@ -85,6 +85,19 @@ def _parser() -> argparse.ArgumentParser:
     cuts.add_argument('--min-gap', type=float, default=0.3, help='seconds; closer cuts keep the stronger one')
     cuts.add_argument('--sheet', metavar='JPG', help='contact sheet of both sides of every cut and suspect')
     cuts.add_argument('--max-kb', type=int, default=125)
+
+    shots = add('shots', 'every shot (dissolves and fades too) and what its picture does, as numbers',
+                'Boundaries: hard cuts, fades through black/white, dissolves (told apart from camera moves and animated\n'
+                'gradients) and flash cuts. Per shot: still (identical frames), cadence (24->30 pulldown repeats), motion\n'
+                '(how well one zoom/pan of the whole frame explains it, zoom/s, pan px/s), texture (flat blocks, colours,\n'
+                'straight edges, noise, fine texture) and pixels (unchanged share, noise in still areas). Numbers only, no\n'
+                'labels. rn cuts finds hard cuts only and stays what EDL {"shot": n} means; rn shots can count more shots.')
+    shots.add_argument('file')
+    shots.add_argument('--min-shot', type=float, default=0.35, help='seconds; a shorter shot merges into the one before')
+    shots.add_argument('--threshold', type=float, default=0.3, help='hard-cut score (0..1)')
+    shots.add_argument('--jobs', type=int, help='shots measured in parallel (default: every CPU this machine or container allows)')
+    shots.add_argument('--sheet', metavar='JPG', help='contact sheet: first, middle and last frame of every shot')
+    shots.add_argument('--max-kb', type=int, default=125)
 
     listen = add('listen', 'audio as facts + one picture (you cannot hear)',
                  'Loudness (integrated, true peak, short-term curve), silences, onsets, tempo with half/double\n'
@@ -346,6 +359,7 @@ def _parser() -> argparse.ArgumentParser:
              'delivery; WARN means look at it (it may be intended). Check fixes on the new render, not the old one.')
     qa.add_argument('file')
     qa.add_argument('--edl')
+    qa.add_argument('--placeholders', action='store_true', help='read --edl as rn assemble --placeholders does: missing sources are cards')
     qa.add_argument('--expect-frames', type=int)
     qa.add_argument('--expect-size', metavar='WxH')
     qa.add_argument('--expect-fps', metavar='R')
@@ -399,10 +413,10 @@ def _print_summary(command: str, result: dict) -> None:
               f'{len(result["checks"]) - result["failed"] - result["warnings"]} passed  ({result["path"]})')
 
 
-SUMMARIZED = {'cuts', 'listen', 'faces', 'ref', 'capture', 'fx', 'fonts', 'assets', 'captions', 'compare', 'edit', 'signal', 'align',
+SUMMARIZED = {'cuts', 'shots', 'listen', 'faces', 'ref', 'capture', 'fx', 'fonts', 'assets', 'captions', 'compare', 'edit', 'signal', 'align',
               'matte', 'text', 'export'}
 # The pip extra that brings a command's optional Python modules (the media sandbox has them all).
-EXTRAS = {'listen': 'listen', 'ref': 'listen', 'faces': 'faces', 'capture': 'capture', 'captions': 'captions', 'fonts': 'fonts',
+EXTRAS = {'listen': 'listen', 'ref': 'listen', 'faces': 'faces', 'shots': 'shots', 'capture': 'capture', 'captions': 'captions', 'fonts': 'fonts',
           'signal': 'listen', 'matte': 'matte', 'export': 'export'}
 
 
@@ -425,7 +439,11 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
                  f'suspects (look before trusting): {[(c["frame"], c["score"]) for c in result["suspects"]]}']
         lines += [f'sheet {page["path"]}' for page in result.get('sheet', [])]
         return result, lines
-    if command == 'listen':
+    if command == 'shots':
+        from .shots import shots_command, summary_lines
+        result = shots_command(args.file, min_shot=args.min_shot, threshold=args.threshold, jobs=args.jobs, sheet=args.sheet,
+                               max_kb=args.max_kb)
+    elif command == 'listen':
         from .listen import listen_command, summary_lines
         result = listen_command(args.file, out=args.out, transcribe=args.transcribe, language=args.language, model=args.model, max_kb=args.max_kb)
     elif command == 'faces':
@@ -540,7 +558,7 @@ def main(argv: list[str] | None = None) -> int:
                                     audio_offset=args.audio_offset)
         else:
             from .qa import parse_accept, qa_command
-            result = qa_command(args.file, edl=args.edl, frames=args.expect_frames, size=args.expect_size, fps=args.expect_fps,
+            result = qa_command(args.file, edl=args.edl, placeholders=args.placeholders, frames=args.expect_frames, size=args.expect_size, fps=args.expect_fps,
                                 lufs=args.lufs, lufs_tolerance=args.lufs_tolerance, true_peak=args.true_peak,
                                 require_audio=args.require_audio, accept=parse_accept(args.accept))
     except RnError as error:
