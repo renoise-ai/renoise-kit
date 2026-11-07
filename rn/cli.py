@@ -166,6 +166,12 @@ def _parser() -> argparse.ArgumentParser:
     shots.add_argument('--beats', nargs='?', const='audio', metavar='LISTEN.json',
                        help='each boundary against the nearest beat: of the file\'s own sound, or of an rn listen --json result '
                             '(music for a recut); needs the "listen" extra for the file\'s own sound')
+    shots.add_argument('--keyframes', metavar='DIR',
+                       help='one full-size PNG per shot (DIR/shot_000.png ...), frame-exact, from frames clear of its transitions; '
+                            'shot["keyframe"] gives its index, time and sharpness')
+    shots.add_argument('--which', choices=['sharpest', 'mid', 'first', 'last'], default='sharpest',
+                       help='--keyframes: the sharpest of 5 frames across the shot (default; variance of the Laplacian), or its '
+                            'middle, first or last clear frame')
 
     listen = add('listen', 'audio as facts + one picture (you cannot hear)',
                  'Loudness (integrated, true peak, short-term curve), silences, onsets, tempo with half/double\n'
@@ -410,6 +416,9 @@ def _parser() -> argparse.ArgumentParser:
                '  rn edit e.json delete c4 --lift\n'
                '  rn edit e.json insert --after c2 --clip \'{"id": "c9", "src": "s9.mp4", "out": 2}\'\n'
                '  rn edit e.json move t1 --track 2\n'
+               'A new edit from a reference\'s shots (one clip per shot, its transitions made again; sources not made yet are\n'
+               'placeholders, filled with set <id> src=...):\n'
+               '  rn shots ref.mp4 --keyframes kf --json shots.json && rn edit e.json init --from-shots shots.json\n'
                'One sound at many points (audio items anchored to each cut or beat; the file can come from rn assets get):\n'
                '  rn edit e.json hits assets/whoosh.wav --at cuts --pivot 0.18 --gain -6   # its peak on every cut\n'
                '  rn edit e.json hits hit.wav --at beats --listen music.json --every 4 --offset 2.0   # music starts at 2 s\n'
@@ -423,6 +432,23 @@ def _parser() -> argparse.ArgumentParser:
     edit.add_argument('edl')
     ops = edit.add_subparsers(dest='op', required=True, metavar='op')
     _edit_ops(ops)
+    op_init = ops.add_parser(
+        'init', help='create the EDL from a reference\'s rn shots --json: one main-track clip per shot, its transitions made again',
+        description='A new edit whose main track is the reference\'s shots, frame for frame: one clip per shot (s01, s02, ...)\n'
+        'lasting what the shot lasts. Dissolves and wipes become xfade overlaps of their measured frames (dissolve: "fade",\n'
+        'the smooth mix; wipe: wipeleft/right/up/down as measured), so the total is the reference\'s length; a fade through\n'
+        'black or white becomes the clip before fading out and the one after fading in ("vf"). Without --src each source is\n'
+        '<slots>/<id>.mp4, not made yet: rn assemble --placeholders / rn qa --placeholders show cards until it exists, and\n'
+        'rn edit set <id> src=... fills a slot. With --src every clip is its shot of the reference (a rebuild to check).\n'
+        'meta keeps each shot\'s times, transition, keyframe (rn shots --keyframes), camera and speed numbers.\n'
+        '  rn shots ref.mp4 --keyframes kf --json shots.json && rn edit edit.json init --from-shots shots.json',
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    op_init.add_argument('--from-shots', required=True, metavar='SHOTS.json', help='rn shots REF --json SHOTS.json')
+    op_init.add_argument('--size', metavar='WxH', help='output size (default: the reference\'s)')
+    op_init.add_argument('--fps', metavar='R', help='output frame rate (default: the reference\'s)')
+    op_init.add_argument('--src', metavar='REF', help='cut every clip from the reference itself (the file SHOTS.json measured)')
+    op_init.add_argument('--slots', default='gen', metavar='DIR', help='folder of the not-yet-made sources, relative to the EDL (default gen)')
+    op_init.add_argument('--force', action='store_true', help='replace an existing EDL')
     op_batch = ops.add_parser('batch', help='several operations as one: all are checked, then written once (nothing on a failure)')
     op_batch.add_argument('steps', nargs='*', metavar='"OP ..."',
                           help='one operation per argument, or one per line on stdin (blank lines and # comments skipped)')
@@ -625,7 +651,8 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
     if command == 'shots':
         from .shots import shots_command, summary_lines
         result = shots_command(args.file, min_shot=args.min_shot, threshold=args.threshold, jobs=args.jobs, sheet=args.sheet,
-                               max_kb=args.max_kb, faces=args.faces, face_model=args.face_model, beats=args.beats)
+                               max_kb=args.max_kb, faces=args.faces, face_model=args.face_model, beats=args.beats,
+                               keyframes=args.keyframes, which=args.which)
     elif command == 'listen':
         from .listen import listen_command, summary_lines
         result = listen_command(args.file, out=args.out, transcribe=args.transcribe, language=args.language, model=args.model, max_kb=args.max_kb)
@@ -661,6 +688,8 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
         path = Path(args.edl)
         if args.op == 'batch':
             result = editops.batch_op(path, _batch_lines(args.steps), _edit_step_runner())
+        elif args.op == 'init':
+            result = editops.init_op(path, args.from_shots, size=args.size, fps=args.fps, src=args.src, slots=args.slots, force=args.force)
         else:
             result = _edit_step(path, args)
         return result, editops.summary_lines(result)
