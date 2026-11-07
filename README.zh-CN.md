@@ -156,8 +156,11 @@ EOF
 | `rn signal FILE [-o PNG]` | 逐帧的亮度、运动、饱和度、响度、低 / 中 / 高频段、起音强度，以及闪帧和爆音位置 |
 | `rn align A B` | 通过声音判断录音 B 在 A 里的位置：偏移量、`match`、`distinct` |
 | `rn faces FILE` | 逐帧人脸框和关键点（只测量，不改脸） |
+| `rn faces FILE --track` / `--reframe 1080x1920 -o v.mp4` | 同一个人的脸逐帧一条轨迹（选人、跟随、补空档、平滑）；`--reframe` 按新画幅移动裁切跟住这个人，直接渲染成可作 `src` 的视频 |
 | `rn text FILE` | 画面上的文字行、位置框和出现时间（tesseract；同一行 2 秒内在同一位置再读到算同一次出现，附读到次数和平均置信度）；每行首次读到时的字色、背景色、描边色（`#rrggbb`，没有描边为 null）和字高 |
 | `rn matte FILE -o DIR` | 逐帧主体 alpha，输出灰度 PNG，可直接作为 EDL 的 `mask`；加 `--cutout` 输出 RGBA 抠像 |
+| `rn key FILE -o DIR` | 实景背景抠像，不用模型：绿幕 / 蓝幕 / 任意纯色（取画面边缘测色），或 `--white` 白底（从边缘泛洪填充，主体内部的白保留）；灰度 PNG 直接作 EDL `mask`，`--cutout --despill` 输出 RGBA |
+| `rn grid IMAGE -o DIR` | 把分镜表、角色设定图、2×2 / 3×3 宫格切成单张；行列数从分隔带找，或用 `--rows` / `--cols` 指定 |
 | `rn ref FILE` | 参考片拆解：镜头、声音、剪点和拍点的对齐情况、所有帧的接触表，附一份读片指南 |
 
 **渲**

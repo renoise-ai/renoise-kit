@@ -135,3 +135,13 @@ def test_shots_counts_frames_with_a_large_face(portrait_clip, lena_clip, model):
     assert faces['checked'] >= 2 and faces['frames_with_face'] == 1.0 and faces['largest_area'] >= FACE_MIN_AREA
     small = shots_command(str(lena_clip), jobs=1, faces=True, face_model=model)['shots'][0]['faces']
     assert small['frames_with_face'] == 0.0 and small['largest_area'] < FACE_MIN_AREA
+
+
+def test_track_and_reframe_render(lena_clip, model, tmp_path):
+    out = tmp_path / 'vertical.mp4'
+    result = faces_command(str(lena_clip), model=model, reframe_size=(270, 480), out=str(out))
+    assert result['track_summary']['tracked'] >= FRAMES * 0.8
+    assert result['reframe']['render']['frames'] == FRAMES
+    xs = [k[1] for k in result['reframe']['keys']]
+    assert xs[-1] - xs[0] > 200  # the window follows the image across
+    assert any('reframe 270x480' in line for line in summary_lines(result))

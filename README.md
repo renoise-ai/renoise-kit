@@ -170,8 +170,11 @@ EOF
 | `rn signal FILE [-o PNG]` | Per-frame luma, motion, saturation, loudness, low/mid/high bands, onset strength; flash frames, clicks |
 | `rn align A B` | Where recording B sits inside A, by sound: offset, `match`, `distinct` |
 | `rn faces FILE` | Face boxes and landmarks per frame (measurement only) |
+| `rn faces FILE --track` / `--reframe 1080x1920 -o v.mp4` | One subject's face per frame (picked, followed, gaps filled, smoothed); `--reframe` a moving crop that keeps them in a new aspect, rendered ready to use as `src` |
 | `rn text FILE` | On-screen text lines, their boxes and when they are on screen (tesseract; a line read again within 2 s at the same place is the same appearance, with how many reads and their mean confidence); per line, as first read, the text, background and outline colours (`#rrggbb`, outline null when there is none) and the text height |
 | `rn matte FILE -o DIR` | Subject alpha per frame as grey PNGs, ready to use as an EDL `mask`; `--cutout` for RGBA |
+| `rn key FILE -o DIR` | Backdrop matte without a model: green / blue / any solid colour measured on the frame border, or `--white` (flood fill from the border, so white inside the subject stays); grey PNGs for an EDL `mask`, `--cutout --despill` for RGBA |
+| `rn grid IMAGE -o DIR` | Slice a storyboard / character sheet / 2x2 or 3x3 grid into tiles; rows and columns found from the gutters, or `--rows` / `--cols` |
 | `rn ref FILE` | A reference breakdown: shots, sound, cut-to-beat sync, every frame on sheets, and a reading guide |
 
 **Render**
