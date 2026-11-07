@@ -107,7 +107,12 @@ def test_init_from_the_reference_rebuilds_it(measured, tmp_path):
     assert rn('shots', out, '--jobs', 2, '--json', tmp_path / 'again.json') == 0
     again = json.loads((tmp_path / 'again.json').read_text(encoding='utf-8'))
     assert again['frames'] == result['frames']
-    assert [(s['transition_in'], s['start_frame']) for s in again['shots']] == [(s['transition_in'], s['start_frame']) for s in result['shots']]
+    assert [s['transition_in'] for s in again['shots']] == [s['transition_in'] for s in result['shots']]
+    # A fade's boundary is where its ramp out of black crosses a luma threshold, and re-encoding moves a frame on the ramp
+    # by about one luma step (measured: 10.0 in the reference, 8.97 in the rebuild, at the threshold of 10), so it can
+    # land one frame either side. Cuts, wipes and dissolves land on the same frame.
+    for shot, ref in zip(again['shots'], result['shots']):
+        assert abs(shot['start_frame'] - ref['start_frame']) <= (1 if ref['transition_in'] == 'fade' else 0), (shot, ref)
 
 
 def test_init_makes_a_transition_with_no_room_a_cut(tmp_path):
