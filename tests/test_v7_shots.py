@@ -136,3 +136,23 @@ def test_shots_reads_a_fast_dissolve_as_a_dissolve(tmp_path):
     shots = json.loads(report.read_text(encoding='utf-8'))['shots']
     assert [s['transition_in'] for s in shots] == [None, 'dissolve']
     assert shots[1]['start'] == pytest.approx(3.0, abs=0.2), 'the dissolve is centred in its overlap'
+
+
+def test_compare_shots_pairs_each_shot_with_its_transition_and_camera(edit_film, tmp_path):
+    """rn compare --shots: the same film against itself matches shot for shot; with the dissolve made a hard cut, one
+    shot begins differently and the zoom is still there."""
+    root = edit_film.parent
+    recut = tmp_path / 'recut.mp4'
+    ffmpeg('-i', str(root / 'a.mp4'), '-i', str(root / 'b.mp4'), '-i', str(root / 'c.mp4'), '-i', str(root / 'black.mp4'),
+           '-i', str(root / 'd.mp4'), '-filter_complex', '[1:v]trim=duration=1.75,setpts=PTS-STARTPTS[b];[2:v]trim=start=0.25,setpts=PTS-STARTPTS[c];'
+           '[0:v][b][c][3:v][4:v]concat=n=5:v=1[v]', '-map', '[v]', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(recut))
+    same, report = tmp_path / 'same.json', tmp_path / 'recut.json'
+    assert rn('compare', edit_film, edit_film, '--shots', '--count', 2, '-o', tmp_path / 'same.jpg', '--json', same) == 0
+    shots = json.loads(same.read_text(encoding='utf-8'))['shots']
+    assert shots['a'] == shots['b'] == len(shots['pairs']) and shots['transitions_differ'] == 0 and not shots['only_b']
+    assert all(p['covered'] == 1.0 and p['motion']['a'] == p['motion']['b'] for p in shots['pairs'])
+    assert rn('compare', edit_film, recut, '--shots', '--count', 2, '-o', tmp_path / 'recut.jpg', '--json', report) == 0
+    shots = json.loads(report.read_text(encoding='utf-8'))['shots']
+    zoom = shots['pairs'][2]
+    assert (zoom['a']['transition_in'], zoom['b']['transition_in']) == ('dissolve', 'cut') and shots['transitions_differ'] == 1
+    assert zoom['motion']['a']['zoom_per_s'] > 0.02 and zoom['motion']['b']['zoom_per_s'] > 0.02

@@ -182,7 +182,7 @@ EOF
 | 命令 | 作用 |
 |---|---|
 | `rn qa FILE [--edl EDL] [--accept CHECK[@T]]` | 交付检查。格式：帧数、帧率、尺寸、编码、色彩、faststart、固定帧率。声音：音画时长、响度、true peak、片中无声、电平跳变、爆音。画面：黑场、冻帧、黑边。`--placeholders` 按 `rn assemble --placeholders` 的方式读 EDL。 |
-| `rn compare A B [--cuts] [--video sbs.mp4]` | 两个视频按同一时间点对齐到一张图上，并配对比较剪点时间；可另外输出左右并排的视频 |
+| `rn compare A B [--cuts] [--shots] [--video sbs.mp4]` | 两个视频按同一时间点对齐到一张图上，并配对比较剪点时间；`--shots` 逐镜头配对比较转场和运镜；可另外输出左右并排的视频 |
 | `rn finish FILE -o OUT [--height N]` | 把任意视频处理成交付标准；`--height` 另出一个缩放版本 |
 | `rn export EDL -o cut.otio\|.fcpxml\|.xml [--srt]` | 导出成 Final Cut、Premiere、达芬奇或任何 OTIO 工具能打开的工程 |
 

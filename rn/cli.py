@@ -353,7 +353,9 @@ def _parser() -> argparse.ArgumentParser:
     compare = add('compare', 'two videos side by side at the same times (+ cut timing)',
                   'A cut against its reference, or two versions of a cut: frames at the same times, A on the top row and B\n'
                   'underneath, labelled with each one\'s own frame index. --cuts runs rn cuts on both and pairs the cuts\n'
-                  '(within 0.25 s) with their offsets: the rhythm comparison. --video writes A|B side by side to watch.\n'
+                  '(within 0.25 s) with their offsets: the rhythm comparison. --shots runs rn shots on both and pairs each A\n'
+                  'shot with the B shot that overlaps it most: transitions (cut, dissolve, fade, flash) and camera moves\n'
+                  '(zoom/s, pan in frame widths/s, direction, rigid fit). --video writes A|B side by side to watch.\n'
                   'Differences are facts to look at, not scores.')
     compare.add_argument('a')
     compare.add_argument('b')
@@ -364,6 +366,9 @@ def _parser() -> argparse.ArgumentParser:
     compare.add_argument('--width', type=int, default=256, help='tile width in px (default 256)')
     compare.add_argument('--max-kb', type=int, default=125)
     compare.add_argument('--cuts', action='store_true', help='compare shot boundaries (rn cuts defaults)')
+    compare.add_argument('--shots', action='store_true',
+                         help='rn shots on both: each A shot with the B shot that overlaps it most, their transitions and camera moves')
+    compare.add_argument('--jobs', type=int, help='--shots: shots measured in parallel (default: every CPU allowed)')
     compare.add_argument('--video', metavar='MP4', help='also write a side-by-side video (A left, B right, A\'s sound)')
 
     finish = add('finish', 'bring any video to the delivery standard',
@@ -565,7 +570,7 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
     elif command == 'compare':
         from .compare import compare_command, summary_lines
         result = compare_command(args.a, args.b, out=args.out, count=args.count, seconds=args.seconds, width=args.width,
-                                 max_kb=args.max_kb, cuts=args.cuts, video=args.video)
+                                 max_kb=args.max_kb, cuts=args.cuts, video=args.video, shots=args.shots, jobs=args.jobs)
     elif command == 'fonts':
         from .fonts import fonts_command, summary_lines
         result = fonts_command(family=args.family, script=args.script, licenses=args.licenses)

@@ -196,7 +196,7 @@ EOF
 | Command | What it gives |
 |---|---|
 | `rn qa FILE [--edl EDL] [--accept CHECK[@T]]` | Delivery checks. Format: frames, fps, size, codec, color, faststart, fixed frame rate. Sound: A/V length, loudness, true peak, dead air, level jumps, clicks. Picture: black, frozen, bars. `--placeholders` reads the EDL as `rn assemble --placeholders` does |
-| `rn compare A B [--cuts] [--video sbs.mp4]` | Two videos at the same times on one sheet, cut timing paired, optional side-by-side video |
+| `rn compare A B [--cuts] [--shots] [--video sbs.mp4]` | Two videos at the same times on one sheet, cut timing paired, with `--shots` each shot paired with its transition and camera move, optional side-by-side video |
 | `rn finish FILE -o OUT [--height N]` | Brings any video to the delivery standard; `--height` makes a scaled copy |
 | `rn export EDL -o cut.otio\|.fcpxml\|.xml [--srt]` | The edit as a project for Final Cut, Premiere, Resolve or any OTIO tool |
 
