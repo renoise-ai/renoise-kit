@@ -64,7 +64,9 @@ def _edit_ops(ops) -> None:
         'the main track is not placed and is listed. Beat times are the analysed file\'s: when the music starts later in\n'
         'the edit, add its start to --offset. The sound can come from rn assets get <id> -o assets/.',
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    op_hits.add_argument('sfx', metavar='SFX_FILE', help='the sound, relative to the current folder (or to the EDL)')
+    op_hits.add_argument('sfx', metavar='SFX_FILE|PACK_ID',
+                         help='the sound, relative to the current folder (or to the EDL), or an rn pack id like whoosh/air-1 '
+                              '(copied to sfx/ next to the EDL; without --pivot its measured peak lands on each point)')
     op_hits.add_argument('--at', required=True, metavar='cuts|beats|T1,T2,..',
                          help='main-track cuts, the beats of --listen, or timeline seconds')
     op_hits.add_argument('--listen', metavar='LISTEN.json', help='rn listen MUSIC --json LISTEN.json, for --at beats')
@@ -427,9 +429,30 @@ def _parser() -> argparse.ArgumentParser:
     fonts.add_argument('--script')
     fonts.add_argument('--licenses', action='store_true')
 
-    assets = add('assets', 'licensed sound effects and overlay footage from the Renoise library',
+    pack = add('pack', 'the built-in offline pack: sound effects, fonts, colour looks, icons (licence-clean)',
+               'Ships inside rn, no network: CC0 sound effects with measured onset/peak, OFL/Apache fonts, colour looks as\n'
+               '.cube LUTs, Lucide icons as SVG. Ids: <category>/<name> (sounds), font/<name>, look/<name>, icon/<name>.\n'
+               '  rn pack list --kind sfx --search whoosh         # what there is (categories, peak times)\n'
+               '  rn edit e.json hits whoosh/air-1 --at cuts      # a pack id works directly; its peak lands on each cut\n'
+               '  rn pack path look/teal-orange                   # EDL clip: "vf": "lut3d=file=<that path>"\n'
+               '  rn pack path font/anton                         # drawtext fontfile=..., or any page/tool that takes a file\n'
+               '  rn pack get icon/arrow-right -o icons/ --color "#ffffff"   # an SVG to rasterise or inline\n'
+               'Pack fonts are found by family name in rn assemble subtitles (.ass Fontname=Anton) and in rn capture pages\n'
+               '(font-family: "Anton"; already loaded, so canvas text works without waiting). Licences: rn pack path licenses.')
+    pack.add_argument('action', choices=['list', 'show', 'path', 'get'])
+    pack.add_argument('ids', nargs='*', metavar='ID', help='item ids for show / path / get')
+    pack.add_argument('--kind', choices=['sfx', 'font', 'look', 'icon'])
+    pack.add_argument('--category')
+    pack.add_argument('--search', metavar='WORDS')
+    pack.add_argument('--limit', type=int, default=60)
+    pack.add_argument('-o', '--out', default='pack', help='folder for get (default pack/)')
+    pack.add_argument('--color', default='currentColor', help='icons: stroke colour (default currentColor)')
+    pack.add_argument('--stroke-width', type=float, default=2, help='icons: stroke width in the 24-unit icon box (default 2)')
+
+    assets = add('assets', 'licensed sound effects and overlay footage from the Renoise library (online; offline: rn pack)',
                  'rn assets search "whoosh fast" --kind sfx ; rn assets get <id>... -o assets/\n'
-                 'Files are checked against their sha256 and cached; the licence comes with each file.')
+                 'Files are checked against their sha256 and cached; the licence comes with each file. The pack that ships\n'
+                 'inside rn (sounds, fonts, looks, icons; no network) is rn pack.')
     assets.add_argument('action', choices=['search', 'get'])
     assets.add_argument('terms', nargs='*', help='search words, or asset ids for get')
     assets.add_argument('--kind', choices=['sfx', 'overlay', 'texture', 'music'])
@@ -715,8 +738,8 @@ def _print_summary(command: str, result: dict) -> None:
 
 SUMMARIZED = {'look', 'grade', 'template', 'music', 'cuts', 'shots', 'listen', 'faces', 'key', 'grid', 'ref', 'capture', 'fx', 'fonts', 'assets',
               'captions', 'compare', 'edit', 'signal', 'align',
-              'matte', 'text', 'export', 'doctor', 'schema'}
-NO_FFMPEG = {'doctor', 'schema'}  # they work without ffmpeg on PATH: doctor reports it missing
+              'matte', 'text', 'export', 'doctor', 'schema', 'pack'}
+NO_FFMPEG = {'doctor', 'schema', 'pack'}  # they work without ffmpeg on PATH: doctor reports it missing
 # The pip extra that brings a command's optional Python modules (the media sandbox has them all).
 EXTRAS = {'template': 'capture', 'listen': 'listen', 'music': 'listen', 'ref': 'listen', 'faces': 'faces', 'shots': 'shots', 'capture': 'capture', 'captions': 'captions', 'fonts': 'fonts',
           'signal': 'listen', 'matte': 'matte', 'export': 'export'}
@@ -913,6 +936,17 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
     elif command == 'fonts':
         from .fonts import fonts_command, summary_lines
         result = fonts_command(family=args.family, script=args.script, licenses=args.licenses)
+    elif command == 'pack':
+        from . import pack
+        if args.action == 'list':
+            result = pack.list_command(kind=args.kind, category=args.category, search=args.search, limit=args.limit)
+        elif args.action == 'show':
+            result = pack.show_command(args.ids)
+        elif args.action == 'path':
+            result = pack.path_command(args.ids)
+        else:
+            result = pack.get_command(args.ids, args.out, color=args.color, stroke_width=args.stroke_width)
+        return result, pack.summary_lines(result)
     elif command == 'assets':
         from .assets import get_command, search_command, summary_lines
         if args.action == 'get':

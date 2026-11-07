@@ -317,6 +317,20 @@ To release:
 
 Design notes, the full EDL contract and the roadmap are in [SPEC.md](SPEC.md) (in Chinese).
 
+
+## Built-in pack
+
+`rn pack` ships inside rn (about 4 MB, no network): 290 CC0 sound effects in 23 categories with measured onset and peak, 16 OFL / Apache-2.0 fonts, 18 colour looks as `.cube` LUTs and the Lucide icons (ISC).
+
+```sh
+rn pack list --kind sfx --search whoosh
+rn edit edit.json hits whoosh/air-1 --at cuts   # the sound's peak lands on every cut
+rn pack path look/teal-orange                  # "vf": "lut3d=file=<path>" on a clip
+rn pack get icon/arrow-right -o icons/ --color "#ffffff"
+```
+
+Pack fonts work by family name in burned-in subtitles and in `rn capture` pages. Sources and licences: `rn pack path licenses`.
+
 ## License
 
 MIT

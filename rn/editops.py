@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from fractions import Fraction
 from pathlib import Path
 
@@ -291,6 +292,20 @@ def hits_op(path: Path, sfx: str, at: str, *, listen: str | None = None, offset:
     if not ID.match(f'{prefix}1'):
         raise RnError(f'--id-prefix {prefix}: letters, digits, "_", "-" and "." (starting with a letter or digit)')
     raw = _read(path)
+    pivot_from = 'given' if pivot is not None else None
+    if not Path(sfx).expanduser().is_file() and not (path.parent / sfx).is_file():
+        from . import pack
+        if pack.is_pack_id(sfx):  # an rn pack sound: copied next to the edit so it stays self-contained; its peak on each point
+            item = pack.find(sfx)
+            if item['kind'] != 'sfx':
+                raise RnError(f'{sfx}: a {item["kind"]}, not a sound (rn pack list --kind sfx)')
+            local = path.parent / 'sfx' / (item['id'].replace('/', '-') + '.ogg')
+            local.parent.mkdir(parents=True, exist_ok=True)
+            if not local.exists():
+                shutil.copyfile(pack.path_of(item['id']), local)
+            sfx = str(local)
+            if pivot is None:
+                pivot, pivot_from = item['peak'], 'pack peak'
     src = _edl_relative(path, sfx, '')
     edit = load(path, placeholders=True)
     info = probe(path.parent / src)
@@ -359,7 +374,7 @@ def hits_op(path: Path, sfx: str, at: str, *, listen: str | None = None, offset:
     raw['audio'] = audio
     summary = _write_checked(path, raw)
     return {'op': 'hits', 'src': src, 'at': at if at in ('cuts', 'beats') else 'times', 'added': [p['id'] for p in placed],
-            'hits': placed, 'skipped': skipped, 'warnings': warnings, 'timeline': summary}
+            'pivot': pivot, 'pivot_from': pivot_from, 'hits': placed, 'skipped': skipped, 'warnings': warnings, 'timeline': summary}
 
 
 def _overlap(shot: dict) -> tuple[int, int, str] | None:
@@ -696,7 +711,8 @@ def summary_lines(result: dict) -> list[str]:
     if result['op'] == 'hits':
         def listed(entries: list[str]) -> str:
             return ', '.join(entries[:24]) + (f', ... ({len(entries)} in all; --json lists each)' if len(entries) > 24 else '')
-        lines.append('  hits at ' + listed([f'{h["time"]:g}' for h in result['hits']]) + ' s')
+        lines.append('  hits at ' + listed([f'{h["time"]:g}' for h in result['hits']]) + ' s'
+                     + (f'  (pivot {result["pivot"]:g}s of the sound, {result["pivot_from"]})' if result.get('pivot') is not None else ''))
         skipped = result['skipped']
         if skipped:
             reasons = '; '.join(dict.fromkeys(s['reason'] for s in skipped))

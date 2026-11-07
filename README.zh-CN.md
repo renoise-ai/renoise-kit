@@ -285,6 +285,20 @@ CI 在三个环境里跑：Debian trixie + ffmpeg 7.1（和沙箱同一个基础
 
 设计说明、完整的 EDL 约定和路线图见 [SPEC.md](SPEC.md)。
 
+
+## 自带素材包
+
+`rn pack` 随 rn 一起安装（约 4 MB，不联网）：290 个 CC0 音效（23 类，带实测起音点和峰值）、16 个 OFL / Apache-2.0 字体、18 个调色 look（`.cube` LUT）和 Lucide 图标（ISC）。
+
+```sh
+rn pack list --kind sfx --search whoosh
+rn edit edit.json hits whoosh/air-1 --at cuts   # 音效峰值对齐每个剪点
+rn pack path look/teal-orange                  # 片段上写 "vf": "lut3d=file=<路径>"
+rn pack get icon/arrow-right -o icons/ --color "#ffffff"
+```
+
+字幕烧录和 `rn capture` 页面里可以直接按 family 名用素材包字体。来源与许可证：`rn pack path licenses`。
+
 ## 许可证
 
 MIT
