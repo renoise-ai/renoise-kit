@@ -112,8 +112,7 @@ def capture_command(page: str, *, out: str, frames: int, width: int, height: int
 
 def summary_lines(result: dict) -> list[str]:
     return [f'{result["pattern"]}  {result["frames"]} frames from #{result["first_number"]:05d}  '
-            f'{result["size"][0]}x{result["size"][1]}  {result["seconds"]}s ({result["fps_rendered"]} fps, {len(result["shards"])} shards)',
-            f'EDL: {json.dumps(result["edl"])}']
+            f'{result["size"][0]}x{result["size"][1]}  {result["seconds"]}s ({result["fps_rendered"]} fps, {len(result["shards"])} shards)']
 
 
 # --- live web pages: rn capture URL -------------------------------------------------------------------------------

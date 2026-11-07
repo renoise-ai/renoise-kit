@@ -4,7 +4,6 @@ subject itself. Measurement-grade, not roto: check the edges on a sheet.
 """
 from __future__ import annotations
 
-import json
 import tempfile
 from pathlib import Path
 
@@ -54,5 +53,4 @@ def matte_command(path: str, *, out: str, model: str, every: int, cutout: bool) 
 
 def summary_lines(result: dict) -> list[str]:
     kind = 'RGBA cut-outs' if result['cutout'] else 'grey mattes (white = subject)'
-    return [f'{result["dir"]}/%05d.png  {result["frames"]} {kind}  model {result["model"]}, computed every {result["every"]} frame(s)',
-            f'EDL: {json.dumps(result["edl"])}' + ('' if result['cutout'] else '  (on an overlay; "invert": true keeps it off the subject)')]
+    return [f'{result["dir"]}/%05d.png  {result["frames"]} {kind}  model {result["model"]}, computed every {result["every"]} frame(s)']

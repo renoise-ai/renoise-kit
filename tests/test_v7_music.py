@@ -11,6 +11,9 @@ from rn.ff import RnError
 librosa = pytest.importorskip('librosa')
 from rn.listen import beats_of  # noqa: E402
 from rn.music import RATE, _decode, fit_command  # noqa: E402
+from rn.agent import PROOF_KB, proof
+from types import SimpleNamespace
+from pathlib import Path
 
 LEAD, BPM = 0.75, 120
 BAR = 4 * 60 / BPM
@@ -73,6 +76,8 @@ def test_short_music_loops_on_phrases_and_keeps_the_beat(music, tmp_path):
     assert result['loops'] and all(on_a_bar(loop['to'] + 0.05) and on_a_bar(loop['from'] + 0.05) for loop in result['loops'])
     beats = np.array(beats_of(str(out))['times'])
     assert np.allclose(np.diff(beats), 0.5, atol=0.04)  # no hiccup at the loop point
+    shown = proof(SimpleNamespace(command='music', file=str(music), no_proof=False), result)
+    assert shown == str(tmp_path / 'bed.proof.jpg') and Path(shown).stat().st_size <= PROOF_KB * 1024
 
 
 def test_no_render_when_a_loop_is_needed(music):

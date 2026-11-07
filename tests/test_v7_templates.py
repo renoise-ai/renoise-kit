@@ -7,6 +7,8 @@ from PIL import Image
 
 from rn.ff import RnError
 from rn.template import _names, template_command
+from rn.agent import PROOF_KB, proof
+from types import SimpleNamespace
 
 pytest.importorskip('playwright')
 
@@ -38,6 +40,8 @@ def test_every_template_draws_on_a_transparent_frame(tmp_path, name):
     assert last_entrance.shape == (320, 180, 4)
     alpha = last_entrance[..., 3]
     assert 0.001 < (alpha > 0).mean() < 0.9  # something drawn, background left transparent
+    shown = proof(SimpleNamespace(command='template', no_proof=False), result)
+    assert shown == str(tmp_path / f'{name}.proof.jpg') and (tmp_path / f'{name}.proof.jpg').stat().st_size <= PROOF_KB * 1024
 
 
 def test_params_reach_the_page_and_unknown_ones_are_refused(tmp_path):

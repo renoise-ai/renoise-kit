@@ -11,6 +11,9 @@ from rn.ff import RnError, probe
 
 pytest.importorskip('playwright')
 from rn.capture import _scroll_at, web_command  # noqa: E402
+from rn.agent import PROOF_KB, proof
+from types import SimpleNamespace
+from pathlib import Path
 
 PAGE = '''<!doctype html><meta name=viewport content="width=device-width"><style>
 body{margin:0;font:20px sans-serif} section{height:700px} h1,h2{margin:0;padding:20px}
@@ -72,6 +75,8 @@ def test_scroll_video_is_frame_exact_top_to_bottom(site, tmp_path):
     assert main(['frame', str(video), '--index', '0', '-o', str(first)]) == 0
     assert main(['frame', str(video), '--last', '-o', str(last)]) == 0
     assert near(colour(Image.open(first), 540, 960), (224, 48, 48)) and near(colour(Image.open(last), 540, 960), (48, 48, 224))
+    shown = proof(SimpleNamespace(command='capture', page=site, out=str(tmp_path), no_proof=False), result)
+    assert Path(shown).exists() and Path(shown).stat().st_size <= PROOF_KB * 1024
 
 
 def test_desktop_and_the_page_mode_still_needs_frames(site, tmp_path, capsys):

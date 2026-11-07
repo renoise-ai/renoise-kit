@@ -223,6 +223,5 @@ def summary_lines(result: dict) -> list[str]:
              f'  starts at {result["start"]}s of the music; fade {fade["seconds"]}s from {fade["at"]}s'
              + (f' (music {fade["source_time"]}s)' if fade['source_time'] is not None else '')]
     lines += [f'  loop at {loop["at"]}s: music {loop["from"]}s -> {loop["to"]}s' for loop in result['loops']]
-    lines.append(f'EDL audio item: {json.dumps(result["edl"], ensure_ascii=False)}')
     lines += [f'warning: {w}' for w in result['warnings']]
     return lines

@@ -261,6 +261,14 @@ EOF
 
 接触表、`listen`、`signal`、`align` 之所以存在，是因为模型看不了视频、也听不到声音。检查结果要靠它们，不能只看格式对不对：`rn qa` 通过，不代表剪得好。
 
+v0.7.0 起每条命令的摘要还为 agent 多做三件事：
+
+- **`proof: <路径>`**：输出是画面或声音、需要检查的命令（`key`、`matte`、`grid`、`template render`、`capture`、`faces --reframe -o`、`grade`、`music fit`）在输出旁边写一张带标注、不超过 125 KB 的 JPEG（`<输出>.proof.jpg`），一次就能看；`--no-proof` 不写。本来就写了接触表的命令直接给出接触表路径。
+- **`next: <命令>`**：最多两条下一步，用这次运行的真实路径和 id（`rn look` 判为 far → 对应的 `rn grade`；`rn edit init` → 要填的槽位和草稿渲染；`rn assemble` → `rn qa`；可直接粘贴的 EDL 片段）。
+- **耗时提醒**：随素材变长的命令（`shots`、完整 `assemble`、`key`、`matte`、`faces --reframe`、`text`、`listen --transcribe`、`compare --shots|--video`、`ref`、滚动录屏）预计超过 30 s 时，先在 stderr 打印 `rn: about N s …; in a sandbox run it with background: true`。
+
+`rn --help` 按用途分组列出命令（看、拆参考片、做画面与声音、剪辑、交付），并附 5 个常用流程。
+
 在 Renoise 媒体沙箱里，`rn` 已经预装好，版本由沙箱模板固定。
 
 ## 开发

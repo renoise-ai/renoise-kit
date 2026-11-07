@@ -4,7 +4,6 @@ becomes alpha. Writes a numbered grey PNG sequence (white = subject) to use as a
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import numpy as np
@@ -195,8 +194,7 @@ def summary_lines(result: dict) -> list[str]:
     lines = [f'{result["dir"]}/%05d.png  {result["frames"]} {kind}, keyed every {result["every"]} frame(s)',
              f'backdrop {backdrop["color"]} ({backdrop["source"]}, {result["mode"]}){uniform}',
              f'subject covers {coverage["mean"] * 100:.1f}% of the frame (min {coverage["min"] * 100:.1f}%, max {coverage["max"] * 100:.1f}%); '
-             f'soft edge pixels {result["partial_mean"] * 100:.2f}%',
-             f'EDL: {json.dumps(result["edl"])}' + ('' if result['cutout'] else '  (on an overlay; "invert": true keeps it off the subject)')]
+             f'soft edge pixels {result["partial_mean"] * 100:.2f}%']  # the EDL mask: a next: line (rn/agent.py)
     if backdrop['border_uniform'] < 0.8:
         lines.append('check: the border is not one even backdrop (shading, a set, a subject touching the edge); look at the matte '
                      'on a sheet, give --color, or raise --tolerance')

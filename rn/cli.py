@@ -122,8 +122,12 @@ def _parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest='command', required=True, metavar='command')
 
     def add(name: str, help_text: str, description: str) -> argparse.ArgumentParser:
-        command = sub.add_parser(name, help=help_text, description=description, formatter_class=argparse.RawDescriptionHelpFormatter)
+        # No help= here: rn --help lists the commands by job (GROUPS), not argparse's flat list.
+        command = sub.add_parser(name, description=description, formatter_class=argparse.RawDescriptionHelpFormatter)
+        SHORT[name] = help_text
         command.add_argument('--json', metavar='FILE', help='write the full result as JSON')
+        if name in PROOF_COMMANDS:
+            command.add_argument('--no-proof', action='store_true', help='skip the proof image (<out>.proof.jpg) written to look at')
         return command
 
     probe = add('probe', 'facts an edit depends on (prints JSON)',
@@ -690,7 +694,39 @@ def _parser() -> argparse.ArgumentParser:
                  'other hosts. Fields marked "x-rn-only" are rn extensions. Rules the schema cannot state (anchors, unique\n'
                  'ids, transitions fitting their clips) are checked by rn assemble --dry-run.')
     schema.add_argument('--path', action='store_true', help='print where the schema file is instead')
+    parser.epilog = _grouped_help(sub.choices)
     return parser
+
+
+SHORT: dict[str, str] = {}
+# rn --help: every command once, under the job it is for (tests/test_v7_agent.py fails when a command is missing).
+GROUPS = (
+    ('Look (you cannot watch or listen: these are your eyes and ears)', ('probe', 'frame', 'sheet', 'compare', 'look', 'signal', 'listen', 'text', 'faces')),
+    ('Break down a reference', ('ref', 'shots', 'cuts', 'align')),
+    ('Make pictures and sound', ('capture', 'template', 'captions', 'key', 'matte', 'grid', 'grade', 'music', 'pack', 'fx', 'fonts', 'assets')),
+    ('Edit', ('edit', 'assemble')),
+    ('Deliver', ('finish', 'qa', 'export')),
+    ('This machine', ('doctor', 'schema')),
+)
+RECIPES = """recipes (each step prints proof: to look at and next: to run):
+  remake a reference   rn shots ref.mp4 --keyframes kf --json shots.json && rn edit edit.json init --from-shots shots.json
+                       fill each slot (rn edit edit.json set s03 src=gen/s03.mp4), rn assemble edit.json --placeholders --preview
+  talking-head cut     rn listen take.mp4 --speech --json take.json && rn edit edit.json silences c1 --listen take.json
+                       rn listen take.mp4 --transcribe --json words.json && rn captions words.json --style karaoke ...
+  product / app ad     rn capture https://site -o site --sections "Pricing" --scroll-video scroll.mp4 --duration 8
+                       rn template render callout -o call --params '{...}'; rn pack list --kind sfx
+  music-driven edit    rn listen song.mp3 --json song.json && rn music fit song.mp3 --duration 28 -o bed.m4a
+                       rn edit edit.json snap --listen song.json; rn edit edit.json hits whoosh/swish-1 --at cuts
+  16:9 to 9:16         rn faces wide.mp4 --reframe 1080x1920 -o vertical.mp4 (then rn sheet vertical.mp4 --count 12)"""
+
+
+def _grouped_help(commands) -> str:
+    width = max(map(len, commands)) + 2
+    out = []
+    for title, names in GROUPS:
+        out.append(f'{title}:')
+        out += [f'  {name:<{width}}{SHORT.get(name, "")}' for name in names if name in commands]
+    return '\n'.join(out) + '\n\n' + RECIPES + '\n\n' + EPILOG
 
 
 def _print_summary(command: str, result: dict) -> None:
@@ -736,6 +772,7 @@ def _print_summary(command: str, result: dict) -> None:
               f'{len(result["checks"]) - result["failed"] - result["warnings"]} passed  ({result["path"]})')
 
 
+PROOF_COMMANDS = {'key', 'matte', 'grid', 'template', 'capture', 'faces', 'music', 'grade'}  # their output is a picture or sound
 SUMMARIZED = {'look', 'grade', 'template', 'music', 'cuts', 'shots', 'listen', 'faces', 'key', 'grid', 'ref', 'capture', 'fx', 'fonts', 'assets',
               'captions', 'compare', 'edit', 'signal', 'align',
               'matte', 'text', 'export', 'doctor', 'schema', 'pack'}
@@ -915,8 +952,10 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
         from .look import look_command, summary_lines
         result = look_command(args.files, refs=args.ref, seconds=args.seconds, count=args.count, shots=args.shots, tolerance=args.tolerance)
     elif command == 'grade':
+        from .agent import proof_path
         from .look import grade_command, grade_summary_lines
         result = grade_command(args.src, args.ref, out=args.out, strength=args.strength, size=args.size, count=args.count,
+                               proof=None if args.no_proof else str(proof_path(args.out)),
                                preview=args.preview)
         return result, grade_summary_lines(result)
     elif command == 'export':
@@ -977,6 +1016,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f'rn: error: {tool} not found on PATH', file=sys.stderr)
             return 2
     lines: list[str] = []
+    from .agent import after, warn_if_long
+    estimate_s = warn_if_long(args)
     try:
         if args.command == 'probe':
             from .ff import probe
@@ -1022,6 +1063,7 @@ def main(argv: list[str] | None = None) -> int:
         traceback.print_exc()
         print(f'rn: error: unexpected {type(error).__name__}: {error} (a bug in rn; work around it with ffmpeg directly)', file=sys.stderr)
         return 1
+    tail = [] if args.command in ('probe', 'schema') else after(args, result, estimate_s)
     if args.json:
         Path(args.json).parent.mkdir(parents=True, exist_ok=True)
         Path(args.json).write_text(json.dumps(result, indent=1, ensure_ascii=False, default=str), encoding='utf-8')
@@ -1029,6 +1071,8 @@ def main(argv: list[str] | None = None) -> int:
         print('\n'.join(lines))
     else:
         _print_summary(args.command, result)
+    if tail:
+        print('\n'.join(tail))
     if args.command == 'doctor':
         return 0 if result['ok'] else 1
     return 1 if args.command == 'qa' and result['status'] == 'FAIL' else 0

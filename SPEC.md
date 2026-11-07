@@ -46,6 +46,10 @@ EDL 是可选捷径：创意部分（HTML / canvas、Manim、Blender、ffmpeg �
 - 一个入口 `rn <command>`，`rn <command> --help` 就是文档。`rn --version` = 模板版本。
 - 小结果（`probe`）直接打印 JSON；其他命令终端只打印几行摘要，细节用 `--json <file>` 落盘。
 - 失败返回非 0，最后一行是 `rn: error: <原因>`，可直接转述给用户或据此修参数。
+- v0.7.0：`proof: <路径>`：输出是画面或声音的命令（key、matte、grid、template render、capture、faces --reframe -o、grade、music fit）默认在输出旁写一张带标注、≤ 125 KB 的 JPEG（`<输出 stem>.proof.jpg`，文件夹输出写在文件夹旁边，不进帧序列），JSON 里是 `proof`；`--no-proof` 跳过。已写接触表的命令（sheet、cuts / shots --sheet、faces --sheet）直接把它作为 proof。画不出 proof 只给 warning，不让命令失败。
+- v0.7.0：`next: <命令或 EDL 片段>`：摘要最后最多两行下一步，取自这次运行的路径与 id，JSON 里是 `next`；只在下一步明确时给，不写泛泛的建议（规则在 `rn/agent.py`）。
+- v0.7.0：耗时提醒：随素材时长增长的命令在开工前按 probe 的时长与尺寸估算沙箱耗时（每秒素材的系数见 `rn/agent.py`，粗估），超过 30 s 时 stderr 先打印一行 `rn: about N s for this (...); in a sandbox run it with background: true`，JSON 里是 `estimate_s`。
+- v0.7.0：`rn --help` 按用途分组（看、拆参考片、做画面与声音、剪辑、交付、本机），每条命令一行，附 5 个流程；新命令必须加进 `GROUPS`（有测试）。
 - 时间：秒（数字）。源素材的位置也可以写帧号 `{"frame": 12}`，按源的实际帧率换算。
 - 帧精确：取帧、拼接一律按解码后的帧序号或解码时间戳，不用输入端 `-ss`。
   ponytail：从头解码，耗时与源时长成正比；生成片段多为 5–15 s，参考片 ≤ 60 s，可接受。

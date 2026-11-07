@@ -10,6 +10,8 @@ import numpy as np  # noqa: E402
 
 from rn.faces import DEFAULT_MODEL, faces_command, summary_lines  # noqa: E402
 from rn.ff import RnError  # noqa: E402
+from rn.agent import PROOF_KB, proof
+from types import SimpleNamespace
 
 MODEL_URL = 'https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx'
 LENA_URL = 'https://raw.githubusercontent.com/opencv/opencv/4.x/samples/data/lena.jpg'
@@ -145,3 +147,5 @@ def test_track_and_reframe_render(lena_clip, model, tmp_path):
     xs = [k[1] for k in result['reframe']['keys']]
     assert xs[-1] - xs[0] > 200  # the window follows the image across
     assert any('reframe 270x480' in line for line in summary_lines(result))
+    shown = proof(SimpleNamespace(command='faces', file=str(lena_clip), no_proof=False), result)
+    assert shown == str(tmp_path / 'vertical.proof.jpg') and Path(shown).stat().st_size <= PROOF_KB * 1024

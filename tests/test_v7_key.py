@@ -81,7 +81,8 @@ def test_cli_and_errors(tmp_path, capsys):
     clip = green_clip(tmp_path, frames=3)
     assert main(['key', str(clip), '-o', str(tmp_path / 'c'), '--json', str(tmp_path / 'k.json')]) == 0
     out = capsys.readouterr().out
-    assert 'backdrop #' in out and 'EDL:' in out
+    assert 'backdrop #' in out and 'next: EDL overlay "mask"' in out and f'proof: {tmp_path / "c.proof.jpg"}' in out
+    assert (tmp_path / 'c.proof.jpg').stat().st_size <= 125 * 1024
     assert json.loads((tmp_path / 'k.json').read_text())['frames'] == 3
     assert main(['key', str(clip), '-o', str(tmp_path / 'd'), '--white', '--color', '#00ff00']) == 1
     assert main(['key', str(clip), '-o', str(tmp_path / 'e'), '--color', 'green']) == 1

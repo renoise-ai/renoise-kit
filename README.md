@@ -292,6 +292,19 @@ can chain several commands. Summaries are short, and errors say what to change. 
 exist because a model cannot watch or listen; check the result through them rather than through the format alone.
 `rn qa` passing does not mean the edit is good.
 
+Three things every summary does for an agent (v0.7.0):
+
+- **`proof: <path>`**: commands whose output is a picture or a sound to check (`key`, `matte`, `grid`, `template render`,
+  `capture`, `faces --reframe -o`, `grade`, `music fit`) write one labelled JPEG under 125 KB next to it
+  (`<out>.proof.jpg`), small enough for one image view; `--no-proof` skips it. Commands that already wrote a sheet name it.
+- **`next: <command>`**: at most two exact next steps from this run's own paths and ids (`rn look` far → the `rn grade`
+  line; `rn edit init` → the slot to fill and the draft render; `rn assemble` → `rn qa`; an EDL snippet to paste).
+- **a time warning**: before work that grows with the media (`shots`, a full `assemble`, `key`, `matte`, `faces
+  --reframe`, `text`, `listen --transcribe`, `compare --shots|--video`, `ref`, a scroll recording), rn prints
+  `rn: about N s ...; in a sandbox run it with background: true` on stderr when it expects over 30 s.
+
+`rn --help` lists the commands by job (look, break down a reference, make pictures and sound, edit, deliver) with five recipes.
+
 In the Renoise media sandbox, `rn` comes preinstalled at the version pinned by the sandbox template.
 
 ## Development

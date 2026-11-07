@@ -266,7 +266,7 @@ def lut_filter(cube: Path) -> str:
 
 
 def grade_command(src: str, refs: list[str], *, out: str, strength: float = 1.0, size: int = 33, count: int | None = None,
-                  preview: str | None = None) -> dict:
+                  preview: str | None = None, proof: str | None = None) -> dict:
     if not 0 <= strength <= 1:
         raise RnError('--strength: between 0 and 1')
     if not 2 <= size <= 65:
@@ -283,14 +283,29 @@ def grade_command(src: str, refs: list[str], *, out: str, strength: float = 1.0,
     graded = np.clip(np.round(transform(_pixels([i for _, i in src_samples]) / 255.0) * 255), 0, 255).astype(np.uint8)
     result['before'] = versus(src_stats, ref_stats)
     result['after'] = versus(measure(graded), ref_stats)  # the transform itself; the LUT interpolates it
-    if preview:
+    if preview or proof:
         from PIL import Image
         with tempfile.TemporaryDirectory() as tmp:
-            first = Path(tmp) / 'src.png'
-            Image.fromarray(src_samples[0][1]).save(first)
-            Path(preview).parent.mkdir(parents=True, exist_ok=True)
-            run(['ffmpeg', '-i', str(first.resolve()), '-vf', lut_filter(cube), '-y', str(Path(preview).resolve())], cwd=cube.resolve().parent)
-        result['preview'] = preview
+            # through ffmpeg's lut3d, as the edit will apply it: the LUT itself, not the fitted transform
+            picks = [src_samples[0], src_samples[len(src_samples) // 2]][:len(src_samples)]
+            graded_images = []
+            for k, (_, image) in enumerate(picks):
+                first, after = Path(tmp) / f'src{k}.png', Path(tmp) / f'graded{k}.png'
+                Image.fromarray(image).save(first)
+                run(['ffmpeg', '-i', str(first.resolve()), '-vf', lut_filter(cube), '-y', str(after.resolve())], cwd=cube.resolve().parent)
+                graded_images.append(Image.open(after).convert('RGB'))
+            if preview:
+                Path(preview).parent.mkdir(parents=True, exist_ok=True)
+                graded_images[0].save(preview)
+                result['preview'] = preview
+            if proof:
+                from .agent import write_proof
+                images, labels = [], []
+                for k, ((_, image), graded) in enumerate(zip(picks, graded_images)):
+                    images += [Image.fromarray(image), graded, Image.fromarray(ref_samples[min(k, len(ref_samples) - 1)])]
+                    labels += ['before', 'after (LUT)', 'reference']
+                result['proof'] = write_proof(images, labels, f'rn grade {Path(src).name} -> {cube.name}: '
+                                              f'distance {result["before"]["distance"]} -> {result["after"]["distance"]}', Path(proof), columns=3)
     return result
 
 
@@ -301,6 +316,4 @@ def grade_summary_lines(result: dict) -> list[str]:
             f'{result["after"]["distance"]} ({result["after"]["match"]})  '
             f'(dE76 {result["before"]["de76"]} -> {result["after"]["de76"]}; rn look on the graded clip shows the real result)',
             f'chroma x{m["chroma_scale"]}  zone a*/b* shifts sh/mid/hi {m["zone_shift_ab"]}',
-            *([f'preview {result["preview"]}'] if result.get('preview') else []),
-            'apply in an EDL: "vf": "lut3d=file=' + Path(result['path']).name + '" on a clip (path relative to the EDL), or '
-            'ffmpeg -vf lut3d=file=...']
+            *([f'preview {result["preview"]}'] if result.get('preview') else [])]
