@@ -11,6 +11,9 @@ from conftest import ffmpeg, write_edl
 from rn import agent
 from rn.cli import _parser, main
 
+# next: lines quote paths for a shell as rn does (a Windows path's backslashes need quotes)
+q = agent._q
+
 
 def test_help_lists_every_command_once_under_a_job(capsys):
     with pytest.raises(SystemExit):
@@ -53,7 +56,7 @@ def clips(tmp_path_factory):
 def test_look_far_points_at_grade_and_grade_proves_itself(clips, tmp_path, capsys):
     assert main(['look', str(clips / 'src.mp4'), '--ref', str(clips / 'ref.mp4')]) == 0
     out = capsys.readouterr().out
-    assert f'next: rn grade {clips / "src.mp4"} --ref {clips / "ref.mp4"} -o src.cube' in out
+    assert f'next: rn grade {q(clips / "src.mp4")} --ref {q(clips / "ref.mp4")} -o src.cube' in out
     cube = tmp_path / 'src.cube'
     assert main(['grade', str(clips / 'src.mp4'), '--ref', str(clips / 'ref.mp4'), '-o', str(cube), '--json', str(tmp_path / 'g.json')]) == 0
     out = capsys.readouterr().out
@@ -69,16 +72,16 @@ def test_look_far_points_at_grade_and_grade_proves_itself(clips, tmp_path, capsy
 def test_skeleton_then_assemble_then_qa_each_say_what_comes_next(clips, tmp_path, capsys):
     shots = tmp_path / 'shots.json'
     assert main(['shots', str(clips / 'src.mp4'), '--jobs', '1', '--json', str(shots)]) == 0
-    assert f'next: rn edit edit.json init --from-shots {shots}' in capsys.readouterr().out
+    assert f'next: rn edit edit.json init --from-shots {q(shots)}' in capsys.readouterr().out
     edl = tmp_path / 'edit.json'
     assert main(['edit', str(edl), 'init', '--from-shots', str(shots)]) == 0
     out = capsys.readouterr().out
-    assert f'next: rn edit {edl} set s01 src=gen/s01.mp4' in out
-    assert f'next: rn assemble {edl} -o draft.mp4 --placeholders --preview' in out
+    assert f'next: rn edit {q(edl)} set s01 src=gen/s01.mp4' in out
+    assert f'next: rn assemble {q(edl)} -o draft.mp4 --placeholders --preview' in out
     draft = tmp_path / 'draft.mp4'
     assert main(['assemble', str(edl), '-o', str(draft), '--placeholders', '--preview']) == 0
     out = capsys.readouterr().out
-    assert f'next: rn qa {draft} --edl {edl} --placeholders' in out and f'next: rn sheet {draft} --count 12' in out
+    assert f'next: rn qa {q(draft)} --edl {q(edl)} --placeholders' in out and f'next: rn sheet {q(draft)} --count 12' in out
 
 
 def test_qa_names_the_fix(clips, tmp_path, capsys):
@@ -86,7 +89,7 @@ def test_qa_names_the_fix(clips, tmp_path, capsys):
     ffmpeg('-f', 'lavfi', '-i', 'testsrc2=s=320x240:d=2:r=24', '-f', 'lavfi', '-i', 'sine=f=440:d=2', '-af', 'volume=12dB',
            '-pix_fmt', 'yuv420p', '-shortest', str(loud))
     main(['qa', str(loud), '--lufs', '-14'])
-    assert f'next: rn finish {loud} -o loud-fixed.mp4' in capsys.readouterr().out
+    assert f'next: rn finish {q(loud)} -o loud-fixed.mp4' in capsys.readouterr().out
 
 
 def test_grid_proof_shows_every_tile(tmp_path, capsys):
@@ -104,4 +107,4 @@ def test_edl_snippets_are_next_lines(tmp_path, capsys):
     item = write_edl(tmp_path, {'version': 2, 'output': {'width': 64, 'height': 64, 'fps': 10},
                                 'tracks': [{'clips': [{'color': '#000000', 'duration': 1}]}]})
     assert main(['assemble', str(item), '-o', str(tmp_path / 'x.mp4'), '--dry-run']) == 0
-    assert f'next: rn assemble {item} -o {tmp_path / "x.mp4"} --preview' in capsys.readouterr().out
+    assert f'next: rn assemble {q(item)} -o {q(tmp_path / "x.mp4")} --preview' in capsys.readouterr().out
