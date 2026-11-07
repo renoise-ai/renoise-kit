@@ -155,7 +155,7 @@ EOF
 | `rn signal FILE [-o PNG]` | 逐帧的亮度、运动、饱和度、响度、低 / 中 / 高频段、起音强度，以及闪帧和爆音位置 |
 | `rn align A B` | 通过声音判断录音 B 在 A 里的位置：偏移量、`match`、`distinct` |
 | `rn faces FILE` | 逐帧人脸框和关键点（只测量，不改脸） |
-| `rn text FILE` | 画面上的文字行、位置框和出现时间（tesseract） |
+| `rn text FILE` | 画面上的文字行、位置框和出现时间（tesseract）；每行首次读到时的字色、背景色、描边色（`#rrggbb`，没有描边为 null）和字高 |
 | `rn matte FILE -o DIR` | 逐帧主体 alpha，输出灰度 PNG，可直接作为 EDL 的 `mask`；加 `--cutout` 输出 RGBA 抠像 |
 | `rn ref FILE` | 参考片拆解：镜头、声音、剪点和拍点的对齐情况、所有帧的接触表，附一份读片指南 |
 

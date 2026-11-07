@@ -242,7 +242,10 @@ def _parser() -> argparse.ArgumentParser:
 
     text = add('text', 'words on screen and when they are there (tesseract OCR)',
                'Reads every --every-th frame (default two per second); lines with boxes per frame, and spans: the same\n'
-               'line read in consecutive samples. OCR misreads stylised type: boxes are where to look, strings a draft.')
+               'line read in consecutive samples. OCR misreads stylised type: boxes are where to look, strings a draft.\n'
+               'Each span has a style measured on the frame where it was first read: color (the glyphs), background,\n'
+               'outline (a contrasting ring around the glyphs, else null), all #rrggbb, and height_px / height_share\n'
+               '(box height in source pixels / as a share of the frame height).')
     text.add_argument('file')
     text.add_argument('--every', type=int, metavar='N')
     text.add_argument('--lang', help='tesseract languages, e.g. eng+chi_sim (default: those installed of eng, chi_sim, chi_tra, jpn, kor)')

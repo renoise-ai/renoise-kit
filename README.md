@@ -169,7 +169,7 @@ EOF
 | `rn signal FILE [-o PNG]` | Per-frame luma, motion, saturation, loudness, low/mid/high bands, onset strength; flash frames, clicks |
 | `rn align A B` | Where recording B sits inside A, by sound: offset, `match`, `distinct` |
 | `rn faces FILE` | Face boxes and landmarks per frame (measurement only) |
-| `rn text FILE` | On-screen text lines, their boxes and when they are on screen (tesseract) |
+| `rn text FILE` | On-screen text lines, their boxes and when they are on screen (tesseract); per line, as first read, the text, background and outline colours (`#rrggbb`, outline null when there is none) and the text height |
 | `rn matte FILE -o DIR` | Subject alpha per frame as grey PNGs, ready to use as an EDL `mask`; `--cutout` for RGBA |
 | `rn ref FILE` | A reference breakdown: shots, sound, cut-to-beat sync, every frame on sheets, and a reading guide |
 
