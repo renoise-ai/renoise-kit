@@ -391,20 +391,27 @@ FACE_MIN_AREA = 0.02  # a face counts when its box covers at least this share of
 _detectors: dict = {}
 
 
-def _faces(sampled: list, model: str) -> dict:
-    """Up to 4 of the sampled frames: in how many a face covers at least FACE_MIN_AREA of the picture, and the largest."""
+def _faces(path: str, display: tuple[int, int], times: list[float], model: str) -> dict:
+    """At up to 4 times: in how many frames a face covers at least FACE_MIN_AREA of the picture, and the largest. Frames are
+    decoded again at the size rn faces detects at (long side up to 960): at the 480 px analysis width small faces fall
+    under the detector's score."""
     import cv2
 
+    from .faces import DETECT_LONG_SIDE
+
     detector = _detectors.get(model) or _detectors.setdefault(model, cv2.FaceDetectorYN.create(model, '', (320, 320), 0.6))
-    checked = sampled[:: max(1, len(sampled) // 4)]
+    width = max(2, int(display[0] * min(1.0, DETECT_LONG_SIDE / float(max(display)))))
     largest = []
-    for bgr in checked:
-        h, w = bgr.shape[:2]
+    for t in times:
+        frame = next(_frames(path, display, width, start=t, duration=0.5), None)
+        if frame is None:
+            continue
+        h, w = frame.shape[:2]
         detector.setInputSize((w, h))
-        _, found = detector.detect(bgr)
+        _, found = detector.detect(frame)
         largest.append(max((float(row[2] * row[3]) for row in found), default=0.0) / float(w * h) if found is not None else 0.0)
-    return {'frames_with_face': round(sum(a >= FACE_MIN_AREA for a in largest) / float(len(checked)), 3) if checked else 0.0,
-            'largest_area': round(max(largest, default=0.0), 4), 'checked': len(checked)}
+    return {'frames_with_face': round(sum(a >= FACE_MIN_AREA for a in largest) / float(len(largest)), 3) if largest else 0.0,
+            'largest_area': round(max(largest, default=0.0), 4), 'checked': len(largest)}
 
 
 def _measure(job: tuple) -> dict:
@@ -450,7 +457,8 @@ def _measure(job: tuple) -> dict:
         period, regularity = int(values[np.argmax(counts)]), round(float(counts.max() / len(gaps)), 3)
     else:
         period, regularity = None, 0.0
-    faces = _faces(sampled, face_model) if face_model else None
+    checked = sorted(keep)[:: max(1, len(keep) // 4)]
+    faces = _faces(path, display, [shot['start'] + i / fps for i in checked], face_model) if face_model else None
     first_last = 0.0
     if len(sampled) >= 2:
         a, b = (cv2.cvtColor(x, cv2.COLOR_BGR2GRAY).astype(np.float32) for x in (sampled[0], sampled[-1]))
