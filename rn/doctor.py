@@ -54,6 +54,8 @@ FILTER_USES = (
     ('rn compare --cuts', 'metadata'),
     ('rn compare --video', 'setsar hstack'),
     ('rn signal', 'signalstats metadata'),
+    ('rn key', 'scale'),
+    ('rn faces --reframe -o', 'crop scale setsar'),
     ('rn listen', 'ebur128'),
 )
 
@@ -61,8 +63,9 @@ OPENCV = ('opencv-python-headless', 'opencv-python', 'opencv-contrib-python-head
 # (check name, modules it needs, distributions to read a version from, extra, what imports it). From the import sites in
 # rn/; the extras are pyproject.toml's. An extra of None is a required dependency: part of the core.
 MODULES = (
-    ('numpy', ('numpy',), ('numpy',), None, ['rn shots', 'rn signal', 'rn align', 'rn listen', 'rn.fx']),
-    ('pillow', ('PIL',), ('pillow',), None, ['rn sheet', 'rn compare', 'rn listen', 'rn matte', 'rn assemble (images, cards)']),
+    ('numpy', ('numpy',), ('numpy',), None, ['rn shots', 'rn signal', 'rn align', 'rn listen', 'rn key', 'rn grid', 'rn.fx']),
+    ('pillow', ('PIL',), ('pillow',), None, ['rn sheet', 'rn compare', 'rn listen', 'rn matte', 'rn key', 'rn grid',
+                                             'rn assemble (images, cards)']),
     ('opencv', ('cv2',), OPENCV, 'faces', ['rn faces', 'rn shots', 'rn compare --shots']),
     ('librosa', ('librosa',), ('librosa',), 'listen', ['rn listen', 'rn ref (a video with sound)']),
     ('matplotlib', ('matplotlib',), ('matplotlib',), 'listen', ['rn listen', 'rn ref (a video with sound)', 'rn signal -o']),

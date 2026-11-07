@@ -1,4 +1,4 @@
-"""rn: Renoise media kit. Measure (probe, frame, sheet, cuts, shots, listen, faces, ref, signal, align, text, matte), render
+"""rn: Renoise media kit. Measure (probe, frame, sheet, cuts, shots, listen, faces, ref, signal, align, text, matte, key, grid), render
 (capture, fx, fonts, assets, captions), edit and assemble an EDL frame-exactly, compare, finish, QA and export. It measures
 and guarantees the mechanics; every creative decision stays yours. rn doctor says what this machine can run; rn schema
 prints the edit.json schema.
@@ -189,6 +189,50 @@ def _parser() -> argparse.ArgumentParser:
     faces.add_argument('--sheet', metavar='JPG', help='contact sheet with the boxes drawn')
     faces.add_argument('--model')
     faces.add_argument('--max-kb', type=int, default=125)
+    faces.add_argument('--track', action='store_true',
+                       help='one subject per frame: picked, followed, gaps filled, smoothed ("track" in --json)')
+    faces.add_argument('--pick', default='largest', choices=['largest', 'center', 'left', 'right'],
+                       help='which face is the subject (default largest; picked again after a gap longer than --max-gap)')
+    faces.add_argument('--smooth', type=float, default=0.25, metavar='S', help='Gaussian smoothing of the track, sigma in seconds (0: off)')
+    faces.add_argument('--max-gap', type=int, default=12, metavar='N', help='frames without the face that are filled in (default 12)')
+    faces.add_argument('--reframe', metavar='WxH',
+                       help='a moving crop with this aspect that keeps the subject in frame (implies --track), e.g. 1080x1920 '
+                            'from 16:9; -o renders it')
+    faces.add_argument('--zoom', type=float, default=1.0, help='--reframe: crop tighter than the largest window (>= 1)')
+    faces.add_argument('-o', '--out', metavar='MP4', help='--reframe: render the reframed video (H.264, sound copied) to use as "src"')
+
+    key = add('key', 'backdrop matte (green / blue / any solid colour, or white): grey PNGs for EDL masks, or cut-outs',
+              'For footage or stills on a real backdrop, no model: the backdrop colour is measured on the frame border (or\n'
+              'given), and each pixel\'s distance from it (chroma, luma at half weight) becomes alpha. --white instead keys\n'
+              'near-white pixels connected to the border, so white inside the subject (teeth, a label) stays. Writes\n'
+              'DIR/%05d.png, white = subject, ready as an overlay "mask"; --cutout writes RGBA cut-outs (--despill takes\n'
+              'the backdrop\'s tint off the edges). Reports the backdrop colour, how much of the border matches it, the\n'
+              'subject\'s coverage and soft-edge share. Faster than rn matte and exact on a real backdrop; for footage\n'
+              'without one use rn matte.\n'
+              'Examples:\n  rn key avatar_greenscreen.mp4 -o key/avatar --cutout --despill\n'
+              '  rn key product_white.png -o key/product --white --cutout')
+    key.add_argument('file', help='video or image')
+    key.add_argument('-o', '--out', required=True, help='output folder (its PNGs are replaced)')
+    key.add_argument('--color', default='auto', metavar='auto|#rrggbb', help='backdrop colour (default: measured on the border)')
+    key.add_argument('--white', action='store_true', help='white / near-white backdrop, keyed by flood fill from the border')
+    key.add_argument('--tolerance', type=float, help='distance from the backdrop still keyed fully out (0..255; default 40)')
+    key.add_argument('--softness', type=float,
+                     help='width of the edge ramp: colour distance (default 30); with --white, a feather radius in px (default 1)')
+    key.add_argument('--despill', action='store_true', help='--cutout: cap the backdrop\'s main channel at the others on the subject')
+    key.add_argument('--cutout', action='store_true', help='write RGBA cut-outs instead of grey mattes')
+    key.add_argument('--every', type=int, default=1, help='key every Nth frame and hold in between')
+
+    grid = add('grid', 'slice a sheet (storyboard, character sheet, 2x2 / 3x3 grid) into tiles',
+               'Rows and columns not given are found from the gutters: full-length lines of one even colour between\n'
+               'tiles. With --rows / --cols the sheet is split evenly, --gap px between tiles. --trim drops a uniform\n'
+               'margin or frame around each tile. Writes DIR/r1c1.png ...\n'
+               'Examples:\n  rn grid board.png -o tiles/\n  rn grid kf_grid.png -o kf/ --rows 3 --cols 3')
+    grid.add_argument('image')
+    grid.add_argument('-o', '--out', required=True, help='output folder')
+    grid.add_argument('--rows', type=int)
+    grid.add_argument('--cols', type=int)
+    grid.add_argument('--gap', type=int, default=0, help='with --rows / --cols: px between tiles')
+    grid.add_argument('--trim', action='store_true', help='cut each tile down to what differs from its edge colour')
 
     ref = add('ref', 'break down a reference edit: shots, audio, every frame',
               'Writes ref/<name>/: ref.json (probe, shots, cuts, suspects, listen), cuts.jpg, listen.jpg and\n'
@@ -494,7 +538,7 @@ def _print_summary(command: str, result: dict) -> None:
               f'{len(result["checks"]) - result["failed"] - result["warnings"]} passed  ({result["path"]})')
 
 
-SUMMARIZED = {'cuts', 'shots', 'listen', 'faces', 'ref', 'capture', 'fx', 'fonts', 'assets', 'captions', 'compare', 'edit', 'signal', 'align',
+SUMMARIZED = {'cuts', 'shots', 'listen', 'faces', 'key', 'grid', 'ref', 'capture', 'fx', 'fonts', 'assets', 'captions', 'compare', 'edit', 'signal', 'align',
               'matte', 'text', 'export', 'doctor', 'schema'}
 NO_FFMPEG = {'doctor', 'schema'}  # they work without ffmpeg on PATH: doctor reports it missing
 # The pip extra that brings a command's optional Python modules (the media sandbox has them all).
@@ -587,7 +631,16 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
         result = listen_command(args.file, out=args.out, transcribe=args.transcribe, language=args.language, model=args.model, max_kb=args.max_kb)
     elif command == 'faces':
         from .faces import faces_command, summary_lines
-        result = faces_command(args.file, every=args.every, model=args.model, min_score=args.min_score, out_sheet=args.sheet, max_kb=args.max_kb)
+        result = faces_command(args.file, every=args.every, model=args.model, min_score=args.min_score, out_sheet=args.sheet, max_kb=args.max_kb,
+                               track=args.track, pick=args.pick, smooth=args.smooth, max_gap=args.max_gap,
+                               reframe_size=_size(args.reframe) if args.reframe else None, zoom=args.zoom, out=args.out)
+    elif command == 'key':
+        from .key import key_command, summary_lines
+        result = key_command(args.file, out=args.out, color=args.color, white=args.white, tolerance=args.tolerance,
+                             softness=args.softness, despill_edges=args.despill, cutout=args.cutout, every=args.every)
+    elif command == 'grid':
+        from .grid import grid_command, summary_lines
+        result = grid_command(args.image, out=args.out, rows=args.rows, cols=args.cols, gap=args.gap, trim=args.trim)
     elif command == 'ref':
         from .ref import ref_command, summary_lines
         result = ref_command(args.file, out=args.out, every=args.every, transcribe=args.transcribe, language=args.language,
