@@ -537,16 +537,25 @@ def _edit_step(path: Path, args) -> dict:
     return editops.move_op(path, args.ref, args.before, args.after, args.track)
 
 
+def _step_words(line: str, windows: bool = os.name == 'nt') -> list[str]:
+    """One batch line as words, quotes grouping as in a shell. On Windows a backslash separates folders
+    (C:\\clips\\a.mp4), so it is kept as written instead of escaping the next character."""
+    lex = shlex.shlex(line, posix=True)
+    lex.whitespace_split, lex.commenters = True, ''
+    if windows:
+        lex.escape = ''
+    try:
+        return list(lex)
+    except ValueError as error:  # an unbalanced quote
+        raise RnError(str(error)) from None
+
+
 def _edit_step_runner():
     parser = _StepParser(prog='rn edit EDL batch', add_help=False)
     _edit_ops(parser.add_subparsers(dest='op', required=True, metavar='op'))
 
     def run(path: Path, line: str) -> dict:
-        try:
-            words = shlex.split(line)
-        except ValueError as error:  # an unbalanced quote
-            raise RnError(str(error)) from None
-        return _edit_step(path, parser.parse_args(words))
+        return _edit_step(path, parser.parse_args(_step_words(line)))
     return run
 
 

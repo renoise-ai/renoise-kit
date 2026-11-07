@@ -95,3 +95,17 @@ def test_sheet_crop_on_a_folder_of_stills(media, tmp_path):
     Image.open(media / 'card.png').save(folder / 'a.png')
     assert rn('sheet', folder, '--crop', '100:50:0:0', '--width', 100, '-o', tmp_path / 's.jpg') == 0
     assert rn('sheet', folder, '--crop', '100:50:350:0', '-o', tmp_path / 'x.jpg') == 1
+
+
+def test_batch_lines_keep_windows_paths():
+    """A batch line splits like a shell line; on Windows a backslash is a folder separator, not an escape."""
+    from rn.cli import _step_words
+    from rn.ff import RnError
+
+    line = r'hits C:\clips\whoosh.wav --at cuts --gain -3'
+    assert _step_words(line, windows=True) == ['hits', r'C:\clips\whoosh.wav', '--at', 'cuts', '--gain', '-3']
+    assert _step_words(r'hits "C:\my clips\a b.wav" --at 1,2', windows=True)[1] == r'C:\my clips\a b.wav'
+    assert _step_words(r"set c1 'note=a\b'", windows=False) == ['set', 'c1', r'note=a\b']
+    assert _step_words(r'set c1 note=a\ b', windows=False) == ['set', 'c1', 'note=a b'], 'an escaped space elsewhere'
+    with pytest.raises(RnError):
+        _step_words('set c1 "unclosed', windows=True)
