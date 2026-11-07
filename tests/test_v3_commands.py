@@ -51,6 +51,67 @@ def test_assets_search_get_and_checksum(tmp_path, monkeypatch):
         get_command(['nope'], out=str(tmp_path / 'out'))
 
 
+def _discoverable_library(tmp_path, monkeypatch):
+    """Overlays with categories, descriptions, previews and a "use", plus a LUT and an sfx without one."""
+    files = tmp_path / 'lib'
+    files.mkdir()
+    entries = []
+    for asset_id, kind, category, description, use in [
+        ('overlay/leak-warm', 'overlay', 'light-leak', 'orange flare drifting across the frame', {'src': '{src}', 'style': {'mix-blend-mode': 'screen'}}),
+        ('overlay/leak-cool', 'overlay', 'light-leak', 'blue streak wipe', None),
+        ('overlay/dust-1', 'overlay', 'dust', 'film dust and scratches', {'src': '{src}', 'style': {'mix-blend-mode': 'multiply', 'opacity': 0.6}}),
+        ('lut/bleach', 'lut', 'film', 'desaturated high contrast', None),
+        ('sfx/whoosh', 'sfx', 'whoosh', 'fast air pass', None),
+    ]:
+        name = asset_id.replace('/', '-')
+        body = name.encode()
+        (files / f'{name}.bin').write_bytes(body)
+        Image.new('RGB', (64, 36), (200, 120, 40)).save(files / f'{name}.jpg')
+        entry = {'id': asset_id, 'kind': kind, 'category': category, 'title': name, 'description': description, 'tags': [category],
+                 'license': 'CC0', 'source': 'test', 'url': f'{name}.bin', 'sha256': hashlib.sha256(body).hexdigest(), 'preview': f'{name}.jpg'}
+        if use:
+            entry['use'] = use
+        entries.append(entry)
+    (files / 'manifest.json').write_text(json.dumps({'version': 1, 'assets': entries}), encoding='utf-8')
+    monkeypatch.setenv('RN_ASSETS_URL', str(files / 'manifest.json'))
+    monkeypatch.setenv('RN_ASSETS_CACHE', str(tmp_path / 'cache'))
+
+
+def test_assets_catalog_description_and_edl_use(tmp_path, monkeypatch):
+    from rn.assets import get_command, search_command
+    _discoverable_library(tmp_path, monkeypatch)
+    # no words: the catalog counts each kind's categories, most first
+    listing = search_command('', kind=None, limit=20)
+    assert listing['catalog'] == {'lut': {'film': 1}, 'overlay': {'light-leak': 2, 'dust': 1}, 'sfx': {'whoosh': 1}}
+    assert 'catalog' not in search_command('flare', kind=None, limit=20)
+    # the description is searched, so "flare" finds a light leak whose id and tags never say it
+    assert [a['id'] for a in search_command('flare', kind='overlay', limit=5)['assets']] == ['overlay/leak-warm']
+    assert search_command('', kind='lut', limit=5)['assets'][0]['id'] == 'lut/bleach'
+    # get: the manifest's "use" with the path filled in; a plain object for the kind otherwise
+    files = {f['id']: f for f in get_command(['overlay/leak-warm', 'overlay/leak-cool', 'lut/bleach', 'sfx/whoosh'], out=str(tmp_path / 'out'))['files']}
+    warm = files['overlay/leak-warm']
+    assert warm['place'] == 'overlay clip' and warm['edl'] == {'src': warm['path'], 'style': {'mix-blend-mode': 'screen'}}
+    assert files['overlay/leak-cool']['edl'] == {'src': files['overlay/leak-cool']['path']}
+    assert files['lut/bleach']['edl'] == {'vf': f'lut3d=file={files["lut/bleach"]["path"]}'} and files['lut/bleach']['place'] == 'clip'
+    assert files['sfx/whoosh']['edl'] == {'src': files['sfx/whoosh']['path'], 'role': 'sfx'}
+    assert (tmp_path / 'out' / 'overlay' / 'leak-warm.bin').exists()  # "<category>/<name>" ids land in a subfolder
+
+
+def test_assets_cli_proof_and_next(tmp_path, monkeypatch, capsys):
+    _discoverable_library(tmp_path, monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    assert main(['assets', 'search', 'leak', '--kind', 'overlay']) == 0
+    out = capsys.readouterr().out
+    assert 'proof: assets.proof.jpg' in out and (tmp_path / 'assets.proof.jpg').exists()
+    assert 'next: rn assets get overlay/leak-cool overlay/leak-warm -o assets' in out
+    assert main(['assets', 'search', '--kind', 'overlay']) == 0
+    assert 'overlay: light-leak 2, dust 1' in capsys.readouterr().out
+    assert main(['assets', 'get', 'overlay/dust-1']) == 0
+    assert 'next: EDL overlay clip: {"src": "assets/overlay/dust-1.bin", "style": {"mix-blend-mode": "multiply", "opacity": 0.6}}' in capsys.readouterr().out
+    assert main(['assets', 'get', 'lut/bleach']) == 0
+    assert 'next: EDL clip: {"vf": "lut3d=file=assets/lut/bleach.bin"}  (path relative to the EDL)' in capsys.readouterr().out
+
+
 def test_assets_unpublished_library_says_so(tmp_path, monkeypatch):
     from rn.assets import search_command
     monkeypatch.setenv('RN_ASSETS_URL', str(tmp_path / 'missing' / 'manifest.json'))

@@ -192,7 +192,7 @@ EOF
 | `rn captions ... --style clean\|pop\|karaoke\|highlight\|box` | Animated caption styles from the same word timing: heavy outline, pop-in, karaoke fill, the spoken word highlighted, a box; `--accent`, `--color`, `--font`, `--position`, `--upper` |
 | `rn template list\|show\|render NAME -o DIR --params '{...}'` | Built-in motion templates (headline, lower third, callout, counter, bar chart, steps, text behind a person) rendered to RGBA PNGs for an EDL overlay; readable HTML pages to copy and change |
 | `rn fonts [--script ja]` | Installed families with the weights that really exist, and the scripts they cover |
-| `rn assets search\|get` | Licensed SFX and overlay footage, checked against sha256 |
+| `rn assets search\|get` | The online library: licensed SFX, overlay footage, textures, music and LUTs. `search` with no words counts each kind's categories; with words it also matches descriptions and tiles the matches' previews into a proof image; `get` checks sha256 and prints the EDL object to drop in (blend mode, role, `lut3d`) |
 
 **Edit and assemble**
 

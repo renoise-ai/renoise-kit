@@ -453,13 +453,15 @@ def _parser() -> argparse.ArgumentParser:
     pack.add_argument('--color', default='currentColor', help='icons: stroke colour (default currentColor)')
     pack.add_argument('--stroke-width', type=float, default=2, help='icons: stroke width in the 24-unit icon box (default 2)')
 
-    assets = add('assets', 'licensed sound effects and overlay footage from the Renoise library (online; offline: rn pack)',
-                 'rn assets search "whoosh fast" --kind sfx ; rn assets get <id>... -o assets/\n'
-                 'Files are checked against their sha256 and cached; the licence comes with each file. The pack that ships\n'
-                 'inside rn (sounds, fonts, looks, icons; no network) is rn pack.')
+    assets = add('assets', 'licensed sound effects, overlay footage, textures, music and LUTs from the Renoise library (online; offline: rn pack)',
+                 'rn assets search --kind overlay       # no words: what the library holds, counted by category\n'
+                 'rn assets search "warm light leak" --kind overlay ; rn assets get <id>... -o assets/\n'
+                 'search tiles the matches\' previews into a proof image to look at before you download; get prints the EDL\n'
+                 'object to drop in (blend mode, role, lut3d). Files are checked against their sha256 and cached; the licence\n'
+                 'comes with each file. The pack that ships inside rn (sounds, fonts, looks, icons; no network) is rn pack.')
     assets.add_argument('action', choices=['search', 'get'])
     assets.add_argument('terms', nargs='*', help='search words, or asset ids for get')
-    assets.add_argument('--kind', choices=['sfx', 'overlay', 'texture', 'music'])
+    assets.add_argument('--kind', choices=['sfx', 'overlay', 'texture', 'music', 'lut'])
     assets.add_argument('--limit', type=int, default=20)
     assets.add_argument('-o', '--out', default='assets')
 
@@ -772,7 +774,7 @@ def _print_summary(command: str, result: dict) -> None:
               f'{len(result["checks"]) - result["failed"] - result["warnings"]} passed  ({result["path"]})')
 
 
-PROOF_COMMANDS = {'key', 'matte', 'grid', 'template', 'capture', 'faces', 'music', 'grade'}  # their output is a picture or sound
+PROOF_COMMANDS = {'key', 'matte', 'grid', 'template', 'capture', 'faces', 'music', 'grade', 'assets'}  # their output is a picture or sound
 SUMMARIZED = {'look', 'grade', 'template', 'music', 'cuts', 'shots', 'listen', 'faces', 'key', 'grid', 'ref', 'capture', 'fx', 'fonts', 'assets',
               'captions', 'compare', 'edit', 'signal', 'align',
               'matte', 'text', 'export', 'doctor', 'schema', 'pack'}
