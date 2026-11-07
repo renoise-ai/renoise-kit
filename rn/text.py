@@ -18,6 +18,9 @@ from .ff import RnError, probe, source_fps
 from .frames import extract
 
 PREFERRED = ('eng', 'chi_sim', 'chi_tra', 'jpn', 'kor')
+# The same line read again within this many seconds, about where it was, is one appearance: tesseract misses a line now
+# and then on a busy frame (measured: a caption on a moving background read in 3 of 7 samples).
+BRIDGE_S = 2.0
 
 
 def languages() -> list[str]:
@@ -168,6 +171,12 @@ def _span_style(picture: np.ndarray, box: list[int]) -> dict:
     return {**_style(crop), 'height_px': h, 'height_share': round(h / frame_h, 4)}
 
 
+def _same_place(a: list[int], b: list[int]) -> bool:
+    """Two reads of a line about where each other is (box centres within a line height down and a box width across)."""
+    (ax, ay, aw, ah), (bx, by, bw, bh) = a, b
+    return abs((ay + ah / 2) - (by + bh / 2)) <= max(ah, bh) and abs((ax + aw / 2) - (bx + bw / 2)) <= max(aw, bw)
+
+
 def text_command(path: str, *, every: int | None, lang: str | None, min_conf: float) -> dict:
     from PIL import Image
 
@@ -185,8 +194,10 @@ def text_command(path: str, *, every: int | None, lang: str | None, min_conf: fl
     total = 1 if still else video['frames']
     step = every or (1 if still else max(1, round(float(fps) / 2)))  # two reads a second by default
     samples = []
-    # Spans: the same line read in consecutive samples is one appearance. Built while the frames are on disk: a new
-    # span's style is measured on the frame where it was first read.
+    # Spans: the same line read in consecutive samples (or again within BRIDGE_S, at the same place) is one appearance,
+    # with how many samples read it and their mean confidence. Built while the frames are on disk: a new span's style
+    # is measured on the frame where it was first read.
+    bridge = 0 if still else max(step, round(BRIDGE_S * float(fps)))
     spans: list[dict] = []
     open_spans: dict[str, dict] = {}
     with tempfile.TemporaryDirectory() as tmp:
@@ -195,23 +206,24 @@ def text_command(path: str, *, every: int | None, lang: str | None, min_conf: fl
             sample = {'f': index, 't': None if still else round(index / float(fps), 3), 'lines': _read(png, lang, min_conf)}
             samples.append(sample)
             picture = None
-            seen = set()
             for line in sample['lines']:
-                seen.add(line['text'])
                 span = open_spans.get(line['text'])
-                if span and span['last_frame'] >= sample['f'] - step:
+                if span and span['last_frame'] >= sample['f'] - bridge and _same_place(span['box'], line['box']):
                     span['last_frame'] = sample['f']
+                    span['reads'] += 1
+                    span['conf'] += line['conf']
                 else:
                     if picture is None:
                         with Image.open(png) as image:
                             picture = np.asarray(image.convert('RGB'))
                     span = {'text': line['text'], 'first_frame': sample['f'], 'last_frame': sample['f'], 'box': line['box'],
-                            'style': _span_style(picture, line['box'])}
+                            'reads': 1, 'conf': line['conf'], 'style': _span_style(picture, line['box'])}
                     open_spans[line['text']] = span
                     spans.append(span)
-            for text in [t for t in open_spans if t not in seen]:
+            for text in [t for t, span in open_spans.items() if span['last_frame'] < sample['f'] - bridge]:
                 del open_spans[text]
     for span in spans:
+        span['conf'] = round(span['conf'] / span['reads'], 1)
         if fps:
             span['start'] = round(span['first_frame'] / float(fps), 3)
             span['end'] = round(min(total, span['last_frame'] + step) / float(fps), 3)  # up to the next sample not read

@@ -155,6 +155,7 @@ def test_compare_shots_pairs_each_shot_with_its_transition_and_camera(edit_film,
     shots = json.loads(report.read_text(encoding='utf-8'))['shots']
     zoom = shots['pairs'][2]
     assert (zoom['a']['transition_in'], zoom['b']['transition_in']) == ('dissolve', 'cut') and shots['transitions_differ'] == 1
+    assert zoom['a']['transition']['frames'] > 2 and 'transition' not in zoom['b']  # the dissolve's measured length comes along
     assert zoom['motion']['a']['zoom_per_s'] > 0.02 and zoom['motion']['b']['zoom_per_s'] > 0.02
 
 

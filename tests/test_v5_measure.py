@@ -180,6 +180,38 @@ def test_text_style_is_from_the_first_read(tmp_path, monkeypatch):
     assert style['color'] in text.summary_lines(result)[1]
 
 
+def test_text_bridges_missed_reads(tmp_path, monkeypatch):
+    """No tesseract needed: a stand-in OCR that misses the caption in some samples. Reads up to BRIDGE_S apart at the same
+    place make one span (with its read count and mean confidence); a read after a longer gap, or somewhere else, starts
+    another."""
+    import rn.text as text
+    clip = tmp_path / 'clip.mp4'
+    ffmpeg('-f', 'lavfi', '-i', 'color=c=gray:s=320x240:r=24:d=8', '-pix_fmt', 'yuv420p', str(clip))
+    # samples every 12 frames (0.5 s): read at 0, 0.5, then missed 1.0-2.0, read 2.5 (2 s after the last read), missed
+    # 3.0-5.0, read 5.5 (3 s later: a new span), and at 6.0 lower down the frame (a different place: a new span)
+    reads = {0: (90, 40), 12: (80, 40), 60: (70, 40), 132: (90, 40), 144: (90, 180)}
+
+    def read(png, lang, min_conf):
+        f = int(png.stem.split('_')[-1]) if png.stem.split('_')[-1].isdigit() else None
+        hit = reads.get(f)
+        return [{'text': 'SALE', 'box': [100, hit[1], 120, 30], 'conf': float(hit[0])}] if hit else []
+
+    monkeypatch.setattr(text, 'languages', lambda: ['eng'])
+    monkeypatch.setattr(text, '_read', read)
+
+    def extract(path, indices, out):
+        frame = Image.new('RGB', (320, 240))
+        for i in indices:
+            frame.save(out / f'f_{i}.png')
+        return [(i, out / f'f_{i}.png') for i in indices]
+
+    monkeypatch.setattr(text, 'extract', extract)
+    spans = text.text_command(str(clip), every=None, lang=None, min_conf=50)['spans']
+    assert [(s['first_frame'], s['last_frame'], s['reads'], s['conf']) for s in spans] == [(0, 60, 3, 80.0), (132, 132, 1, 90.0),
+                                                                                          (144, 144, 1, 90.0)]
+    assert (spans[0]['start'], spans[0]['end']) == (0.0, 3.0)
+
+
 def test_matte_masks_the_subject(tmp_path):
     pytest.importorskip('rembg')
     frame = Image.new('RGB', (320, 240), (200, 210, 220))

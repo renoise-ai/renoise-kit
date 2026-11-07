@@ -43,9 +43,25 @@ def _shot_motion(shot: dict, width: int) -> dict:
             'pan_dir_deg': m['pan_dir_deg'], 'rigid_fit': m['rigid_fit']}
 
 
+def _span(s: dict) -> dict:
+    """A shot as a compare pair shows it: its time and how it begins, with the transition's frames (and a wipe's edge, a
+    fade's colour and parts) when rn shots measured them."""
+    span = {'shot': s['shot'], 'start': s['start'], 'end': s['end'], 'transition_in': s['transition_in']}
+    if s.get('transition'):
+        span['transition'] = s['transition']
+    return span
+
+
+def _begins(span: dict) -> str:
+    how, t = span['transition_in'] or 'start', span.get('transition') or {}
+    extra = [f'{t["frames"]}f'] if t.get('frames') else []
+    extra += [x for x in (t.get('edge'), t.get('through')) if x]
+    return f'{how} ({" ".join(extra)})' if extra else how
+
+
 def match_shots(a: dict, b: dict) -> dict:
     """rn shots results of A and B on one clock: each A shot with the B shot that overlaps it most. Per pair the
-    transitions, durations and the camera numbers (zoom per second, pan in frame widths per second so sizes may differ,
+    transitions (with their measured frames), durations and the camera numbers (zoom per second, pan in frame widths per second so sizes may differ,
     pan direction, rigid fit), and how much of each frame-pair stays identical. B shots that are no A shot's best match
     are listed apart."""
     pairs, used = [], set()
@@ -55,8 +71,7 @@ def match_shots(a: dict, b: dict) -> dict:
             o = min(sa['end'], sb['end']) - max(sa['start'], sb['start'])
             if o > overlap:
                 best, overlap = sb, o
-        span = lambda s: {'shot': s['shot'], 'start': s['start'], 'end': s['end'], 'transition_in': s['transition_in']}  # noqa: E731
-        pair = {'a': span(sa), 'b': span(best) if best else None,
+        pair = {'a': _span(sa), 'b': _span(best) if best else None,
                 'covered': round(overlap / max(1e-6, sa['end'] - sa['start']), 3) if best else 0.0}
         if best:
             used.add(best['shot'])
@@ -64,8 +79,7 @@ def match_shots(a: dict, b: dict) -> dict:
             pair['identical_pairs'] = {'a': sa['still']['identical_pairs'], 'b': best['still']['identical_pairs']}
         pairs.append(pair)
     return {'a': len(a['shots']), 'b': len(b['shots']), 'pairs': pairs,
-            'only_b': [{'shot': s['shot'], 'start': s['start'], 'end': s['end'], 'transition_in': s['transition_in']}
-                       for s in b['shots'] if s['shot'] not in used],
+            'only_b': [_span(s) for s in b['shots'] if s['shot'] not in used],
             'transitions_differ': sum(1 for p in pairs if p['b'] and p['b']['transition_in'] != p['a']['transition_in'])}
 
 
@@ -155,11 +169,11 @@ def summary_lines(result: dict) -> list[str]:
             return f'zoom {m["zoom_per_s"] * 100:+.1f}%/s pan {m["pan_widths_per_s"] * 100:.1f}%w/s @{m["pan_dir_deg"]:.0f}° rigid {m["rigid_fit"]:.2f}'
         for p in sh['pairs']:
             a, b = p['a'], p['b']
-            head = f'  A{a["shot"]} {a["start"]}-{a["end"]}s {a["transition_in"] or "start"}'
+            head = f'  A{a["shot"]} {a["start"]}-{a["end"]}s {_begins(a)}'
             if not b:
                 lines.append(f'{head} -> no B shot')
                 continue
-            lines.append(f'{head} -> B{b["shot"]} {b["start"]}-{b["end"]}s {b["transition_in"] or "start"} ({p["covered"]:.0%} covered)'
+            lines.append(f'{head} -> B{b["shot"]} {b["start"]}-{b["end"]}s {_begins(b)} ({p["covered"]:.0%} covered)'
                          f'\n      A {camera(p["motion"]["a"])}\n      B {camera(p["motion"]["b"])}')
     if 'video' in result:
         lines.append(f'side by side: {result["video"]}  (A left, B right)')

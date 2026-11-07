@@ -156,7 +156,7 @@ EOF
 | `rn signal FILE [-o PNG]` | 逐帧的亮度、运动、饱和度、响度、低 / 中 / 高频段、起音强度，以及闪帧和爆音位置 |
 | `rn align A B` | 通过声音判断录音 B 在 A 里的位置：偏移量、`match`、`distinct` |
 | `rn faces FILE` | 逐帧人脸框和关键点（只测量，不改脸） |
-| `rn text FILE` | 画面上的文字行、位置框和出现时间（tesseract）；每行首次读到时的字色、背景色、描边色（`#rrggbb`，没有描边为 null）和字高 |
+| `rn text FILE` | 画面上的文字行、位置框和出现时间（tesseract；同一行 2 秒内在同一位置再读到算同一次出现，附读到次数和平均置信度）；每行首次读到时的字色、背景色、描边色（`#rrggbb`，没有描边为 null）和字高 |
 | `rn matte FILE -o DIR` | 逐帧主体 alpha，输出灰度 PNG，可直接作为 EDL 的 `mask`；加 `--cutout` 输出 RGBA 抠像 |
 | `rn ref FILE` | 参考片拆解：镜头、声音、剪点和拍点的对齐情况、所有帧的接触表，附一份读片指南 |
 
@@ -185,7 +185,7 @@ EOF
 | 命令 | 作用 |
 |---|---|
 | `rn qa FILE [--edl EDL] [--accept CHECK[@T]]` | 交付检查。格式：帧数、帧率、尺寸、编码、色彩、faststart、固定帧率。声音：音画时长、响度、true peak、片中无声、电平跳变、爆音。画面：黑场、冻帧、黑边。`--placeholders` 按 `rn assemble --placeholders` 的方式读 EDL。 |
-| `rn compare A B [--cuts] [--shots] [--video sbs.mp4]` | 两个视频按同一时间点对齐到一张图上，并配对比较剪点时间；`--shots` 逐镜头配对比较转场和运镜；可另外输出左右并排的视频 |
+| `rn compare A B [--cuts] [--shots] [--video sbs.mp4]` | 两个视频按同一时间点对齐到一张图上，并配对比较剪点时间；`--shots` 逐镜头配对比较转场（连同测到的帧数、擦除方向、淡变颜色）和运镜；可另外输出左右并排的视频 |
 | `rn finish FILE -o OUT [--height N]` | 把任意视频处理成交付标准；`--height` 另出一个缩放版本 |
 | `rn export EDL -o cut.otio\|.fcpxml\|.xml [--srt]` | 导出成 Final Cut、Premiere、达芬奇或任何 OTIO 工具能打开的工程 |
 

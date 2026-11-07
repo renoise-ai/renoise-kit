@@ -170,7 +170,7 @@ EOF
 | `rn signal FILE [-o PNG]` | Per-frame luma, motion, saturation, loudness, low/mid/high bands, onset strength; flash frames, clicks |
 | `rn align A B` | Where recording B sits inside A, by sound: offset, `match`, `distinct` |
 | `rn faces FILE` | Face boxes and landmarks per frame (measurement only) |
-| `rn text FILE` | On-screen text lines, their boxes and when they are on screen (tesseract); per line, as first read, the text, background and outline colours (`#rrggbb`, outline null when there is none) and the text height |
+| `rn text FILE` | On-screen text lines, their boxes and when they are on screen (tesseract; a line read again within 2 s at the same place is the same appearance, with how many reads and their mean confidence); per line, as first read, the text, background and outline colours (`#rrggbb`, outline null when there is none) and the text height |
 | `rn matte FILE -o DIR` | Subject alpha per frame as grey PNGs, ready to use as an EDL `mask`; `--cutout` for RGBA |
 | `rn ref FILE` | A reference breakdown: shots, sound, cut-to-beat sync, every frame on sheets, and a reading guide |
 
@@ -199,7 +199,7 @@ EOF
 | Command | What it gives |
 |---|---|
 | `rn qa FILE [--edl EDL] [--accept CHECK[@T]]` | Delivery checks. Format: frames, fps, size, codec, color, faststart, fixed frame rate. Sound: A/V length, loudness, true peak, dead air, level jumps, clicks. Picture: black, frozen, bars. `--placeholders` reads the EDL as `rn assemble --placeholders` does |
-| `rn compare A B [--cuts] [--shots] [--video sbs.mp4]` | Two videos at the same times on one sheet, cut timing paired, with `--shots` each shot paired with its transition and camera move, optional side-by-side video |
+| `rn compare A B [--cuts] [--shots] [--video sbs.mp4]` | Two videos at the same times on one sheet, cut timing paired, with `--shots` each shot paired with its transition (with its measured frames, wipe side or fade colour) and camera move, optional side-by-side video |
 | `rn finish FILE -o OUT [--height N]` | Brings any video to the delivery standard; `--height` makes a scaled copy |
 | `rn export EDL -o cut.otio\|.fcpxml\|.xml [--srt]` | The edit as a project for Final Cut, Premiere, Resolve or any OTIO tool |
 
