@@ -166,7 +166,8 @@ EOF
 | `rn sheet FILE... [--fps R \| --every N \| --indices ... \| --around T,.. --diff] [--crop W:H:X:Y]` | Contact sheets labelled with frame number and timecode, each under 125 KB; `--crop` zooms every tile into one region (a sign, a caption, a face) |
 | `rn cuts FILE [--sheet JPG]` | Shot boundaries by decoded frame, plus weaker "suspects" to check |
 | `rn shots FILE [--jobs N] [--sheet JPG] [--faces] [--beats [LISTEN.json]]` | Every shot, dissolves, fades and straight wipes included (with how many frames each takes and a wipe's direction), and what its picture does as numbers: still frames, 24→30 repeat cadence, how well one zoom / pan of the whole frame explains it, texture (flat blocks, colours, straight edges, noise, soft gradients, vivid colour), and with `--faces` how often a face fills the picture, with `--beats` how each cut sits against the music's beats. Numbers only, no labels |
-| `rn listen FILE [--transcribe]` | Loudness, silences, onsets, tempo with half/double candidates, beat times, Whisper word times, one picture |
+| `rn listen FILE [--transcribe]` | Loudness, silences, onsets, tempo with half/double candidates, beat times and downbeats (4/4), Whisper word times, one picture |
+| `rn music fit MUSIC --duration S [-o bed.m4a]` | A music bed exactly as long as the edit: starts on a downbeat, the final fade begins on a phrase (4 bars), shorter music loops on phrases with a crossfade. Without `-o` it prints the EDL audio item (`in`, `out`, `fade_out`) |
 | `rn signal FILE [-o PNG]` | Per-frame luma, motion, saturation, loudness, low/mid/high bands, onset strength; flash frames, clicks |
 | `rn align A B` | Where recording B sits inside A, by sound: offset, `match`, `distinct` |
 | `rn faces FILE` | Face boxes and landmarks per frame (measurement only) |
@@ -179,6 +180,7 @@ EOF
 | Command | What it gives |
 |---|---|
 | `rn capture page.html -o DIR --frames N --size WxH` | An HTML page rendered frame by frame (`window.renderFrame(i)`) to RGBA PNGs, sharded across Chromiums |
+| `rn capture URL -o DIR [--desktop] [--sections "Pricing,Reviews"] [--scroll-video OUT.mp4]` | A live site in a real phone (1080x1920) or desktop browser: the full page, sections found by their heading, and a frame-exact eased scroll-through video for app and product ads. `--hide` drops cookie banners |
 | `rn fx [--source]` | The effects library (grain, vignette, leak, flash, glitch, ...) as readable source for pages and numpy |
 | `rn captions WORDS.json --size WxH -o caps.ass` | Your script aligned to Whisper timing; CJK chunking, balanced lines, safe areas, kept off faces |
 | `rn fonts [--script ja]` | Installed families with the weights that really exist, and the scripts they cover |
@@ -191,6 +193,7 @@ EOF
 | `rn edit EDL ids\|set\|split\|delete\|insert\|move\|upgrade` | Changes an EDL by clip id. Each step is checked against the whole timeline before the file is written |
 | `rn edit EDL batch ["OP ..." ...]` | Several of those operations as one, from arguments or one per line on stdin; written once, nothing on a failure |
 | `rn edit EDL hits SFX --at cuts\|beats\|T1,T2,..` | One sound effect as an audio item at many points: every main-track cut (anchored to the clip's id, so it follows later edits), every beat of an `rn listen --json` result, or given seconds. `--offset`, `--pivot` (the whoosh's peak on the point), `--gain`, `--every N`. The sound can come from `rn assets get` |
+| `rn edit EDL snap --listen L.json [--to beats\|downbeats] [--tolerance S]` | Main-track cuts onto the nearest beat or downbeat by rolling edits: the clip before ends later or earlier and the clip after starts later or earlier in its own source, so nothing else moves. Cuts that cannot move (too far, no source to spare) stay and are listed with the reason |
 | `rn assemble EDL -o OUT [--preview] [--range A-B] [--placeholders]` | Renders the EDL frame-exactly. `--placeholders` turns missing shots into labelled cards |
 | `rn schema [--path]` | The edit.json JSON Schema shipped with rn, printed (or where the file is) |
 
