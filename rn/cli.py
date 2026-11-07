@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import shutil
 import sys
 from pathlib import Path
@@ -27,6 +28,40 @@ def _numbers(kind):
         except ValueError:
             raise argparse.ArgumentTypeError(f'expected comma-separated {kind.__name__}s') from None
     return parse
+
+
+def _edit_ops(ops) -> None:
+    """The rn edit operations; each line of `rn edit EDL batch` is parsed with these too."""
+    ops.add_parser('ids', help='give every clip and audio item without an id one (c1.. main, o1.. overlays, a1.. audio)')
+    ops.add_parser('upgrade', help='rewrite a version-1 edit.json under version-2 names (style, keys left/top)')
+    op_set = ops.add_parser('set', help='set fields: key=value (JSON when it parses), dotted keys reach into objects')
+    op_set.add_argument('ref')
+    op_set.add_argument('assignments', nargs='*', metavar='key=value')
+    op_set.add_argument('--unset', action='append', default=[], metavar='KEY')
+    op_split = ops.add_parser('split', help='cut a clip in two at a timeline time; both halves play as the one did')
+    op_split.add_argument('ref')
+    op_split.add_argument('--at', type=float, required=True, help='timeline seconds')
+    op_split.add_argument('--id', help='id for the second half (default <id>-2)')
+    op_delete = ops.add_parser('delete', help='remove a clip (main track ripples; --lift keeps a gap)')
+    op_delete.add_argument('ref')
+    op_delete.add_argument('--lift', action='store_true')
+    for name, text in (('insert', 'add a clip given as JSON or @file.json'), ('move', 'move a clip next to another or onto a track')):
+        op = ops.add_parser(name, help=text)
+        if name == 'insert':
+            op.add_argument('--clip', required=True, help='clip JSON or @file.json')
+        else:
+            op.add_argument('ref')
+        op.add_argument('--before', metavar='ID')
+        op.add_argument('--after', metavar='ID')
+        op.add_argument('--track', metavar='N|audio', help='append to track N (one past the last adds a track) or to audio')
+
+
+def _crop(text: str) -> tuple[int, int, int, int]:
+    try:
+        w, h, x, y = (int(part) for part in text.split(':'))
+    except ValueError:
+        raise argparse.ArgumentTypeError('expected W:H:X:Y in whole pixels, e.g. 260:120:60:290') from None
+    return w, h, x, y
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -60,7 +95,8 @@ def _parser() -> argparse.ArgumentParser:
                 '(default 125 KB, so four pages fit one sandbox_exec image_paths view). Default: 16 evenly spaced frames.\n'
                 'Examples:\n  rn sheet take.mp4 --fps 4            # pick in-points from a generated take\n'
                 '  rn sheet ref.mp4 --every 1 -o ref.jpg  # every frame of a reference, paged\n'
-                '  rn sheet out.mp4 --indices 0,47,48,95  # both sides of each cut')
+                '  rn sheet out.mp4 --indices 0,47,48,95  # both sides of each cut\n'
+                '  rn sheet out.mp4 --seconds 8.4,9.6 --crop 260:120:60:290 --width 520  # zoom into the sign')
     sheet.add_argument('files', nargs='+', help='videos, or folders of stills (tiled in name order, labelled by file name)')
     choose = sheet.add_mutually_exclusive_group()
     choose.add_argument('--every', type=int, metavar='N', help='every Nth frame')
@@ -75,6 +111,8 @@ def _parser() -> argparse.ArgumentParser:
     sheet.add_argument('--around', type=_numbers(float), metavar='T1,T2,..', help='dense frames around these times (cuts, transitions, beats)')
     sheet.add_argument('--span', type=int, default=3, help='frames on each side for --around (default 3)')
     sheet.add_argument('--diff', action='store_true', help='show |frame - previous frame| x4: motion, flicker, repeated frames')
+    sheet.add_argument('--crop', type=_crop, metavar='W:H:X:Y',
+                       help='zoom every tile into one region, in source pixels (ffmpeg crop order): a sign, a caption, a face')
 
     cuts = add('cuts', 'shot boundaries by decoded frame (+ suspects to check)',
                'Scene-change scores per decoded frame; a cut where the score passes --threshold. Continuous camera moves\n'
@@ -298,31 +336,19 @@ def _parser() -> argparse.ArgumentParser:
                '  rn edit e.json set c3 out=5.5 meta.take=2 --unset speed\n'
                '  rn edit e.json delete c4 --lift\n'
                '  rn edit e.json insert --after c2 --clip \'{"id": "c9", "src": "s9.mp4", "out": 2}\'\n'
-               '  rn edit e.json move t1 --track 2')
+               '  rn edit e.json move t1 --track 2\n'
+               'Several changes in one call, checked step by step and written once (a failing step writes nothing):\n'
+               '  rn edit e.json batch \'set c2 transition.type=dissolve transition.duration=0.25\' \'set c1 out=3.2\'\n'
+               "  rn edit e.json batch <<'EOF'   # one operation per line\n"
+               '  split c3 --at 4.2\n'
+               '  insert --after c2 --clip \'{"id": "c9", "src": "s9.mp4", "out": 2}\'\n'
+               '  EOF')
     edit.add_argument('edl')
     ops = edit.add_subparsers(dest='op', required=True, metavar='op')
-    ops.add_parser('ids', help='give every clip and audio item without an id one (c1.. main, o1.. overlays, a1.. audio)')
-    ops.add_parser('upgrade', help='rewrite a version-1 edit.json under version-2 names (style, keys left/top)')
-    op_set = ops.add_parser('set', help='set fields: key=value (JSON when it parses), dotted keys reach into objects')
-    op_set.add_argument('ref')
-    op_set.add_argument('assignments', nargs='*', metavar='key=value')
-    op_set.add_argument('--unset', action='append', default=[], metavar='KEY')
-    op_split = ops.add_parser('split', help='cut a clip in two at a timeline time; both halves play as the one did')
-    op_split.add_argument('ref')
-    op_split.add_argument('--at', type=float, required=True, help='timeline seconds')
-    op_split.add_argument('--id', help='id for the second half (default <id>-2)')
-    op_delete = ops.add_parser('delete', help='remove a clip (main track ripples; --lift keeps a gap)')
-    op_delete.add_argument('ref')
-    op_delete.add_argument('--lift', action='store_true')
-    for name, text in (('insert', 'add a clip given as JSON or @file.json'), ('move', 'move a clip next to another or onto a track')):
-        op = ops.add_parser(name, help=text)
-        if name == 'insert':
-            op.add_argument('--clip', required=True, help='clip JSON or @file.json')
-        else:
-            op.add_argument('ref')
-        op.add_argument('--before', metavar='ID')
-        op.add_argument('--after', metavar='ID')
-        op.add_argument('--track', metavar='N|audio', help='append to track N (one past the last adds a track) or to audio')
+    _edit_ops(ops)
+    op_batch = ops.add_parser('batch', help='several operations as one: all are checked, then written once (nothing on a failure)')
+    op_batch.add_argument('steps', nargs='*', metavar='"OP ..."',
+                          help='one operation per argument, or one per line on stdin (blank lines and # comments skipped)')
 
     compare = add('compare', 'two videos side by side at the same times (+ cut timing)',
                   'A cut against its reference, or two versions of a cut: frames at the same times, A on the top row and B\n'
@@ -432,6 +458,51 @@ def _size(text: str) -> tuple[int, int]:
     return width, height
 
 
+class _StepParser(argparse.ArgumentParser):
+    """Parses one batch line; a bad line is an rn error naming the step, not an exit."""
+
+    def error(self, message: str):
+        raise RnError(message)
+
+
+def _edit_step(path: Path, args) -> dict:
+    from . import editops
+    if args.op == 'ids':
+        return editops.ids_op(path)
+    if args.op == 'upgrade':
+        return editops.upgrade_op(path)
+    if args.op == 'set':
+        return editops.set_op(path, args.ref, args.assignments, args.unset)
+    if args.op == 'split':
+        return editops.split_op(path, args.ref, args.at, args.id)
+    if args.op == 'delete':
+        return editops.delete_op(path, args.ref, args.lift)
+    if args.op == 'insert':
+        return editops.insert_op(path, args.clip, args.before, args.after, args.track)
+    return editops.move_op(path, args.ref, args.before, args.after, args.track)
+
+
+def _edit_step_runner():
+    parser = _StepParser(prog='rn edit EDL batch', add_help=False)
+    _edit_ops(parser.add_subparsers(dest='op', required=True, metavar='op'))
+
+    def run(path: Path, line: str) -> dict:
+        try:
+            words = shlex.split(line)
+        except ValueError as error:  # an unbalanced quote
+            raise RnError(str(error)) from None
+        return _edit_step(path, parser.parse_args(words))
+    return run
+
+
+def _batch_lines(steps: list[str]) -> list[str]:
+    if not steps:
+        if sys.stdin.isatty():
+            raise RnError('batch: give the operations as arguments, or one per line on stdin')
+        steps = sys.stdin.read().splitlines()
+    return [line.strip() for line in steps if line.strip() and not line.strip().startswith('#')]
+
+
 def _run_summarized(args) -> tuple[dict, list[str]]:
     """Commands whose module prints its own summary lines."""
     command = args.command
@@ -471,20 +542,10 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
     elif command == 'edit':
         from . import editops
         path = Path(args.edl)
-        if args.op == 'ids':
-            result = editops.ids_op(path)
-        elif args.op == 'upgrade':
-            result = editops.upgrade_op(path)
-        elif args.op == 'set':
-            result = editops.set_op(path, args.ref, args.assignments, args.unset)
-        elif args.op == 'split':
-            result = editops.split_op(path, args.ref, args.at, args.id)
-        elif args.op == 'delete':
-            result = editops.delete_op(path, args.ref, args.lift)
-        elif args.op == 'insert':
-            result = editops.insert_op(path, args.clip, args.before, args.after, args.track)
+        if args.op == 'batch':
+            result = editops.batch_op(path, _batch_lines(args.steps), _edit_step_runner())
         else:
-            result = editops.move_op(path, args.ref, args.before, args.after, args.track)
+            result = _edit_step(path, args)
         return result, editops.summary_lines(result)
     elif command == 'signal':
         from .signal import signal_command, summary_lines
@@ -547,7 +608,7 @@ def main(argv: list[str] | None = None) -> int:
             from .frames import sheet_command
             result = sheet_command(args.files, out=args.out, every=args.every, rate=args.fps, indices=args.indices,
                                    seconds=args.seconds, count=args.count, width=args.width, columns=args.columns, max_kb=args.max_kb,
-                                   around=args.around, span=args.span, diff=args.diff)
+                                   around=args.around, span=args.span, diff=args.diff, crop=args.crop)
         elif args.command in SUMMARIZED:
             result, lines = _run_summarized(args)
         elif args.command == 'assemble':

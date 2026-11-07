@@ -141,6 +141,17 @@ rn edit edit.json set title meta.copy="new tagline"
 rn edit edit.json delete end --lift
 ```
 
+Several changes at once are one `batch`: every step is checked, and the file is written once, or not at all if a
+step fails:
+
+```sh
+rn edit edit.json batch <<'EOF'
+set open out=2.4
+set close transition.type=dissolve transition.duration=0.25
+insert --after open --clip '{"id": "logo", "image": "logo.png", "duration": 1}'
+EOF
+```
+
 ## Commands
 
 `rn <command> --help` is the reference. Every command prints a short summary, and `--json FILE` writes the full result.
@@ -151,7 +162,7 @@ rn edit edit.json delete end --lift
 |---|---|
 | `rn probe FILE` | Decoded frame count, rational fps, size, color tags, separate video and audio durations, faststart (JSON) |
 | `rn frame FILE --index N \| --time T \| --last -o out.png` | One exact frame, e.g. a tail frame to continue a shot |
-| `rn sheet FILE... [--fps R \| --every N \| --indices ... \| --around T,.. --diff]` | Contact sheets labelled with frame number and timecode, each under 125 KB |
+| `rn sheet FILE... [--fps R \| --every N \| --indices ... \| --around T,.. --diff] [--crop W:H:X:Y]` | Contact sheets labelled with frame number and timecode, each under 125 KB; `--crop` zooms every tile into one region (a sign, a caption, a face) |
 | `rn cuts FILE [--sheet JPG]` | Shot boundaries by decoded frame, plus weaker "suspects" to check |
 | `rn shots FILE [--jobs N] [--sheet JPG] [--faces]` | Every shot, dissolves and fades included, and what its picture does as numbers: still frames, 24→30 repeat cadence, how well one zoom / pan of the whole frame explains it, texture (flat blocks, colours, straight edges, noise, soft gradients, vivid colour), and with `--faces` how often a face fills the picture. Numbers only, no labels |
 | `rn listen FILE [--transcribe]` | Loudness, silences, onsets, tempo with half/double candidates, beat times, Whisper word times, one picture |
@@ -177,6 +188,7 @@ rn edit edit.json delete end --lift
 | Command | What it gives |
 |---|---|
 | `rn edit EDL ids\|set\|split\|delete\|insert\|move\|upgrade` | Changes an EDL by clip id. Each step is checked against the whole timeline before the file is written |
+| `rn edit EDL batch ["OP ..." ...]` | Several of those operations as one, from arguments or one per line on stdin; written once, nothing on a failure |
 | `rn assemble EDL -o OUT [--preview] [--range A-B] [--placeholders]` | Renders the EDL frame-exactly. `--placeholders` turns missing shots into labelled cards |
 
 **Check and deliver**

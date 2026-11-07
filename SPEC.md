@@ -1,6 +1,6 @@
 # renoise-kit：剪辑底层 CLI `rn`
 
-> 状态：v0.7.0（2026-11-07）：新增 `rn shots`：镜头边界（硬切、叠化、经黑 / 白场的淡变、闪白切）与逐镜头画面测量（静止、24→30 重复帧节奏、整帧刚体推拉拟合、质感、像素不变比例），只给数字不下结论，按 CPU 上限多进程测量；移植自 [rea-video](https://github.com/JuneYaooo/rea-video)（Apache-2.0，见 `NOTICE` 与 `LICENSES/`，包的许可证表达式改为 `MIT AND Apache-2.0`）；新 extra `shots`（OpenCV）。`rn qa --placeholders`：按 `rn assemble --placeholders` 的方式读 `--edl`，缺失素材是占位卡而不是报错。
+> 状态：v0.7.0（2026-11-07）：新增 `rn shots`：镜头边界（硬切、叠化、经黑 / 白场的淡变、闪白切）与逐镜头画面测量（静止、24→30 重复帧节奏、整帧刚体推拉拟合、质感、像素不变比例），只给数字不下结论，按 CPU 上限多进程测量；移植自 [rea-video](https://github.com/JuneYaooo/rea-video)（Apache-2.0，见 `NOTICE` 与 `LICENSES/`，包的许可证表达式改为 `MIT AND Apache-2.0`）；新 extra `shots`（OpenCV）。`rn qa --placeholders`：按 `rn assemble --placeholders` 的方式读 `--edl`，缺失素材是占位卡而不是报错。`rn edit EDL batch`：多步修改一次执行，逐步校验、全部通过才写回一次（任一步失败不写），步骤可写在参数里或从 stdin 每行一步；`rn probe` 的结果在进程内按文件身份（inode、大小、mtime、ctime）缓存，批量修改时每个素材只探测一次。`rn sheet --crop W:H:X:Y`：每格只取源画面的一块（招牌、字幕、人脸、logo），视频与静帧文件夹都可用。
 >
 > v0.6.0（2026-10-19）：§3.1 的通用原语全部实现。v0.2.0–v0.3.4 在 Renoise 主仓库 `packages/media-sandbox/kit` 随沙箱模板发布；v0.4.0 起拆为独立仓库与 PyPI 包 `renoise-kit`（命令仍为 `rn`），沙箱模板固定一个版本安装，集成见主仓库 `spec/mcp/03-media-kit.md`。v0.4.0 新增：`rn compare`、`rn assemble --preview`、`rn qa` 的 dead_air / level_jumps / fixed_frame_rate 检查、成片写 `fixed_frame_rate_flag=1`、本地安装（按功能的 extras、人脸模型首次使用时下载并校验、缺 libass 时提前报错）。
 >
@@ -61,6 +61,7 @@ EDL 是可选捷径：创意部分（HTML / canvas、Manim、Blender、ffmpeg �
 | `rn qa ... --placeholders` | v0.7.0：`--edl` 按 `rn assemble --placeholders` 的方式读，缺失素材不报错（先排整片再补素材时，草稿也能过检查） |
 | `rn assemble ... --preview` | v0.4.0：半尺寸草稿（叠加层像素位置与尺寸同比缩放，主轨 keys 与 ASS 字幕本就按比例），ultrafast / CRF 30。不做区间渲染：锚点、转场、字幕都要平移，见 §3.1 |
 | `rn edit EDL ids\|set\|split\|delete\|insert\|move ...` | v0.5.0：按 `id`（或 `track:index`）改 EDL；每步重新排布整条时间线校验，通过才写回。主轨天然波纹，`delete --lift` 留背景色空隙 |
+| `rn edit EDL batch ["OP ..." ...]` | v0.7.0：多步一次执行：在 EDL 旁的工作副本上逐步执行并校验，最后一步通过后才替换原文件；任一步失败（含无法解析的行）报 `step N (<行>): <原因>; nothing written`，原文件不变。不给参数时从 stdin 每行读一步（跳过空行和 `#` 注释），`insert --clip` 的 JSON 不必再套一层 shell 引号。每行与单独的 `rn edit` 子命令同一解析器 |
 | `rn assemble ... --placeholders / --range A-B / --no-cache` | v0.5.0：缺失素材渲染成卡片（id、`meta.label` / `meta.prompt`、缺的文件，中日文可读）；只渲时间线的一段（整条照常排布，锚点与转场不变，响度按整段混音计算）；slot 与嵌套 EDL 默认按内容缓存在 EDL 旁的 `.rn-cache/`（`RN_CACHE` 可改） |
 | `rn signal FILE [-o png]` | v0.5.0：逐帧数值：亮度、帧差、饱和度（0..1），RMS、低 / 中 / 高频段（dB）、onset（32 个对数频带的谱通量，dB），闪帧帧号、爆音时间。纯音读数 ≈ 0，鼓点每拍一个峰 |
 | `rn align A B [--max-offset S]` | v0.5.0：B 在 A 时钟上的偏移（onset 包络互相关 + 8 kHz 波形细化，精度约 0.1 ms）；`match` 为该偏移处波形相关（1 = 同一段声音），`distinct` 为与 0.25 s 外次优偏移的差距（重复性音乐偏低） |
@@ -69,6 +70,7 @@ EDL 是可选捷径：创意部分（HTML / canvas、Manim、Blender、ffmpeg �
 | `rn export EDL -o x.otio\|.fcpxml\|.xml [--srt]` | v0.5.0：OpenTimelineIO / Final Cut X / FCP7 XML（Premiere、Resolve）。剪切、裁切、变速、转场（剪点两侧各半）、嵌套（Stack）、叠加层与音频的时间位置都带过去；纯色导出为 Gap；位置尺寸、keys、blend、mask、滤镜、增益曲线写在 `rn` metadata 并在结果里列出。extra `export` |
 | `rn finish ... --height N` | v0.5.0：按高度缩放交付（宽度保持比例取偶数），如 4K 母版另出 1080p |
 | `rn compare A B [--count N \| --seconds ..] [--cuts] [--video sbs.mp4]` | v0.4.0：同一时间点 A 在上 B 在下的接触表，各自按自己的帧率标帧号；`--cuts` 两边跑 `rn cuts` 并按 0.25 s 配对剪点、给出偏移；`--video` 输出左右并排视频（A 的声音） |
+| `rn sheet ... --crop W:H:X:Y` | v0.7.0：每格只取源画面的一块（源像素，ffmpeg crop 的顺序，在缩放到 `--width` 之前裁），放大看招牌、字幕、人脸、logo；旋转过的手机素材按显示方向计；超出画面报错。静帧文件夹同样适用 |
 | `rn sheet ... --around T,.. [--span N] [--diff]` | v0.3.0：剪点 / 转场 / 拍点前后高密度取帧；`--diff` 显示与前一帧的差（×4），看运动、闪烁和重复帧 |
 | `rn cuts FILE [--threshold] [--sheet JPG]` | v0.3.0：按解码帧号的镜头边界（ffmpeg scene score），弱变化列为 suspects；结果即 EDL `{"shot": n}` 的含义 |
 | `rn shots FILE [--jobs N] [--sheet JPG] [--faces]` | v0.7.0：镜头边界含叠化、淡变、闪白切（`rn cuts` 只找硬切，仍是 EDL `{"shot": n}` 的含义；两者镜头数可以不同），每个镜头的画面测量：`still`（逐像素相同的相邻帧比例、首尾差）、`cadence`（重复帧比例与周期，24→30 拉帧每 4–6 帧一次）、`motion`（整帧单一缩放 / 平移能解释多少：`rigid_fit` 0..1，静图推拉高、视差和画面内运动低；缩放 / 秒、平移源像素 / 秒与方向、独立运动点比例）、`texture`（平坦 8×8 块（全部，以及非近黑区域）、覆盖 95% 像素的颜色数、横竖直边、噪声、去掉平滑渐变后的细纹理、缓坡（柔和渐变）占比、饱和度与鲜艳像素占比、暗 / 亮占比、亮部（亮度 > 50）与墨部（亮度 < 205）的平滑度、暗底亮细节与亮底暗细节）、`pixels`（相邻帧完全不变的像素比例、静止区噪声）；`still` 另给相邻帧差的 p90；`--faces` 时加 `faces`（最多 4 个采样帧里人脸占画面 2% 以上的比例和最大人脸面积，YuNet，与 `rn faces` 同一模型）。只给数字，不判断画面怎么做出来的。默认用本机或容器 CPU 上限的全部核（亲和性 + cgroup `cpu.max`），工作进程用 spawn 启动（OpenCV 用过线程池后 fork 会卡死）。extra `shots`。移植自 rea-video（Apache-2.0）；淡变改进：淡入 / 淡出斜坡上被误判的硬切并入淡变 |

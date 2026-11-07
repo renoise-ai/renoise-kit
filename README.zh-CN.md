@@ -128,6 +128,16 @@ rn edit edit.json set title meta.copy="新口号"
 rn edit edit.json delete end --lift
 ```
 
+一次改好几处就用 `batch`：每一步都校验，全部通过才写一次文件，有一步失败就什么都不写：
+
+```sh
+rn edit edit.json batch <<'EOF'
+set open out=2.4
+set close transition.type=dissolve transition.duration=0.25
+insert --after open --clip '{"id": "logo", "image": "logo.png", "duration": 1}'
+EOF
+```
+
 ## 命令
 
 具体参数以 `rn <command> --help` 为准。每条命令在终端只打印几行摘要，`--json FILE` 会写出完整结果。
@@ -138,7 +148,7 @@ rn edit edit.json delete end --lift
 |---|---|
 | `rn probe FILE` | 解码帧数、有理帧率、尺寸、色彩标记、视频和音频各自的时长、是否 faststart（输出 JSON） |
 | `rn frame FILE --index N \| --time T \| --last -o out.png` | 精确取一帧，例如取尾帧来接续镜头 |
-| `rn sheet FILE... [--fps R \| --every N \| --indices ... \| --around T,.. --diff]` | 带帧号和时间码的接触表，每张不超过 125 KB |
+| `rn sheet FILE... [--fps R \| --every N \| --indices ... \| --around T,.. --diff] [--crop W:H:X:Y]` | 带帧号和时间码的接触表，每张不超过 125 KB；`--crop` 让每格只显示画面的一块（招牌、字幕、人脸） |
 | `rn cuts FILE [--sheet JPG]` | 按解码帧号给出镜头边界，较弱的变化列为待确认的 suspects |
 | `rn shots FILE [--jobs N] [--sheet JPG] [--faces]` | 全部镜头（含叠化、淡变），以及每个镜头画面在做什么，全是数字：静止帧、24→30 重复帧节奏、整帧单一缩放 / 平移能解释多少、质感（平坦块、颜色数、横竖直边、噪声、柔和渐变、鲜艳颜色），加 `--faces` 时还有人脸占满画面的频率。只给数字，不下结论 |
 | `rn listen FILE [--transcribe]` | 响度、静音、起音、速度（附半速 / 倍速候选）、拍点时间、Whisper 字词时间，外加一张图 |
@@ -164,6 +174,7 @@ rn edit edit.json delete end --lift
 | 命令 | 作用 |
 |---|---|
 | `rn edit EDL ids\|set\|split\|delete\|insert\|move\|upgrade` | 按 clip id 修改 EDL，每一步都先校验整条时间线，通过了才写入文件 |
+| `rn edit EDL batch ["OP ..." ...]` | 把多步修改合成一次：步骤写在参数里，或从 stdin 每行一步；全部通过才写入，有一步失败就不写 |
 | `rn assemble EDL -o OUT [--preview] [--range A-B] [--placeholders]` | 帧精确地渲染 EDL；`--placeholders` 会把还没生成的镜头渲染成带说明的卡片 |
 
 **验与交付**

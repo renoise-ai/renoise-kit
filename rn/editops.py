@@ -1,6 +1,8 @@
 """rn edit: change an EDL by operations on clip ids instead of rewriting its JSON. Each operation is checked by laying the
 whole edit out again (as rn assemble --dry-run would) and only then written back, so a bad step never lands.
 
+`rn edit EDL batch` runs several operations as one and writes the file once, only if every step passes.
+
 The main track always plays back to back, so removing or trimming a clip there ripples everything after it; overlays and
 audio anchored by clip id ({"clip": "id"}) follow, ones placed at fixed seconds do not.
 """
@@ -244,6 +246,29 @@ def upgrade_op(path: Path) -> dict:
     return {'op': 'upgrade', 'timeline': _write_checked(path, upgrade(raw))}
 
 
+def batch_op(path: Path, steps: list[str], apply) -> dict:
+    """Several operations as one: each is applied and checked in turn on a working copy next to the EDL (so relative
+    paths resolve the same), which replaces the EDL only after the last step passes. A failing step writes nothing.
+    `apply(path, line)` runs one operation line ("set c3 out=5.5") against a file."""
+    if not steps:
+        raise RnError('batch: no operations')
+    raw = _read(path)
+    work = path.with_name(f'.{path.stem}.rn-batch.json')
+    work.write_text(json.dumps(raw, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+    done = []
+    try:
+        for number, line in enumerate(steps, 1):
+            try:
+                result = apply(work, line)
+            except RnError as error:
+                raise RnError(f'step {number} ({line}): {error}; nothing written') from None
+            done.append(summary_lines(result)[0])
+        os.replace(work, path)
+    finally:
+        work.unlink(missing_ok=True)
+    return {'op': 'batch', 'steps': done, 'timeline': result['timeline']}
+
+
 def summary_lines(result: dict) -> list[str]:
     head = {'upgrade': lambda r: 'upgraded to version 2',
             'ids': lambda r: f'ids added: {", ".join(r["added"]) or "none (every clip has one)"}',
@@ -251,7 +276,8 @@ def summary_lines(result: dict) -> list[str]:
             'split': lambda r: f'split {r["clip"]} into {r["into"][0]} + {r["into"][1]}',
             'delete': lambda r: f'deleted {r["clip"]}' + (' (lifted: gap kept)' if r['lift'] else ''),
             'insert': lambda r: f'inserted {r["clip"] or "clip"}',
-            'move': lambda r: f'moved {r["clip"]}'}[result['op']](result)
+            'move': lambda r: f'moved {r["clip"]}',
+            'batch': lambda r: f'{len(r["steps"])} steps: ' + '; '.join(r['steps'])}[result['op']](result)
     out = result['timeline']['output']
     lines = [head, f'timeline {out["width"]}x{out["height"]} {out["fps"]}fps  {out["frames"]} frames  {out["duration"]}s']
     lines += [f'  {c["id"] or c["where"]}: frames {c["start_frame"]}..{c["start_frame"] + c["frames"] - 1}' for c in result['timeline']['base']]
