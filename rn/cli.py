@@ -74,6 +74,21 @@ def _edit_ops(ops) -> None:
                          help='the second of the sound that lands on each point, e.g. a whoosh\'s peak ("pivot")')
     op_hits.add_argument('--gain', type=float, metavar='DB', help='"gain_db" of every item')
     op_hits.add_argument('--every', type=int, default=1, metavar='N', help='only the 1st, (N+1)th, (2N+1)th, ... point')
+    op_sil = ops.add_parser('silences', help='cut a main-track clip\'s long pauses out (its "ranges"), from rn listen of its source',
+                            description='Cut the silences of a main-track clip\'s source, as rn listen measured them, out of the clip: it\n'
+                            'gets "ranges", the spans between silences of at least --min seconds, inside its own in/out (or its\n'
+                            'ranges: run it again with other numbers to cut more); dead air before the first word and after the last goes\n'
+                            'at any length. --pad seconds stay next to the speech at each cut,\n'
+                            '--keep-gap seconds of each removed pause stay in all, so the rhythm is not airless. Defaults suit a\n'
+                            'talking head; what follows the clip ripples. Example:\n'
+                            '  rn listen take.mp4 --speech --json take.json && rn edit e.json silences c1 --listen take.json',
+                            formatter_class=argparse.RawDescriptionHelpFormatter)
+    op_sil.add_argument('ref', metavar='CLIP')
+    op_sil.add_argument('--listen', required=True, metavar='LISTEN.json', help='rn listen SOURCE (--speech) --json of the clip\'s source')
+    op_sil.add_argument('--min', type=float, default=0.5, metavar='S', help='only silences this long are cut (default 0.5)')
+    op_sil.add_argument('--pad', type=float, default=0.1, metavar='S', help='kept next to the speech on each side of a cut (default 0.1)')
+    op_sil.add_argument('--keep-gap', type=float, default=0.0, metavar='S',
+                        help='seconds of each removed pause kept in all (default 0: only the pads)')
     op_hits.add_argument('--id-prefix', default='sfx', metavar='P', help='item ids P1, P2, ... skipping ids already used (default sfx)')
 
 
@@ -177,13 +192,26 @@ def _parser() -> argparse.ArgumentParser:
                  'Loudness (integrated, true peak, short-term curve), silences, onsets, tempo with half/double\n'
                  'alternatives and beat times, and with --transcribe word timestamps (faster-whisper). One image on a\n'
                  'shared time axis: waveform, spectrogram, loudness, onset and beat ticks. Facts only, no cut suggestions.\n'
-                 'Its --json feeds EDL anchors {"beat": n, "listen": ...} / {"word": n, ...} and rn captions.')
-    listen.add_argument('file')
+                 'Its --json feeds EDL anchors {"beat": n, "listen": ...} / {"word": n, ...} and rn captions.\n'
+                 '--speech instead measures voice takes (several files at once): where the speech starts and ends (TTS pads\n'
+                 'both ends, so the file length lies), its length, the pauses inside it and "silences" for rn edit silences.\n'
+                 'With --expect the take\'s intended text: words (CJK: characters) per second of speech; add --transcribe for\n'
+                 '"match": ok | mismatch against that text, with the stretches that differ (a wrong or cut-off take). Examples:\n'
+                 '  rn listen vo/*.wav --speech --json takes.json\n'
+                 '  rn listen vo3.wav --speech --expect @lines/3.txt --transcribe')
+    listen.add_argument('files', nargs='+', metavar='file', help='one file; several with --speech')
     listen.add_argument('-o', '--out', help='image path (default listen/<name>.jpg)')
     listen.add_argument('--transcribe', action='store_true')
     listen.add_argument('--language', help='e.g. zh, ja, en (default: detect)')
     listen.add_argument('--model', default='small', help='faster-whisper model (small is baked into the sandbox)')
     listen.add_argument('--max-kb', type=int, default=125)
+    listen.add_argument('--speech', action='store_true', help='voice-take facts only (no picture, no beats): speech span, pauses, silences')
+    listen.add_argument('--expect', metavar='TEXT|@FILE', help='--speech: the words the take should say')
+    listen.add_argument('--pause', type=float, default=0.8, metavar='S', help='--speech: a quiet stretch inside the speech this long is a pause (default 0.8)')
+    listen.add_argument('--silence-db', type=float, default=-45.0, metavar='DB',
+                        help='--speech: 20 ms windows quieter than this (dBFS RMS) are silence (default -45; raise it for a noisy room)')
+    listen.add_argument('--match-min', type=float, default=0.85, metavar='R',
+                        help='--speech --expect --transcribe: similarity (0..1) from which the take counts as "match": "ok" (default 0.85)')
 
     faces = add('faces', 'face boxes and landmarks per frame (measurement only)',
                 'YuNet face boxes, eyes, nose and mouth corners in source pixels per sampled frame, plus the union\n'
@@ -387,7 +415,8 @@ def _parser() -> argparse.ArgumentParser:
                    'field is allowed anywhere; full JSON Schema: rn schema):\n'
                    '{\n'
                    '  "version": 2,\n'
-                   '  "output": {"width": 1080, "height": 1920, "fps": 30, "background": "#000000", "crf": 18},\n'
+                   '  "output": {"width": 1080, "height": 1920, "fps": 30, "background": "#000000", "crf": 18,\n'
+                   '             "max_mbps": "auto"},             # optional bitrate ceiling: Mb/s or auto\n'
                    '  "tracks": [\n'
                    '    {"clips": [                                  # track 0 = main track, clips back to back\n'
                    '      {"src": "s1.mp4", "in": 0.4, "out": 3.2},\n'
@@ -457,6 +486,8 @@ def _parser() -> argparse.ArgumentParser:
                '  rn edit e.json hits assets/whoosh.wav --at cuts --pivot 0.18 --gain -6   # its peak on every cut\n'
                '  rn edit e.json hits hit.wav --at beats --listen music.json --every 4 --offset 2.0   # music starts at 2 s\n'
                '  rn edit e.json hits boom.wav --at 1.5,4.25 --id-prefix boom\n'
+               'Long pauses of a talking clip cut out (from rn listen of its source):\n'
+               '  rn edit e.json silences c1 --listen take.json --min 0.5 --pad 0.1\n'
                'Several changes in one call, checked step by step and written once (a failing step writes nothing):\n'
                '  rn edit e.json batch \'set c2 transition.type=dissolve transition.duration=0.25\' \'set c1 out=3.2\'\n'
                "  rn edit e.json batch <<'EOF'   # one operation per line\n"
@@ -520,6 +551,9 @@ def _parser() -> argparse.ArgumentParser:
     finish.add_argument('--copy-video', action='store_true', help='keep the video stream when it is already H.264 yuv420p')
     finish.add_argument('--height', type=int, metavar='N', help='scale to N px high, aspect kept (e.g. a 1080p copy of a 4K master)')
     finish.add_argument('--audio', metavar='FILE', help='take the sound from FILE instead (e.g. a separate WAV mix from the renderer)')
+    finish.add_argument('--max-mbps', metavar='N|auto',
+                        help='bitrate ceiling: clean shots keep --crf quality, grain and noise stop at N Mb/s (auto: 12 at 1080x1920 30fps, '
+                             'scaled by pixels x fps); for upload limits and grain-heavy masters')
     finish.add_argument('--audio-offset', type=float, default=0.0, metavar='S',
                         help='move the sound S seconds later (negative: earlier), e.g. -0.0437 to undo an uncompensated AAC delay')
 
@@ -587,6 +621,8 @@ def _print_summary(command: str, result: dict) -> None:
     elif command == 'finish':
         audio = result.get('audio')
         line = f'{result["path"]}  {result["frames"]} frames' + ('  (video copied)' if result['video_copied'] else '')
+        if result.get('video_mbps') is not None:
+            line += f'  video {result["video_mbps"]} Mb/s' + (f' (cap {result["max_mbps"]})' if result.get('max_mbps') else '')
         if audio:
             line += f'  audio {audio["lufs"]} LUFS, true peak {audio["true_peak"]} dBTP'
         print(line)
@@ -639,6 +675,8 @@ def _edit_step(path: Path, args) -> dict:
     if args.op == 'hits':
         return editops.hits_op(path, args.sfx, args.at, listen=args.listen, offset=args.offset, pivot=args.pivot, gain=args.gain,
                                every=args.every, prefix=args.id_prefix)
+    if args.op == 'silences':
+        return editops.silences_op(path, args.ref, args.listen, min_silence=args.min, pad=args.pad, keep_gap=args.keep_gap)
     return editops.move_op(path, args.ref, args.before, args.after, args.track)
 
 
@@ -689,8 +727,17 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
                                max_kb=args.max_kb, faces=args.faces, face_model=args.face_model, beats=args.beats,
                                keyframes=args.keyframes, which=args.which)
     elif command == 'listen':
-        from .listen import listen_command, summary_lines
-        result = listen_command(args.file, out=args.out, transcribe=args.transcribe, language=args.language, model=args.model, max_kb=args.max_kb)
+        from .listen import listen_command, speech_command, summary_lines
+        if args.speech:
+            result = speech_command(args.files, expect=args.expect, pause=args.pause, silence_db=args.silence_db, transcribe=args.transcribe,
+                                    language=args.language, model=args.model, match_min=args.match_min)
+        elif len(args.files) > 1:
+            raise RnError('rn listen takes one file; several voice takes go with --speech')
+        elif args.expect is not None:
+            raise RnError('--expect goes with --speech')
+        else:
+            result = listen_command(args.files[0], out=args.out, transcribe=args.transcribe, language=args.language, model=args.model,
+                                    max_kb=args.max_kb)
     elif command == 'faces':
         from .faces import faces_command, summary_lines
         result = faces_command(args.file, every=args.every, model=args.model, min_score=args.min_score, out_sheet=args.sheet, max_kb=args.max_kb,
@@ -816,7 +863,7 @@ def main(argv: list[str] | None = None) -> int:
             lufs = None if args.lufs == 'keep' else float(args.lufs)
             result = finish_command(args.file, args.out, lufs=lufs, true_peak=args.true_peak, crf=args.crf,
                                     preset=args.preset, copy_video=args.copy_video, height=args.height, audio=args.audio,
-                                    audio_offset=args.audio_offset)
+                                    audio_offset=args.audio_offset, max_mbps=args.max_mbps)
         else:
             from .qa import parse_accept, qa_command
             result = qa_command(args.file, edl=args.edl, placeholders=args.placeholders, frames=args.expect_frames, size=args.expect_size, fps=args.expect_fps,

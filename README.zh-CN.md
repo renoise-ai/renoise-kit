@@ -153,6 +153,7 @@ EOF
 | `rn cuts FILE [--sheet JPG]` | 按解码帧号给出镜头边界，较弱的变化列为待确认的 suspects |
 | `rn shots FILE [--jobs N] [--sheet JPG] [--faces] [--beats [LISTEN.json]]` | 全部镜头（含叠化、淡变、直线擦除，并给出转场帧数和擦除方向），以及每个镜头画面在做什么，全是数字：静止帧、24→30 重复帧节奏、整帧单一缩放 / 平移能解释多少、质感（平坦块、颜色数、横竖直边、噪声、柔和渐变、鲜艳颜色），加 `--faces` 时还有人脸占满画面的频率，加 `--beats` 时还有每个剪点与音乐拍点的偏差。`--keyframes DIR` 为每个镜头输出一张避开转场的原尺寸关键帧，默认取 5 帧里最清晰的（`--which mid|first|last`）。只给数字，不下结论 |
 | `rn listen FILE [--transcribe]` | 响度、静音、起音、速度（附半速 / 倍速候选）、拍点时间、Whisper 字词时间，外加一张图 |
+| `rn listen FILE... --speech [--expect TEXT\|@FILE] [--transcribe]` | 配音 take：语音在文件里的起止、长度、中间的停顿；加 `--expect` 给出语速，再加 `--transcribe` 给出与期望文字的 `match: ok\|mismatch` 和不同之处 |
 | `rn signal FILE [-o PNG]` | 逐帧的亮度、运动、饱和度、响度、低 / 中 / 高频段、起音强度，以及闪帧和爆音位置 |
 | `rn align A B` | 通过声音判断录音 B 在 A 里的位置：偏移量、`match`、`distinct` |
 | `rn faces FILE` | 逐帧人脸框和关键点（只测量，不改脸） |
@@ -183,6 +184,7 @@ EOF
 | `rn edit EDL batch ["OP ..." ...]` | 把多步修改合成一次：步骤写在参数里，或从 stdin 每行一步；全部通过才写入，有一步失败就不写 |
 | `rn edit EDL hits SFX --at cuts\|beats\|T1,T2,..` | 把同一个音效放到多个点上，每个点一条音频项：主轨的每个剪点（按片段 id 锚定，之后改剪辑会跟着走）、`rn listen --json` 结果的每个拍点，或给定秒数。可加 `--offset`、`--pivot`（让 whoosh 的峰值落在点上）、`--gain`、`--every N`。音效可以用 `rn assets get` 下载 |
 | `rn edit EDL init --from-shots SHOTS.json [--src REF] [--size WxH] [--fps R]` | 按参考片的镜头（`rn shots --json` 的结果）逐帧新建一条剪辑：每个镜头一个主轨片段（`s01`、`s02`…），叠化和擦除按测到的帧数做成 xfade 交叠，经黑 / 白场的淡变做成前一段淡出、后一段淡入的滤镜，总长与参考片一致。素材默认是 `gen/<id>.mp4`，还没生成时是占位卡（`rn edit EDL set s03 src=...` 填入）；`--src` 让每个片段直接取参考片本身对应的镜头，用来对照检查。`meta` 里保留每个镜头的时间、转场、关键帧、运镜和速度数字 |
+| `rn edit EDL silences CLIP --listen L.json [--min S] [--pad S] [--keep-gap S]` | 按源素材的 `rn listen` 结果，把口播片段里的长停顿（以及第一个字前、最后一个字后的空白）剪掉，写成 `ranges` |
 | `rn assemble EDL -o OUT [--preview] [--range A-B] [--placeholders]` | 帧精确地渲染 EDL；`--placeholders` 会把还没生成的镜头渲染成带说明的卡片 |
 | `rn schema [--path]` | 打印随 rn 一起发布的 edit.json JSON Schema（`--path` 只打印文件位置） |
 
@@ -193,6 +195,7 @@ EOF
 | `rn qa FILE [--edl EDL] [--accept CHECK[@T]]` | 交付检查。格式：帧数、帧率、尺寸、编码、色彩、faststart、固定帧率。声音：音画时长、响度、true peak、片中无声、电平跳变、爆音。画面：黑场、冻帧、黑边。`--placeholders` 按 `rn assemble --placeholders` 的方式读 EDL。 |
 | `rn compare A B [--cuts] [--shots] [--video sbs.mp4]` | 两个视频按同一时间点对齐到一张图上，并配对比较剪点时间；`--shots` 逐镜头配对比较转场（连同测到的帧数、擦除方向、淡变颜色）和运镜；可另外输出左右并排的视频 |
 | `rn finish FILE -o OUT [--height N]` | 把任意视频处理成交付标准；`--height` 另出一个缩放版本 |
+| `rn finish ... --max-mbps N\|auto` | 给 CRF 编码加码率上限（EDL 里是 `output.max_mbps`）：干净的镜头画质不变，颗粒重的镜头压在上限 |
 | `rn export EDL -o cut.otio\|.fcpxml\|.xml [--srt]` | 导出成 Final Cut、Premiere、达芬奇或任何 OTIO 工具能打开的工程 |
 
 **本机**

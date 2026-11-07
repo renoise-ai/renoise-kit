@@ -1,10 +1,13 @@
 """rn listen: audio as facts and one picture (waveform, spectrogram, loudness, onsets, beats, silences, words)."""
 from __future__ import annotations
 
+import difflib
 import io
 import re
 import subprocess
 import tempfile
+import unicodedata
+import wave
 from pathlib import Path
 
 from .audio import measure
@@ -196,7 +199,151 @@ def listen_command(path: str, *, out: str | None, transcribe: bool, language: st
     return result
 
 
+SPEECH_DB = -45.0  # --speech: a 20 ms window (10 ms hop) is quiet below this RMS in dBFS
+SPEECH_RATE = 16000
+SPEECH_HOP = SPEECH_RATE // 100
+SPEECH_WIN = 2 * SPEECH_HOP
+MAX_DIFFS = 30
+MATCH_MIN = 0.85  # --expect with --transcribe: similarity at or above this is "match": "ok"
+
+
+def _is_cjk(ch: str) -> bool:
+    """Han and kana: written without spaces, so counted and compared by character."""
+    return '぀' <= ch <= 'ヿ' or '㐀' <= ch <= '鿿' or '豈' <= ch <= '﫿'
+
+
+def _tokens(text: str) -> list[str]:
+    """Words lowercased without punctuation ("Don't!" -> dont); Han and kana one token per character.
+    ponytail: Thai and other unspaced scripts read as one long word; split them by dictionary if takes in them matter."""
+    out, word = [], ''
+    for ch in unicodedata.normalize('NFKC', text).lower():
+        if _is_cjk(ch):
+            out += [word] if word else []
+            out.append(ch)
+            word = ''
+        elif unicodedata.category(ch)[0] in 'LNM':
+            word += ch
+        elif ch in "'’":
+            continue  # inside a word: don't = dont, as Whisper may spell either
+        else:
+            out += [word] if word else []
+            word = ''
+    return out + ([word] if word else [])
+
+
+def _joined(tokens: list[str]) -> str:
+    return ''.join(tokens) if tokens and all(_is_cjk(t) for t in tokens) else ' '.join(tokens)
+
+
+def _compare(expected: list[str], words: list[dict], match_min: float) -> dict:
+    """The transcript against the intended text, token by token: similarity 0..1 and every stretch that differs."""
+    heard, times = [], []
+    for w in words:
+        for token in _tokens(w['word']):
+            heard.append(token)
+            times.append(w['start'])
+    matcher = difflib.SequenceMatcher(None, expected, heard, autojunk=False)
+    diffs = [{'expected': _joined(expected[i1:i2]), 'heard': _joined(heard[j1:j2]),
+              'at': times[j1] if j1 < len(times) else (words[-1]['end'] if words else 0.0)}
+             for tag, i1, i2, j1, j2 in matcher.get_opcodes() if tag != 'equal']
+    ratio = round(matcher.ratio(), 3)
+    return {'match': 'ok' if ratio >= match_min else 'mismatch', 'match_min': match_min, 'similarity': ratio, 'heard': _joined(heard), 'differences': diffs[:MAX_DIFFS],
+            'differences_total': len(diffs)}
+
+
+def _speech_one(path: str, *, expect: str | None, pause: float, silence_db: float, transcribe: bool, language: str | None,
+                model: str, match_min: float = MATCH_MIN) -> dict:
+    import numpy as np
+
+    if not probe(path)['audio']:
+        raise RnError(f'{path}: no audio stream')
+    with tempfile.TemporaryDirectory() as tmp:
+        wav = Path(tmp) / 'speech.wav'
+        run(['ffmpeg', '-i', path, '-vn', '-ac', '1', '-ar', str(SPEECH_RATE), '-c:a', 'pcm_s16le', '-y', str(wav)])
+        with wave.open(str(wav)) as handle:
+            samples = np.frombuffer(handle.readframes(handle.getnframes()), dtype=np.int16).astype(np.float64) / 32768
+    duration = len(samples) / SPEECH_RATE
+    count = max(0, (len(samples) - SPEECH_WIN) // SPEECH_HOP + 1)
+    energy = np.concatenate([[0.0], np.cumsum(samples ** 2)])
+    starts = np.arange(count) * SPEECH_HOP
+    rms = np.sqrt(np.maximum(energy[starts + SPEECH_WIN] - energy[starts], 0) / SPEECH_WIN)
+    loud = 20 * np.log10(np.maximum(rms, 1e-9)) >= silence_db
+    hop, win = SPEECH_HOP / SPEECH_RATE, SPEECH_WIN / SPEECH_RATE
+    # A quiet run of windows a..b-1 is the time no loud window touches: from where window a-1 ends to where window b starts.
+    runs, a = [], None
+    for i, flag in enumerate([*loud, True]):
+        if not flag and a is None:
+            a = i
+        elif flag and a is not None:
+            runs.append((a, i, 0.0 if a == 0 else a * hop + win - hop, duration if i >= count else i * hop))
+            a = None
+    result: dict = {'path': path, 'duration': round(duration, 3), 'silence_db': silence_db}
+    if not loud.any():
+        result.update({'speech_start': None, 'speech_end': None, 'speech': 0.0, 'pauses': [], 'pause_count': 0, 'longest_pause': 0.0,
+                       'silences': [{'start': 0.0, 'end': round(duration, 3)}] if duration >= SILENCE_MIN else []})
+    else:
+        first, last = int(np.argmax(loud)), count - 1 - int(np.argmax(loud[::-1]))
+        speech_start, speech_end = first * hop, min(last * hop + win, duration)
+        inner = [(s, e) for i0, i1, s, e in runs if i0 > 0 and i1 < count]
+        pauses = [{'start': round(s, 3), 'end': round(e, 3), 'seconds': round(e - s, 3)} for s, e in inner if e - s >= pause]
+        result.update({'speech_start': round(speech_start, 3), 'speech_end': round(speech_end, 3), 'speech': round(speech_end - speech_start, 3),
+                       'pauses': pauses, 'pause_count': len(pauses), 'longest_pause': max((p['seconds'] for p in pauses), default=0.0),
+                       'silences': [{'start': round(s, 3), 'end': round(e, 3)} for _, _, s, e in runs if e - s >= SILENCE_MIN]})
+    if expect is not None:
+        tokens = _tokens(expect)
+        result['expect'] = {'text': expect, 'tokens': len(tokens),
+                            'per_second': round(len(tokens) / result['speech'], 2) if result['speech'] else None}
+    if transcribe:
+        heard = _transcribe(Path(path), language=language, model=model)
+        result.update(heard)
+        if expect is not None:
+            result['expect'].update(_compare(_tokens(expect), heard['words'], match_min))
+    return result
+
+
+def speech_command(paths: list[str], *, expect: str | None, pause: float, silence_db: float, transcribe: bool,
+                   language: str | None, model: str, match_min: float = MATCH_MIN) -> dict:
+    """rn listen --speech: per voice take, where the speech starts and ends inside the file (TTS pads both ends), its
+    length, the pauses inside it, and with --expect the delivery rate and (with --transcribe) how far the take's words
+    are from the intended ones. No librosa: numpy windows over 16 kHz samples."""
+    if expect is not None and len(paths) > 1:
+        raise RnError('--expect is the text of one take: give one file with it')
+    if expect is not None and expect.startswith('@'):
+        try:
+            expect = Path(expect[1:]).read_text(encoding='utf-8-sig')
+        except FileNotFoundError:
+            raise RnError(f'--expect {expect}: no such file') from None
+    if pause <= 0:
+        raise RnError('--pause: seconds > 0')
+    takes = [_speech_one(p, expect=expect, pause=pause, silence_db=silence_db, transcribe=transcribe, language=language, model=model,
+                         match_min=match_min) for p in paths]
+    return takes[0] if len(takes) == 1 else {'takes': takes}
+
+
+def speech_summary_lines(result: dict) -> list[str]:
+    lines = []
+    for take in result.get('takes', [result]):
+        if take['speech_start'] is None:
+            lines.append(f"{take['path']}: {take['duration']:.2f}s  no speech above {take['silence_db']} dBFS")
+            continue
+        lines.append(f"{take['path']}: {take['duration']:.2f}s  speech {take['speech_start']}-{take['speech_end']}s "
+                     f"({take['speech']}s)  {take['pause_count']} pauses, longest {take['longest_pause']}s"
+                     + ''.join(f"  {p['start']}-{p['end']}s" for p in take['pauses'][:3]))
+        expect = take.get('expect')
+        if expect:
+            lines.append(f"  expected {expect['tokens']} words/characters: {expect['per_second']} per second of speech")
+            if 'similarity' not in expect:
+                lines.append('  words not checked: add --transcribe for match ok | mismatch')
+            else:
+                lines.append(f"  heard: {expect['heard'][:120]}")
+                lines.append(f"  match {expect['match']} (similarity {expect['similarity']}, ok from {expect['match_min']})  {expect['differences_total']} differences"
+                             + ''.join(f"; at {d['at']}s expected \"{d['expected']}\" heard \"{d['heard']}\"" for d in expect['differences'][:4]))
+    return lines
+
+
 def summary_lines(result: dict) -> list[str]:
+    if 'takes' in result or 'speech' in result:
+        return speech_summary_lines(result)
     loudness, beats = result['loudness'], result['beats']
     lines = [f"{result['path']}: {result['duration']:.2f}s  {result['sample_rate']} Hz",
              f"loudness {loudness['integrated']} LUFS  true peak {loudness['true_peak']} dBTP"]

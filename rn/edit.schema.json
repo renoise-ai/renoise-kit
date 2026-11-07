@@ -319,7 +319,9 @@
         "fps": {"description": "1 to 120; a number or a ratio like \"30000/1001\".", "oneOf": [{"type": "number", "minimum": 1, "maximum": 120}, {"type": "string", "pattern": "^\\d+(/\\d+)?$"}]},
         "background": {"type": "string"},
         "crf": {"x-rn-only": true, "type": "integer", "minimum": 0},
-        "preset": {"x-rn-only": true, "type": "string"}
+        "preset": {"x-rn-only": true, "type": "string"},
+        "max_mbps": {"x-rn-only": true, "description": "Bitrate ceiling on the final H.264 encode (VBV maxrate = bufsize): Mb/s, or \"auto\" (12 at 1080x1920 30 fps, scaled by pixels x fps).",
+                     "oneOf": [{"type": "number", "exclusiveMinimum": 0}, {"const": "auto"}]}
       }
     }
   }
