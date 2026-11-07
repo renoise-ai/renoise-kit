@@ -17,6 +17,7 @@ SILENCE_DB = -50.0  # frame RMS below this, for at least SILENCE_MIN seconds
 SILENCE_MIN = 0.3
 MAX_EVENTS = 400  # onsets / beats kept in the result; the strongest onsets win when thinned
 BEAT_CLEAR = 0.15  # autocorrelation of the onset envelope at the beat period, 0..1
+METER = 4  # beats per bar assumed for downbeats
 
 
 def _short_term_curve(wav: Path) -> list[dict]:
@@ -59,7 +60,7 @@ def _beats(samples, rate: int, onset_env, hop: int = 512, limit: int | None = MA
     tempo, frames = librosa.beat.beat_track(onset_envelope=onset_env, sr=rate, hop_length=hop)
     bpm = float(np.atleast_1d(tempo)[0])
     if bpm <= 0 or len(frames) < 3:
-        return {'bpm': None, 'alternatives': [], 'times': [], 'clear': False}
+        return {'bpm': None, 'alternatives': [], 'times': [], 'clear': False, 'downbeats': []}
     # The tracker's tempo sits on a coarse frame grid (~2 bpm steps); the mean beat interval over the whole span is finer.
     beat_times = librosa.frames_to_time(frames, sr=rate, hop_length=hop)
     bpm = float(60 * (len(beat_times) - 1) / (beat_times[-1] - beat_times[0]))
@@ -74,8 +75,29 @@ def _beats(samples, rate: int, onset_env, hop: int = 512, limit: int | None = MA
     # the periodicity strength measured at each; the main bpm is the tracker's.
     alternatives = [{'bpm': round(value, 1), 'strength': round(strength(value), 3)} for value in (bpm / 2, bpm * 2)]
     times = librosa.frames_to_time(frames, sr=rate, hop_length=hop)
+    phase, confidence = _downbeat_phase(samples, rate, onset_env, frames, hop)
     return {'bpm': round(bpm, 1), 'strength': round(strength(bpm), 3), 'alternatives': alternatives,
-            'times': [round(float(t), 3) for t in times[:limit]], 'clear': strength(bpm) >= BEAT_CLEAR}
+            'times': [round(float(t), 3) for t in times[:limit]], 'clear': strength(bpm) >= BEAT_CLEAR,
+            'meter': METER, 'downbeat_phase': phase, 'downbeat_strength': confidence,
+            'downbeats': [round(float(t), 3) for t in times[phase::METER][:limit]]}
+
+
+def _downbeat_phase(samples, rate: int, onset_env, frames, hop: int) -> tuple[int, float]:
+    """Which of every METER beats is the bar's first: the phase whose beats carry the most low-end attack (kick and
+    bass land on the one) plus overall onset. ponytail: assumes 4/4 and a steady bar; a 3/4 waltz or a song that drops a
+    beat reads with the wrong phase after the change; a real downbeat tracker (madmom) if that matters."""
+    import librosa
+    import numpy as np
+
+    low = librosa.onset.onset_strength(y=samples, sr=rate, hop_length=hop, fmax=200, n_mels=32)
+    at = np.clip(frames, 0, min(len(low), len(onset_env)) - 1)
+    weight = low[at] / max(float(low[at].max()), 1e-9) + 0.5 * onset_env[at] / max(float(onset_env[at].max()), 1e-9)
+    scores = [float(weight[p::METER].mean()) if len(weight[p::METER]) else 0.0 for p in range(METER)]
+    best = int(np.argmax(scores))
+    others = [s for p, s in enumerate(scores) if p != best]
+    # 0: the four phases look alike (no audible bar); toward 1: the one stands out.
+    confidence = (scores[best] - max(others)) / scores[best] if scores[best] > 0 else 0.0
+    return best, round(confidence, 3)
 
 
 def _transcribe(wav: Path, *, language: str | None, model: str) -> dict:
@@ -147,7 +169,7 @@ def _draw(result: dict, samples, rate: int, onset_times: list[float]):
 
 def beats_of(path: str) -> dict:
     """The beat grid of a file's sound, as rn listen tracks it, every beat kept: {bpm, strength, alternatives, times,
-    clear}. For rn shots --beats."""
+    clear, meter, downbeat_phase, downbeat_strength, downbeats}. For rn shots --beats and rn music fit."""
     import librosa
 
     if not probe(path)['audio']:
@@ -202,7 +224,8 @@ def summary_lines(result: dict) -> list[str]:
              f"loudness {loudness['integrated']} LUFS  true peak {loudness['true_peak']} dBTP"]
     if beats['bpm'] and beats['clear']:
         alternatives = ', '.join(f"{a['bpm']} ({a['strength']})" for a in beats['alternatives'])
-        lines.append(f"bpm {beats['bpm']} (strength {beats['strength']}; alternatives {alternatives})  {len(beats['times'])} beats")
+        lines.append(f"bpm {beats['bpm']} (strength {beats['strength']}; alternatives {alternatives})  {len(beats['times'])} beats, "
+                     f"{len(beats['downbeats'])} bars of {beats['meter']} (downbeat on beat {beats['downbeat_phase']}, strength {beats['downbeat_strength']})")
     else:
         lines.append('no clear pulse')
     lines.append(f"{len(result['onsets'])} onsets  {len(result['silences'])} silences"
