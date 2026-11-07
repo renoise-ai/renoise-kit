@@ -195,6 +195,7 @@ def boundaries(track: dict, fps: float, *, min_shot: float = 0.35, threshold: fl
     luma = track['luma']  # fades through black / white
     low = min(10.0, float(np.percentile(luma, 50)) * 0.35)
     extreme = (luma < low) | (luma > 248)
+    ramps: list[tuple[int, int]] = []
     i = 0
     while i < n:
         if extreme[i]:
@@ -202,13 +203,20 @@ def boundaries(track: dict, fps: float, *, min_shot: float = 0.35, threshold: fl
             while j < n and extreme[j]:
                 j += 1
             flat = min(float(track['thumbs'][k].std()) for k in range(i, j)) < 4.0
-            if 0 < i and j < n and (j - i) <= fps * 2.5 and flat:
-                # the ramp into and out of the extreme: a fast fade's steps look like cuts, and they are not
-                a, z = i, j
-                while a > 0 and abs(luma[a - 1] - luma[i]) > abs(luma[a] - luma[i]) + 0.5 and i - a < fps * 2:
-                    a -= 1
-                while z < n - 1 and abs(luma[z + 1] - luma[j - 1]) > abs(luma[z] - luma[j - 1]) + 0.5 and z - j < fps * 2:
-                    z += 1
+            fade = 0 < i and j < n and (j - i) <= fps * 2.5 and flat
+            # a fade in from or out to black at either end of the video
+            end_fade = flat and (i == 0 or j == n) and luma[i] < low
+            # the ramp into and out of the extreme: a fast fade's steps look like cuts, and its frames like a dissolve
+            a, z = i, j
+            while a > 0 and abs(luma[a - 1] - luma[i]) > abs(luma[a] - luma[i]) + 0.5 and i - a < fps * 2:
+                a -= 1
+            while z < n - 1 and abs(luma[z + 1] - luma[j - 1]) > abs(luma[z] - luma[j - 1]) + 0.5 and z - j < fps * 2:
+                z += 1
+            # A dip of up to a second is one transition, so its ramps are no dissolve. A longer black or white stretch can
+            # hold a shot of its own (text appearing on white), and the ramp into it stays a boundary
+            if (fade and (j - i) <= fps) or end_fade:
+                ramps.append((a, z))
+            if fade:
                 for b in [b for b, kind in found.items() if kind[0] == 'cut' and a < b <= z]:
                     del found[b]
                 if not any(abs(j - b) < radius for b in found):
@@ -223,7 +231,7 @@ def boundaries(track: dict, fps: float, *, min_shot: float = 0.35, threshold: fl
                 A, B, M = (track['thumbs'][j].astype(np.float32) for j in (i - k, i + k, i))
                 D = B - A
                 far = float((np.abs(D) > max(6.0, 0.35 * float(min(A.std(), B.std())))).mean())
-                if far < 0.15 or float(score[i - k + 1:i + k + 1].max()) >= threshold:
+                if far < 0.15:
                     continue
                 denom = float((D * D).sum())
                 if denom <= 0:
@@ -235,7 +243,14 @@ def boundaries(track: dict, fps: float, *, min_shot: float = 0.35, threshold: fl
                 if resid < 0.20 and not _steady_morph(track['thumbs'], i, k) and not _motion_explains(A, B):
                     cand.append((i, resid))
             for i, resid in sorted(cand, key=lambda t: t[1]):
-                if all(abs(i - b) > 2 * k for b in found):
+                if any(a <= i <= z for a, z in ramps):  # inside a fade through black / white
+                    continue
+                near = [b for b in found if abs(i - b) <= 2 * k]
+                # A fast dissolve between very different pictures changes enough on one frame to score as a cut. A hard
+                # cut has no frame that blends the two sides, so a blend there means the cut was a dissolve
+                if all(found[b][0] == 'cut' for b in near):
+                    for b in near:
+                        del found[b]
                     found[i] = ('dissolve', round(1 - resid, 3))
     min_len = max(1, int(round(min_shot * fps)))
     shots, start, trans, sc = [], 0, None, None

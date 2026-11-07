@@ -121,3 +121,18 @@ def test_shots_faces_counts_frames_with_a_face(edit_film, tmp_path):
     assert rn('shots', edit_film, '--json', report, '--jobs', 1, '--faces') == 0
     for shot in json.loads(report.read_text(encoding='utf-8'))['shots']:
         assert shot['faces']['frames_with_face'] == 0.0 and shot['faces']['checked'] >= 1, 'test patterns have no faces'
+
+
+def test_shots_reads_a_fast_dissolve_as_a_dissolve(tmp_path):
+    """A fast dissolve between very different pictures changes enough on one frame to score as a hard cut; the frames
+    that blend the two sides make it a dissolve (rn shots read it as one or two cuts before 0.7.0)."""
+    a, b, film = tmp_path / 'a.mp4', tmp_path / 'b.mp4', tmp_path / 'film.mp4'
+    ffmpeg('-f', 'lavfi', '-i', 'smptebars=s=320x240:r=24:d=3', '-pix_fmt', 'yuv420p', str(a))
+    ffmpeg('-f', 'lavfi', '-i', 'testsrc2=s=320x240:r=24:d=3', '-pix_fmt', 'yuv420p', str(b))
+    ffmpeg('-i', str(a), '-i', str(b), '-filter_complex', '[0:v][1:v]xfade=transition=dissolve:duration=0.5:offset=2.75[v]',
+           '-map', '[v]', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(film))
+    report = tmp_path / 'shots.json'
+    assert rn('shots', film, '--json', report, '--jobs', 1) == 0
+    shots = json.loads(report.read_text(encoding='utf-8'))['shots']
+    assert [s['transition_in'] for s in shots] == [None, 'dissolve']
+    assert shots[1]['start'] == pytest.approx(3.0, abs=0.2), 'the dissolve is centred in its overlap'
