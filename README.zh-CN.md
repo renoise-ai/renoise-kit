@@ -167,6 +167,8 @@ EOF
 | `rn capture page.html -o DIR --frames N --size WxH` | HTML 页面（`window.renderFrame(i)`）逐帧渲染成 RGBA PNG，可用多个 Chromium 分片并行 |
 | `rn fx [--source]` | 效果库（颗粒、暗角、漏光、闪白、故障……），以可读源码形式提供，网页和 numpy 都能用 |
 | `rn captions WORDS.json --size WxH -o caps.ass` | 把你的原稿对齐到 Whisper 的时间：中日文按字分块、两行均衡断行、留在安全区内、避开人脸 |
+| `rn captions ... --style clean\|pop\|karaoke\|highlight\|box` | 同一套逐词时间生成的动画字幕：粗描边、弹出、卡拉 OK 填色、正在说的词高亮、底框；可设 `--accent`、`--color`、`--font`、`--position`、`--upper` |
+| `rn template list\|show\|render NAME -o DIR --params '{...}'` | 内置动态模板（大标题、姓名条、标注、数字计数、柱状图、步骤条、人物身后的大字），渲染成 RGBA PNG 放进 EDL 叠加层；页面是可读的 HTML，可复制修改 |
 | `rn fonts [--script ja]` | 已安装字体实际有的字重，以及覆盖的文字 |
 | `rn assets search\|get` | 有版权保障的音效和叠加素材，下载后校验 sha256 |
 

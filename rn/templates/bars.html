@@ -1,0 +1,133 @@
+<!doctype html><meta charset="utf-8"><style>html,body{margin:0;background:transparent;overflow:hidden}</style>
+<canvas id="c"></canvas>
+<script type="application/json" id="rn-template">{
+ "what": "bar chart reveal: rows grow one after another on a glass card, values count up, the largest in the accent colour",
+ "params": {
+  "in": {
+   "default": 0.7,
+   "doc": "seconds each bar takes to grow"
+  },
+  "out": {
+   "default": 0.3,
+   "doc": "fade-out seconds at the end (0: stays)"
+  },
+  "items": {
+   "default": [
+    {
+     "label": "Before",
+     "value": 34
+    },
+    {
+     "label": "Week 1",
+     "value": 58
+    },
+    {
+     "label": "Week 2",
+     "value": 81
+    },
+    {
+     "label": "Now",
+     "value": 120
+    }
+   ],
+   "doc": "[{label, value}, ...] top to bottom"
+  },
+  "title": {
+   "default": "Watch time, minutes",
+   "doc": "line above the chart ('' for none)"
+  },
+  "unit": {
+   "default": "",
+   "doc": "after each value, e.g. %"
+  },
+  "max": {
+   "default": null,
+   "doc": "value of a full bar (default: the largest item)"
+  },
+  "highlight": {
+   "default": -1,
+   "doc": "row drawn in the accent colour (-1: the largest, null: none)"
+  },
+  "color": {
+   "default": "#ffffff",
+   "doc": "text and bar colour"
+  },
+  "accent": {
+   "default": "#ffe000",
+   "doc": "highlighted bar"
+  },
+  "card": {
+   "default": "rgba(255,255,255,0.12)",
+   "doc": "card fill ('' for no card)"
+  },
+  "x": {
+   "default": 0.07,
+   "doc": "left edge, share of the frame width"
+  },
+  "y": {
+   "default": 0.3,
+   "doc": "top edge, share of the frame height"
+  },
+  "width": {
+   "default": 0.86,
+   "doc": "chart width, share of the frame width"
+  },
+  "row": {
+   "default": 0.11,
+   "doc": "row height, share of the frame width"
+  },
+  "stagger": {
+   "default": 0.15,
+   "doc": "seconds between rows"
+  },
+  "font": {
+   "default": "Inter, 'Noto Sans', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif",
+   "doc": "CSS font family list"
+  },
+  "font_file": {
+   "default": "",
+   "doc": "a .ttf/.otf/.woff2 to use first (rn template render resolves the path)"
+  }
+ }
+}</script>
+<script>
+const SPEC = JSON.parse(document.getElementById('rn-template').textContent);
+const P = Object.assign(Object.fromEntries(Object.entries(SPEC.params).map(([k, v]) => [k, v.default])), RN.params || {});
+const c = document.getElementById('c'); c.width = RN.width; c.height = RN.height; const x = c.getContext('2d');
+const W = RN.width, H = RN.height, FPS = RN.fps, T = RN.frames / RN.fps, E = RNFX.ease;
+// Font hook: font_file (a URL; rn template render passes a file:// URI) is loaded and put first in the family list.
+const FONT = (P.font_file ? "'rn-font', " : '') + P.font;
+const fontReady = P.font_file ? new FontFace('rn-font', `url("${P.font_file}")`).load().then((f) => { document.fonts.add(f); }) : Promise.resolve();
+window.rnReady = fontReady;
+const items = P.items, most = Math.max(...items.map((d) => d.value)), full = P.max || most || 1;
+const rowH = P.row * W, X = P.x * W, Y = P.y * H, CW = P.width * W, pad = rowH * 0.35, labelPx = Math.round(rowH * 0.34);
+const titleH = P.title ? labelPx * 1.9 : 0, cardH = titleH + items.length * rowH + pad * 1.4;
+const hi = P.highlight === -1 ? items.findIndex((d) => d.value === most) : P.highlight;
+const fmt = (v, d) => (Number.isInteger(d) ? Math.round(v) : v.toFixed(1)) + P.unit;
+window.renderFrame = (i) => {
+  const t = i / FPS;
+  x.clearRect(0, 0, W, H);
+  const fade = P.out > 0 ? 1 - E('in2', (t - (T - P.out)) / P.out) : 1, enter = E('out3', t / 0.35);
+  x.globalAlpha = Math.max(0, fade * enter);
+  if (P.card) {
+    x.fillStyle = P.card; x.strokeStyle = 'rgba(255,255,255,0.25)'; x.lineWidth = 2;
+    x.beginPath(); x.roundRect(X, Y + (1 - enter) * rowH * 0.3, CW, cardH, rowH * 0.25); x.fill(); x.stroke();
+  }
+  x.textBaseline = 'middle'; x.fillStyle = P.color;
+  if (P.title) { x.font = `700 ${labelPx}px ${FONT}`; x.fillText(P.title, X + pad, Y + pad + labelPx * 0.6); }
+  x.font = `600 ${labelPx}px ${FONT}`;
+  const labelW = Math.max(...items.map((d) => x.measureText(d.label).width)) + pad;
+  const barMax = CW - pad * 2 - labelW - labelPx * 3.2;
+  items.forEach((d, k) => {
+    const p = E('out3', (t - 0.2 - k * P.stagger) / P.in), cy = Y + pad + titleH + rowH * (k + 0.5);
+    x.globalAlpha = Math.max(0, fade * E('out2', (t - 0.1 - k * P.stagger) / 0.3));
+    x.fillStyle = P.color; x.font = `600 ${labelPx}px ${FONT}`; x.fillText(d.label, X + pad, cy);
+    const bw = Math.max(0, barMax * (d.value / full) * p), bh = rowH * 0.5;
+    x.fillStyle = k === hi ? P.accent : P.color;
+    x.beginPath(); x.roundRect(X + pad + labelW, cy - bh / 2, Math.max(bh * 0.2, bw), bh, bh * 0.3); x.fill();
+    x.fillStyle = P.color; x.font = `800 ${labelPx}px ${FONT}`;
+    x.fillText(fmt(d.value * p, d.value), X + pad + labelW + bw + labelPx * 0.4, cy);
+  });
+  x.globalAlpha = 1;
+};
+</script>

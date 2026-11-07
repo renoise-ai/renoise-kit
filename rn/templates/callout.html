@@ -1,0 +1,98 @@
+<!doctype html><meta charset="utf-8"><style>html,body{margin:0;background:transparent;overflow:hidden}</style>
+<canvas id="c"></canvas>
+<script type="application/json" id="rn-template">{
+ "what": "callout: a ring pops on a point of the picture, a leader line draws out to a label",
+ "params": {
+  "in": {
+   "default": 0.6,
+   "doc": "seconds of the entrance"
+  },
+  "out": {
+   "default": 0.3,
+   "doc": "fade-out seconds at the end (0: stays)"
+  },
+  "target_x": {
+   "default": 0.62,
+   "doc": "the point, share of the frame width"
+  },
+  "target_y": {
+   "default": 0.42,
+   "doc": "the point, share of the frame height"
+  },
+  "label": {
+   "default": "Waterproof to 50 m",
+   "doc": "label text"
+  },
+  "side": {
+   "default": "auto",
+   "doc": "label to the left or right of the point (auto: the side with more room)"
+  },
+  "rise": {
+   "default": 0.12,
+   "doc": "how far above the point the label sits, share of the frame height (negative: below)"
+  },
+  "color": {
+   "default": "#111111",
+   "doc": "label text colour"
+  },
+  "accent": {
+   "default": "#ffe000",
+   "doc": "ring, line and label background"
+  },
+  "size": {
+   "default": 0.042,
+   "doc": "label font size, share of the frame width"
+  },
+  "pulse": {
+   "default": true,
+   "doc": "the ring breathes while held"
+  },
+  "font": {
+   "default": "Inter, 'Noto Sans', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif",
+   "doc": "CSS font family list"
+  },
+  "font_file": {
+   "default": "",
+   "doc": "a .ttf/.otf/.woff2 to use first (rn template render resolves the path)"
+  }
+ }
+}</script>
+<script>
+const SPEC = JSON.parse(document.getElementById('rn-template').textContent);
+const P = Object.assign(Object.fromEntries(Object.entries(SPEC.params).map(([k, v]) => [k, v.default])), RN.params || {});
+const c = document.getElementById('c'); c.width = RN.width; c.height = RN.height; const x = c.getContext('2d');
+const W = RN.width, H = RN.height, FPS = RN.fps, T = RN.frames / RN.fps, E = RNFX.ease;
+// Font hook: font_file (a URL; rn template render passes a file:// URI) is loaded and put first in the family list.
+const FONT = (P.font_file ? "'rn-font', " : '') + P.font;
+const fontReady = P.font_file ? new FontFace('rn-font', `url("${P.font_file}")`).load().then((f) => { document.fonts.add(f); }) : Promise.resolve();
+window.rnReady = fontReady;
+const px = Math.round(P.size * W), tx = P.target_x * W, ty = P.target_y * H, r = px * 0.55;
+const dir = P.side === 'left' ? -1 : P.side === 'right' ? 1 : (tx < W / 2 ? 1 : -1);
+const ex = tx + dir * W * 0.12, ey = ty - P.rise * H;
+window.renderFrame = (i) => {
+  const t = i / FPS;
+  x.clearRect(0, 0, W, H);
+  const fade = P.out > 0 ? 1 - E('in2', (t - (T - P.out)) / P.out) : 1;
+  x.globalAlpha = Math.max(0, fade);
+  const ring = E('outBack', t / (P.in * 0.4)), line = E('inout2', (t - P.in * 0.3) / (P.in * 0.45)), lab = E('out3', (t - P.in * 0.65) / (P.in * 0.35));
+  const breathe = P.pulse ? 1 + 0.08 * Math.sin(Math.max(0, t - P.in) * Math.PI * 2 / 1.2) : 1;
+  x.strokeStyle = P.accent; x.lineWidth = Math.max(3, px * 0.12); x.lineCap = 'round';
+  x.shadowColor = 'rgba(0,0,0,0.45)'; x.shadowBlur = px * 0.25;
+  if (ring > 0) { x.beginPath(); x.arc(tx, ty, r * ring * breathe, 0, Math.PI * 2); x.stroke();
+    x.fillStyle = P.accent; x.beginPath(); x.arc(tx, ty, r * 0.22 * ring, 0, Math.PI * 2); x.fill(); }
+  if (line > 0) {  // a straight leader from the ring to the label
+    const sx = tx + dir * r, sy = ty;
+    x.beginPath(); x.moveTo(sx, sy); x.lineTo(sx + (ex - sx) * line, sy + (ey - sy) * line); x.stroke();
+  }
+  if (lab > 0) {
+    x.font = `700 ${px}px ${FONT}`;
+    const w = x.measureText(P.label).width + px * 0.9, h = px * 1.6;
+    const bx = (dir > 0 ? ex : ex - w) + dir * (1 - lab) * px, by = ey - h / 2;
+    x.globalAlpha = Math.max(0, fade * lab);
+    x.fillStyle = P.accent; x.beginPath(); x.roundRect(bx, by, w, h, h * 0.22); x.fill();
+    x.shadowBlur = 0; x.fillStyle = P.color; x.textBaseline = 'middle';
+    x.fillText(P.label, bx + px * 0.45, ey + px * 0.04);
+  }
+  x.globalAlpha = 1; x.shadowBlur = 0;
+};
+</script>

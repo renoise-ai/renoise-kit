@@ -181,6 +181,8 @@ EOF
 | `rn capture page.html -o DIR --frames N --size WxH` | An HTML page rendered frame by frame (`window.renderFrame(i)`) to RGBA PNGs, sharded across Chromiums |
 | `rn fx [--source]` | The effects library (grain, vignette, leak, flash, glitch, ...) as readable source for pages and numpy |
 | `rn captions WORDS.json --size WxH -o caps.ass` | Your script aligned to Whisper timing; CJK chunking, balanced lines, safe areas, kept off faces |
+| `rn captions ... --style clean\|pop\|karaoke\|highlight\|box` | Animated caption styles from the same word timing: heavy outline, pop-in, karaoke fill, the spoken word highlighted, a box; `--accent`, `--color`, `--font`, `--position`, `--upper` |
+| `rn template list\|show\|render NAME -o DIR --params '{...}'` | Built-in motion templates (headline, lower third, callout, counter, bar chart, steps, text behind a person) rendered to RGBA PNGs for an EDL overlay; readable HTML pages to copy and change |
 | `rn fonts [--script ja]` | Installed families with the weights that really exist, and the scripts they cover |
 | `rn assets search\|get` | Licensed SFX and overlay footage, checked against sha256 |
 

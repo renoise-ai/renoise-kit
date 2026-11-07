@@ -2,7 +2,7 @@
 
 Contract (after Katana's render.py + page.html): the page defines `window.renderFrame(i)` (may return a Promise) that
 draws frame i completely; the frame index IS the time, so nothing depends on the wall clock and any frame renders the
-same in any order or shard. Before the page's scripts run, `window.RN = {fps, frames, width, height, shard}` is set
+same in any order or shard. Before the page's scripts run, `window.RN = {fps, frames, width, height, shard, params}` is set
 and the effects library is available as `window.RNFX` (rn fx). An optional `window.rnReady` Promise is awaited once
 (fonts, images, data). The page background stays transparent unless the page paints it.
 """
@@ -19,14 +19,14 @@ READY_TIMEOUT_MS = 30_000
 FRAME_TIMEOUT_MS = 20_000
 
 
-def _init_script(fps: float, frames: int, width: int, height: int, shard: int) -> str:
+def _init_script(fps: float, frames: int, width: int, height: int, shard: int, params: dict | None = None) -> str:
     from .fx import js_path
-    meta = json.dumps({'fps': fps, 'frames': frames, 'width': width, 'height': height, 'shard': shard})
+    meta = json.dumps({'fps': fps, 'frames': frames, 'width': width, 'height': height, 'shard': shard, 'params': params or {}})
     return f'window.RN = {meta};\n' + js_path().read_text(encoding='utf-8')
 
 
 def _shard(args: tuple) -> dict:
-    url, out_dir, indices, fps, frames, width, height, shard, scale = args
+    url, out_dir, indices, fps, frames, width, height, shard, scale, params = args
     from playwright.sync_api import Error as PlaywrightError, sync_playwright
 
     errors: list[str] = []
@@ -36,7 +36,7 @@ def _shard(args: tuple) -> dict:
         try:
             page = browser.new_page(viewport={'width': width, 'height': height}, device_scale_factor=scale)
             page.on('pageerror', lambda error: errors.append(str(error)))
-            page.add_init_script(_init_script(fps, frames, width, height, shard))
+            page.add_init_script(_init_script(fps, frames, width, height, shard, params))
             page.goto(url, wait_until='load', timeout=READY_TIMEOUT_MS)
             page.evaluate('async () => { if (window.rnReady) await window.rnReady; await document.fonts.ready; }')
             if not page.evaluate('typeof window.renderFrame === "function"'):
@@ -55,7 +55,7 @@ def _shard(args: tuple) -> dict:
 
 
 def capture_command(page: str, *, out: str, frames: int, width: int, height: int, fps: float, shards: int,
-                    start: int = 0, scale: float = 1.0) -> dict:
+                    start: int = 0, scale: float = 1.0, params: dict | None = None) -> dict:
     source = Path(page)
     if not source.exists():
         raise RnError(f'no such page: {page}')
@@ -73,7 +73,7 @@ def capture_command(page: str, *, out: str, frames: int, width: int, height: int
     shards = max(1, min(shards, len(indices)))
     # Contiguous runs per shard: each Chromium boots once (~1-3 s), so short renders gain nothing from more shards.
     size = -(-len(indices) // shards)
-    jobs = [(source.resolve().as_uri(), str(out_dir), indices[k * size:(k + 1) * size], fps, start + frames, width, height, k, scale)
+    jobs = [(source.resolve().as_uri(), str(out_dir), indices[k * size:(k + 1) * size], fps, start + frames, width, height, k, scale, params)
             for k in range(shards) if indices[k * size:(k + 1) * size]]
     started = time.monotonic()
     if len(jobs) == 1:

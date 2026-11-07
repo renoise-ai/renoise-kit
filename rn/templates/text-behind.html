@@ -1,0 +1,81 @@
+<!doctype html><meta charset="utf-8"><style>html,body{margin:0;background:transparent;overflow:hidden}</style>
+<canvas id="c"></canvas>
+<script type="application/json" id="rn-template">{
+ "what": "giant headline meant to sit behind a person: place it with an EDL mask from rn matte / rn key, \"invert\": true",
+ "params": {
+  "in": {
+   "default": 0.6,
+   "doc": "seconds of the entrance"
+  },
+  "out": {
+   "default": 0.3,
+   "doc": "fade-out seconds at the end (0: stays)"
+  },
+  "text": {
+   "default": "BOLD",
+   "doc": "the word(s); fitted to max_width on one line"
+  },
+  "color": {
+   "default": "#ffffff",
+   "doc": "text colour"
+  },
+  "y": {
+   "default": 0.33,
+   "doc": "vertical centre, share of the frame height"
+  },
+  "max_width": {
+   "default": 0.94,
+   "doc": "line width, share of the frame width"
+  },
+  "weight": {
+   "default": 900,
+   "doc": "CSS font weight"
+  },
+  "tracking": {
+   "default": -0.02,
+   "doc": "letter spacing, em"
+  },
+  "zoom": {
+   "default": 0.06,
+   "doc": "slow push-in over the clip (0: none)"
+  },
+  "font": {
+   "default": "Inter, 'Noto Sans', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif",
+   "doc": "CSS font family list"
+  },
+  "font_file": {
+   "default": "",
+   "doc": "a .ttf/.otf/.woff2 to use first (rn template render resolves the path)"
+  }
+ }
+}</script>
+<script>
+const SPEC = JSON.parse(document.getElementById('rn-template').textContent);
+const P = Object.assign(Object.fromEntries(Object.entries(SPEC.params).map(([k, v]) => [k, v.default])), RN.params || {});
+const c = document.getElementById('c'); c.width = RN.width; c.height = RN.height; const x = c.getContext('2d');
+const W = RN.width, H = RN.height, FPS = RN.fps, T = RN.frames / RN.fps, E = RNFX.ease;
+// Font hook: font_file (a URL; rn template render passes a file:// URI) is loaded and put first in the family list.
+const FONT = (P.font_file ? "'rn-font', " : '') + P.font;
+const fontReady = P.font_file ? new FontFace('rn-font', `url("${P.font_file}")`).load().then((f) => { document.fonts.add(f); }) : Promise.resolve();
+window.rnReady = fontReady;
+// EDL: the subject's matte keeps the text off the person, so it reads as standing behind them.
+//   {"frames": "behind/%05d.png", "at": 0, "mask": {"frames": "matte/%05d.png", "mode": "luma", "invert": true}}
+// (matte from rn matte FILE -o matte, or rn key FILE -o matte on a backdrop shot; same size and fps as the footage).
+let px = 100;
+window.rnReady = fontReady.then(() => {
+  x.font = `${P.weight} 100px ${FONT}`; x.letterSpacing = `${P.tracking * 100}px`;
+  px = Math.floor((100 * P.max_width * W) / Math.max(1, x.measureText(P.text).width));
+});
+window.renderFrame = (i) => {
+  const t = i / FPS;
+  x.clearRect(0, 0, W, H);
+  const fade = P.out > 0 ? 1 - E('in2', (t - (T - P.out)) / P.out) : 1, enter = E('out3', t / P.in);
+  const s = (1 - P.zoom) + P.zoom * (t / T) + 0.08 * (1 - enter);
+  x.save(); x.globalAlpha = Math.max(0, fade * enter);
+  x.translate(W / 2, P.y * H); x.scale(s, s);
+  x.font = `${P.weight} ${px}px ${FONT}`; x.letterSpacing = `${P.tracking * px}px`;
+  x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = P.color;
+  x.fillText(P.text, 0, 0);
+  x.restore();
+};
+</script>

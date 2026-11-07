@@ -1,5 +1,5 @@
 """rn: Renoise media kit. Measure (probe, frame, sheet, cuts, shots, listen, faces, ref, signal, align, text, matte), render
-(capture, fx, fonts, assets, captions), edit and assemble an EDL frame-exactly, compare, finish, QA and export. It measures
+(capture, template, fx, fonts, assets, captions), edit and assemble an EDL frame-exactly, compare, finish, QA and export. It measures
 and guarantees the mechanics; every creative decision stays yours. rn doctor says what this machine can run; rn schema
 prints the edit.json schema.
 
@@ -259,6 +259,23 @@ def _parser() -> argparse.ArgumentParser:
     export.add_argument('-o', '--out', required=True, help='.otio, .fcpxml or .xml')
     export.add_argument('--srt', metavar='FILE', help='also write the subtitles as SRT')
 
+    template = add('template', 'built-in motion templates (headline, lower third, callout, counter, bars, steps, text behind) to PNGs',
+                   'Parameterised HTML pages rendered with rn capture to an RGBA PNG sequence for an EDL overlay. Each page is\n'
+                   'readable: rn template show NAME prints its params (with defaults) and its path to copy and change.\n'
+                   '  rn template list\n'
+                   '  rn template show counter\n'
+                   '  rn template render counter -o stat --size 1080x1920 --duration 3 --params \'{"to": 250, "suffix": "%%"}\'\n'
+                   'Then in the EDL: {"frames": "stat/%%05d.png", "fps": 30, "at": 2.0}. Every template takes font (a CSS family\n'
+                   'list) and font_file (a font file loaded first), in / out (entrance and fade-out seconds) and colours.')
+    template.add_argument('action', choices=['list', 'show', 'render'])
+    template.add_argument('name', nargs='?')
+    template.add_argument('-o', '--out', help='render: output folder (its PNGs are replaced)')
+    template.add_argument('--size', default='1080x1920', metavar='WxH')
+    template.add_argument('--fps', type=float, default=30)
+    template.add_argument('--duration', type=float, default=3.0, help='seconds (default 3)')
+    template.add_argument('--params', metavar='JSON|@file', help='parameter overrides')
+    template.add_argument('--shards', type=int, default=4)
+
     fx = add('fx', 'list the effects library (grain, leak, flash, glitch, ...)',
              'Readable, editable source: RNFX.<name> in pages for rn capture (fx.js), rn.fx.<name> for numpy frames in\n'
              'Python. Call it, copy and change it, or ignore it; defaults are engine defaults, not a style.')
@@ -280,10 +297,18 @@ def _parser() -> argparse.ArgumentParser:
     assets.add_argument('--limit', type=int, default=20)
     assets.add_argument('-o', '--out', default='assets')
 
-    captions = add('captions', 'timed, chunked, face-aware captions from rn listen words',
-                   'Mechanical only: align your script to the transcript timing, chunk lines (CJK by character with\n'
-                   'kinsoku, Latin by word), keep to platform safe areas and off faces. Writes .ass (one plain readable\n'
-                   'style), .srt and .json with per-word times to drive your own styled captions.')
+    captions = add('captions', 'timed, chunked, face-aware captions from rn listen words (plain or animated styles)',
+                   'Align your script to the transcript timing, chunk lines (CJK by character with kinsoku, Latin by word),\n'
+                   'keep to platform safe areas and off faces. Writes .ass, .srt and .json with per-word times.\n'
+                   '--style (the .ass; every style is readable ASS override tags you can edit):\n'
+                   '  plain      one readable style, outline + shadow (default)\n'
+                   '  clean      bold, heavy black outline + soft drop shadow, no plate (add --upper for all caps)\n'
+                   '  pop        clean, each caption scales in with a small overshoot\n'
+                   '  karaoke    words turn --accent as they are spoken and stay\n'
+                   '  highlight  only the word being spoken is --accent\n'
+                   '  box        text on a box (--accent is the box colour; default black at 75%%)\n'
+                   'Animated styles use larger type than plain; lower --max-chars for fewer, bigger words per line.\n'
+                   'Burn with the EDL: "subtitles": {"file": "caps.ass"}.')
     captions.add_argument('words', help='rn listen --transcribe --json output')
     captions.add_argument('-o', '--out', required=True, help='.ass path (.srt and .json alongside)')
     captions.add_argument('--size', required=True, metavar='WxH', help='output video size')
@@ -293,6 +318,13 @@ def _parser() -> argparse.ArgumentParser:
     captions.add_argument('--max-lines', type=int, default=2)
     captions.add_argument('--safe', default='auto', choices=['auto', 'tiktok', 'reels', 'youtube', 'none'])
     captions.add_argument('--language')
+    captions.add_argument('--style', default='plain', choices=['plain', 'clean', 'pop', 'karaoke', 'highlight', 'box'])
+    captions.add_argument('--font', help='font family (default: Noto Sans / Noto Sans CJK for the language; rn fonts lists them)')
+    captions.add_argument('--color', metavar='#RRGGBB', help='text colour (default white)')
+    captions.add_argument('--accent', metavar='#RRGGBB', help='karaoke / highlight word colour (default #ffe000), box colour for box')
+    captions.add_argument('--position', default='bottom', choices=['bottom', 'middle', 'top'],
+                          help='preferred band; a caption over a face (--faces) moves to another band')
+    captions.add_argument('--upper', action='store_true', help='all caps')
 
     assemble = add('assemble', 'render an EDL (edit.json) to a finished MP4',
                    'Frame-exact assembly: cuts, speed, fit, transitions, overlay tracks, subtitles, clip audio + music/voice/sfx,\n'
@@ -494,11 +526,11 @@ def _print_summary(command: str, result: dict) -> None:
               f'{len(result["checks"]) - result["failed"] - result["warnings"]} passed  ({result["path"]})')
 
 
-SUMMARIZED = {'cuts', 'shots', 'listen', 'faces', 'ref', 'capture', 'fx', 'fonts', 'assets', 'captions', 'compare', 'edit', 'signal', 'align',
+SUMMARIZED = {'template', 'cuts', 'shots', 'listen', 'faces', 'ref', 'capture', 'fx', 'fonts', 'assets', 'captions', 'compare', 'edit', 'signal', 'align',
               'matte', 'text', 'export', 'doctor', 'schema'}
 NO_FFMPEG = {'doctor', 'schema'}  # they work without ffmpeg on PATH: doctor reports it missing
 # The pip extra that brings a command's optional Python modules (the media sandbox has them all).
-EXTRAS = {'listen': 'listen', 'ref': 'listen', 'faces': 'faces', 'shots': 'shots', 'capture': 'capture', 'captions': 'captions', 'fonts': 'fonts',
+EXTRAS = {'template': 'capture', 'listen': 'listen', 'ref': 'listen', 'faces': 'faces', 'shots': 'shots', 'capture': 'capture', 'captions': 'captions', 'fonts': 'fonts',
           'signal': 'listen', 'matte': 'matte', 'export': 'export'}
 
 
@@ -597,6 +629,11 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
         width, height = _size(args.size)
         result = capture_command(args.page, out=args.out, frames=args.frames, width=width, height=height, fps=args.fps,
                                  shards=args.shards, start=args.start)
+    elif command == 'template':
+        from .template import summary_lines, template_command
+        width, height = _size(args.size)
+        result = template_command(args.action, args.name, out=args.out, width=width, height=height, fps=args.fps,
+                                  duration=args.duration, params=args.params, shards=args.shards)
     elif command == 'fx':
         from .fx import catalog, js_path
         result = {'effects': catalog(), 'js': str(js_path()), 'py': str(js_path().with_name('__init__.py'))}
@@ -652,7 +689,9 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
         from .captions import captions_command, summary_lines
         width, height = _size(args.size)
         result = captions_command(args.words, script=args.script, faces_json=args.faces, out=args.out, width=width, height=height,
-                                  max_chars=args.max_chars, max_lines=args.max_lines, safe=args.safe, language=args.language)
+                                  max_chars=args.max_chars, max_lines=args.max_lines, safe=args.safe, language=args.language,
+                                  style=args.style, font=args.font, color=args.color, accent=args.accent, position=args.position,
+                                  upper=args.upper)
     return result, summary_lines(result)
 
 
