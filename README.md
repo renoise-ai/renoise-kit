@@ -153,7 +153,7 @@ rn edit edit.json delete end --lift
 | `rn frame FILE --index N \| --time T \| --last -o out.png` | One exact frame, e.g. a tail frame to continue a shot |
 | `rn sheet FILE... [--fps R \| --every N \| --indices ... \| --around T,.. --diff]` | Contact sheets labelled with frame number and timecode, each under 125 KB |
 | `rn cuts FILE [--sheet JPG]` | Shot boundaries by decoded frame, plus weaker "suspects" to check |
-| `rn shots FILE [--jobs N] [--sheet JPG]` | Every shot, dissolves and fades included, and what its picture does as numbers: still frames, 24→30 repeat cadence, how well one zoom / pan of the whole frame explains it, texture (flat blocks, colours, straight edges, noise). Numbers only, no labels |
+| `rn shots FILE [--jobs N] [--sheet JPG] [--faces]` | Every shot, dissolves and fades included, and what its picture does as numbers: still frames, 24→30 repeat cadence, how well one zoom / pan of the whole frame explains it, texture (flat blocks, colours, straight edges, noise, soft gradients, vivid colour), and with `--faces` how often a face fills the picture. Numbers only, no labels |
 | `rn listen FILE [--transcribe]` | Loudness, silences, onsets, tempo with half/double candidates, beat times, Whisper word times, one picture |
 | `rn signal FILE [-o PNG]` | Per-frame luma, motion, saturation, loudness, low/mid/high bands, onset strength; flash frames, clicks |
 | `rn align A B` | Where recording B sits inside A, by sound: offset, `match`, `distinct` |

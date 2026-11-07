@@ -16,11 +16,14 @@ Per shot, from up to 12 sampled frames and 20 frame pairs (frames touching a tra
   motion   a rigid fit of the whole frame from frame to frame: how well one zoom / pan explains it (rigid_fit 0..1:
            a still image being panned or zoomed scores high, parallax and things moving inside score low), zoom per
            second, pan speed in source pixels per second and direction, the share of points moving on their own
-  texture  flat 8x8 blocks, colours covering 95% of pixels, straight (axis-aligned) edges, sensor-like noise, fine
-           texture left after removing smooth gradients, saturation, near-black and near-white share, fine bright
-           detail on dark (particles, thin lines) and dark detail on light
+  texture  flat 8x8 blocks (all, and outside near-black), colours covering 95% of pixels, straight (axis-aligned)
+           edges, sensor-like noise, fine texture left after removing smooth gradients, gentle slopes (soft gradients),
+           saturation and vivid (saturated, not dark) pixels, near-black and near-white share, how smooth the lit
+           (luma > 50) and the inked (luma < 205) parts are, fine bright detail on dark (particles, thin lines) and dark
+           detail on light
   pixels   share of pixels exactly unchanged between frames and the noise in still areas (cameras keep noise everywhere;
            a composite redraws only what moves)
+  faces    with --faces: in how many of up to 4 sampled frames a face covers 2%+ of the picture, and the largest face
 """
 from __future__ import annotations
 
@@ -296,7 +299,8 @@ def _texture(bgr) -> dict:
     dn = cv2.medianBlur(gray, 5).astype(np.float32)
     hp = dn - cv2.GaussianBlur(dn, (0, 0), 1.5)
     hp_e = np.sqrt(np.maximum(cv2.blur(hp * hp, (5, 5)), 0))
-    sat = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)[..., 1]
+    hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+    sat, val = hsv[..., 1], hsv[..., 2]
     n_lit, n_ink = int(lit.sum()), int(ink.sum())
     return {
         'flat_blocks': float((bstd < 0.6).mean()), 'palette95': palette95, 'straight_edges': axis,
@@ -304,6 +308,11 @@ def _texture(bgr) -> dict:
         'saturation': float(sat.mean() / 255.0), 'saturation_p90': float(np.percentile(sat, 90)) / 255.0,
         'dark_share': float(dark.mean()), 'dark_flat': float((bstd[dark] < 0.6).mean()) if dark.any() else 0.0,
         'light_share': float((bmean > 227).mean()),
+        'flat_not_dark': float((bstd[~dark] < 0.6).mean()) if (~dark).any() else 0.0,
+        'gentle_slopes': float(((mag > 2) & (mag < 30)).mean()),
+        'vivid_share': float(((sat > 90) & (val > 60)).mean()),
+        'lit_share': n_lit / float(h * w), 'lit_smooth': float(((mag < 40) & lit).sum()) / n_lit if n_lit else 1.0,
+        'ink_share': n_ink / float(h * w), 'ink_smooth': float(((mag < 40) & ink).sum()) / n_ink if n_ink else 1.0,
         'bright_detail_on_dark': 100.0 * float(peaks.sum()) / n_lit if n_lit else 0.0,
         'dark_detail_on_light': 100.0 * float(ink_peaks.sum()) / n_ink if n_ink else 0.0,
     }
@@ -363,12 +372,32 @@ def _motion(fits: list[dict], fps: float, px_scale: float) -> dict:
             'local_motion': round(local, 3), 'rigid_residual_px': round(resid * px_scale, 3)}
 
 
+FACE_MIN_AREA = 0.02  # a face counts when its box covers at least this share of the picture
+_detectors: dict = {}
+
+
+def _faces(sampled: list, model: str) -> dict:
+    """Up to 4 of the sampled frames: in how many a face covers at least FACE_MIN_AREA of the picture, and the largest."""
+    import cv2
+
+    detector = _detectors.get(model) or _detectors.setdefault(model, cv2.FaceDetectorYN.create(model, '', (320, 320), 0.6))
+    checked = sampled[:: max(1, len(sampled) // 4)]
+    largest = []
+    for bgr in checked:
+        h, w = bgr.shape[:2]
+        detector.setInputSize((w, h))
+        _, found = detector.detect(bgr)
+        largest.append(max((float(row[2] * row[3]) for row in found), default=0.0) / float(w * h) if found is not None else 0.0)
+    return {'frames_with_face': round(sum(a >= FACE_MIN_AREA for a in largest) / float(len(checked)), 3) if checked else 0.0,
+            'largest_area': round(max(largest, default=0.0), 4), 'checked': len(checked)}
+
+
 def _measure(job: tuple) -> dict:
     """One shot's measurements (runs in a worker process)."""
     import cv2
 
     cv2.setNumThreads(1)  # one worker per CPU already
-    path, display, shot, fps = job
+    path, display, shot, fps, face_model = job
     total = shot['end_frame'] - shot['start_frame']
     trim = 2 if total > 12 else 0
     lo, hi = trim, max(trim + 1, total - trim)
@@ -406,23 +435,25 @@ def _measure(job: tuple) -> dict:
         period, regularity = int(values[np.argmax(counts)]), round(float(counts.max() / len(gaps)), 3)
     else:
         period, regularity = None, 0.0
+    faces = _faces(sampled, face_model) if face_model else None
     first_last = 0.0
     if len(sampled) >= 2:
         a, b = (cv2.cvtColor(x, cv2.COLOR_BGR2GRAY).astype(np.float32) for x in (sampled[0], sampled[-1]))
         first_last = float(np.abs(a - b).mean())
     return {
         'still': {'identical_pairs': round(float(same.mean()), 3), 'moving_pairs': round(float((mad > 0.6).mean()), 3),
-                  'first_last_diff': round(first_last, 2)},
+                  'pair_diff_p90': round(float(np.percentile(mad, 90)), 3), 'first_last_diff': round(first_last, 2)},
         'cadence': {'repeat_share': round(float(same.mean()), 3), 'repeat_period': period, 'repeat_regularity': regularity},
         'motion': _motion(fits, fps, display[0] / float(width or display[0])),
         'texture': texture,
         'pixels': {'unchanged': round(float(np.median(zeros)), 4) if zeros else 0.0,
                    'still_noise': round(float(np.median(tnoise)), 3) if tnoise else 0.0},
+        **({'faces': faces} if faces is not None else {}),
     }
 
 
 def shots_command(path: str, *, min_shot: float = 0.35, threshold: float = 0.30, jobs: int | None = None,
-                  sheet: str | None = None, max_kb: int = 125) -> dict:
+                  sheet: str | None = None, max_kb: int = 125, faces: bool = False, face_model: str | None = None) -> dict:
     import cv2  # noqa: F401  (extra "shots"; a missing module fails here, before any decoding, with the install hint)
 
     info = probe(path)
@@ -440,7 +471,11 @@ def shots_command(path: str, *, min_shot: float = 0.35, threshold: float = 0.30,
     n = len(track['luma'])
     for s in found:
         s['start'], s['end'] = round(s['start_frame'] / fps, 4), round(s['end_frame'] / fps, 4)
-    work = [(path, display, s, fps) for s in found]
+    model = None
+    if faces:
+        from .faces import face_model_path
+        model = face_model_path(face_model)
+    work = [(path, display, s, fps, model) for s in found]
     workers = max(1, min(jobs or usable_cpus(), len(work)))
     if workers == 1:
         measured = [_measure(job) for job in work]

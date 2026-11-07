@@ -90,7 +90,8 @@ def _parser() -> argparse.ArgumentParser:
                 'Boundaries: hard cuts, fades through black/white, dissolves (told apart from camera moves and animated\n'
                 'gradients) and flash cuts. Per shot: still (identical frames), cadence (24->30 pulldown repeats), motion\n'
                 '(how well one zoom/pan of the whole frame explains it, zoom/s, pan px/s), texture (flat blocks, colours,\n'
-                'straight edges, noise, fine texture) and pixels (unchanged share, noise in still areas). Numbers only, no\n'
+                'straight edges, noise, fine texture, gentle slopes, vivid colour, light/dark smoothness), pixels (unchanged\n'
+                'share, noise in still areas) and with --faces how often a face fills the picture. Numbers only, no\n'
                 'labels. rn cuts finds hard cuts only and stays what EDL {"shot": n} means; rn shots can count more shots.')
     shots.add_argument('file')
     shots.add_argument('--min-shot', type=float, default=0.35, help='seconds; a shorter shot merges into the one before')
@@ -98,6 +99,9 @@ def _parser() -> argparse.ArgumentParser:
     shots.add_argument('--jobs', type=int, help='shots measured in parallel (default: every CPU this machine or container allows)')
     shots.add_argument('--sheet', metavar='JPG', help='contact sheet: first, middle and last frame of every shot')
     shots.add_argument('--max-kb', type=int, default=125)
+    shots.add_argument('--faces', action='store_true',
+                       help='also per shot: in how many sampled frames a face covers 2%%+ of the picture (YuNet, as rn faces)')
+    shots.add_argument('--face-model', metavar='ONNX', help='YuNet model (default: as rn faces finds it)')
 
     listen = add('listen', 'audio as facts + one picture (you cannot hear)',
                  'Loudness (integrated, true peak, short-term curve), silences, onsets, tempo with half/double\n'
@@ -442,7 +446,7 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
     if command == 'shots':
         from .shots import shots_command, summary_lines
         result = shots_command(args.file, min_shot=args.min_shot, threshold=args.threshold, jobs=args.jobs, sheet=args.sheet,
-                               max_kb=args.max_kb)
+                               max_kb=args.max_kb, faces=args.faces, face_model=args.face_model)
     elif command == 'listen':
         from .listen import listen_command, summary_lines
         result = listen_command(args.file, out=args.out, transcribe=args.transcribe, language=args.language, model=args.model, max_kb=args.max_kb)

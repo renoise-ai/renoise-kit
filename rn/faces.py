@@ -26,13 +26,8 @@ def _face(row, scale: float) -> dict:
             'eyes': [point(0), point(1)], 'nose': point(2), 'mouth': [point(3), point(4)]}
 
 
-def faces_command(path: str, *, every: int = 1, model: str | None = None, min_score: float = 0.6,
-                  out_sheet: str | None = None, max_kb: int = 125) -> dict:
-    """Measures where faces are in every `every`-th decoded frame. Measurement only: it never alters, blurs or crops a face.
-    Use the boxes to keep text/captions off faces, or to place separate graphics that follow a subject.
-    Coordinates are source pixels; `f` is the exact decoded frame index. `eyes` and `mouth` are ordered left-to-right as seen in the image."""
-    import cv2
-
+def face_model_path(model: str | None = None) -> str:
+    """The YuNet model: --model, $RN_YUNET_MODEL, the sandbox's baked copy, else fetched once into ~/.cache/rn."""
     model_path = model or os.environ.get('RN_YUNET_MODEL')
     if not model_path:
         from .assets import fetch_checked
@@ -40,6 +35,17 @@ def faces_command(path: str, *, every: int = 1, model: str | None = None, min_sc
             fetch_checked(MODEL_URL, MODEL_SHA256, Path.home() / '.cache' / 'rn' / Path(DEFAULT_MODEL).name, name='face model'))
     if not Path(model_path).is_file():
         raise RnError(f'face model not found: {model_path} (set RN_YUNET_MODEL or pass --model)')
+    return model_path
+
+
+def faces_command(path: str, *, every: int = 1, model: str | None = None, min_score: float = 0.6,
+                  out_sheet: str | None = None, max_kb: int = 125) -> dict:
+    """Measures where faces are in every `every`-th decoded frame. Measurement only: it never alters, blurs or crops a face.
+    Use the boxes to keep text/captions off faces, or to place separate graphics that follow a subject.
+    Coordinates are source pixels; `f` is the exact decoded frame index. `eyes` and `mouth` are ordered left-to-right as seen in the image."""
+    import cv2
+
+    model_path = face_model_path(model)
     if every < 1:
         raise RnError('--every must be >= 1')
     capture = cv2.VideoCapture(str(path))

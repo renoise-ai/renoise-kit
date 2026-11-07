@@ -107,3 +107,13 @@ def test_default_model_is_fetched_once_and_checked(lena_clip, model, tmp_path, m
     monkeypatch.setattr(faces, 'MODEL_SHA256', hashlib.sha256(Path(model).read_bytes()).hexdigest())
     assert faces_command(str(lena_clip), every=10)['summary']['with_faces'] > 0
     assert (tmp_path / 'home' / '.cache' / 'rn' / 'face_detection_yunet_2023mar.onnx').is_file()
+
+
+def test_shots_counts_frames_with_a_face(lena_clip, model, tmp_path):
+    """rn shots --faces: the same detector, per shot."""
+    from rn.shots import shots_command
+
+    result = shots_command(str(lena_clip), jobs=1, faces=True, face_model=model)
+    assert len(result['shots']) == 1
+    faces = result['shots'][0]['faces']
+    assert faces['frames_with_face'] == 1.0 and faces['largest_area'] >= 0.02 and faces['checked'] >= 2

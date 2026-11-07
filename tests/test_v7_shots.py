@@ -93,3 +93,31 @@ def test_a_steady_zoom_is_rigid_whatever_its_translation_noise():
             for tx, ty in rng.normal(0, 0.05, size=(20, 2))]
     motion = _motion(fits, 24.0, 1.0)
     assert motion['rigid_fit'] > 0.9 and motion['zoom_per_s'] > 0.05
+
+
+def test_shots_reports_what_the_remake_rules_read(edit_film, tmp_path):
+    """The measurements a remake's route rules read (soft gradients, vivid colour, how smooth light and dark parts are)."""
+    report = tmp_path / 'shots.json'
+    assert rn('shots', edit_film, '--json', report, '--jobs', 2) == 0
+    moving, bars, zoom, _ = json.loads(report.read_text(encoding='utf-8'))['shots']
+    for shot in (moving, bars, zoom):
+        for key in ('flat_not_dark', 'gentle_slopes', 'vivid_share', 'lit_share', 'lit_smooth', 'ink_share', 'ink_smooth'):
+            assert 0.0 <= shot['texture'][key] <= 1.0, key
+        assert shot['still']['pair_diff_p90'] >= 0
+        assert 'faces' not in shot, 'faces only when asked for'
+    assert bars['texture']['vivid_share'] > 0.4, 'bars are mostly saturated colour'
+    assert bars['texture']['flat_not_dark'] > 0.5 and bars['still']['pair_diff_p90'] < 0.6
+    assert zoom['still']['pair_diff_p90'] > bars['still']['pair_diff_p90']
+
+
+def test_shots_faces_counts_frames_with_a_face(edit_film, tmp_path):
+    from rn.faces import face_model_path
+
+    try:
+        face_model_path()
+    except Exception as error:  # no network for the model outside the sandbox
+        pytest.skip(f'face model unavailable: {error}')
+    report = tmp_path / 'shots.json'
+    assert rn('shots', edit_film, '--json', report, '--jobs', 1, '--faces') == 0
+    for shot in json.loads(report.read_text(encoding='utf-8'))['shots']:
+        assert shot['faces']['frames_with_face'] == 0.0 and shot['faces']['checked'] >= 1, 'test patterns have no faces'
