@@ -1,6 +1,7 @@
 """rn: Renoise media kit. Measure (probe, frame, sheet, cuts, shots, listen, faces, ref, signal, align, text, matte), render
 (capture, fx, fonts, assets, captions), edit and assemble an EDL frame-exactly, compare, finish, QA and export. It measures
-and guarantees the mechanics; every creative decision stays yours.
+and guarantees the mechanics; every creative decision stays yours. rn doctor says what this machine can run; rn schema
+prints the edit.json schema.
 
 Every command prints a short summary; --json FILE writes the full result. Failures exit non-zero with
 `rn: error: <reason>` on the last line. Contract: SPEC.md in the renoise-kit repository.
@@ -299,7 +300,7 @@ def _parser() -> argparse.ArgumentParser:
                    'The EDL handles the mechanical assembly; render anything creative with your own code (rn capture for\n'
                    'HTML/canvas, numpy + rn.fx, Manim, Blender) to a PNG sequence or alpha clip and place it in the EDL.\n\n'
                    'edit.json version 2 (paths relative to it; times in seconds; # marks notes below, not JSON; a "note"\n'
-                   'field is allowed anywhere; schema: schema/edit.schema.json in the renoise-kit repository):\n'
+                   'field is allowed anywhere; full JSON Schema: rn schema):\n'
                    '{\n'
                    '  "version": 2,\n'
                    '  "output": {"width": 1080, "height": 1920, "fps": 30, "background": "#000000", "crf": 18},\n'
@@ -436,6 +437,19 @@ def _parser() -> argparse.ArgumentParser:
     qa.add_argument('--require-audio', action='store_true')
     qa.add_argument('--accept', action='append', default=[], metavar='CHECK[@T]',
                     help='a WARN judged intended: the whole check, or the finding at T seconds (EDL: "accept": [{"check", "at", "note"}])')
+
+    add('doctor', 'what this machine can do with rn: ffmpeg, filters, extras, models, OCR, fonts (offline)',
+        'Python, rn, ffmpeg / ffprobe (version, the H.264 / AAC encoders and every filter rn\'s graphs use), the Python\n'
+        'modules of each extra, Playwright\'s Chromium, tesseract, fontconfig and the caption fonts, and the YuNet,\n'
+        'Whisper and matte models. Each is ok, warn or missing, with the commands it affects and a one-line fix.\n'
+        'Nothing is downloaded or fetched (the asset manifest URL is only reported). Exits 1 when the core is broken:\n'
+        'Python, its required modules, ffmpeg, ffprobe or their encoders; missing extras only narrow what works.')
+
+    schema = add('schema', 'print the edit.json JSON Schema (shipped with rn)',
+                 'The JSON Schema (2020-12) of edit.json version 2, as shipped in the installed package: the contract for\n'
+                 'other hosts. Fields marked "x-rn-only" are rn extensions. Rules the schema cannot state (anchors, unique\n'
+                 'ids, transitions fitting their clips) are checked by rn assemble --dry-run.')
+    schema.add_argument('--path', action='store_true', help='print where the schema file is instead')
     return parser
 
 
@@ -481,7 +495,8 @@ def _print_summary(command: str, result: dict) -> None:
 
 
 SUMMARIZED = {'cuts', 'shots', 'listen', 'faces', 'ref', 'capture', 'fx', 'fonts', 'assets', 'captions', 'compare', 'edit', 'signal', 'align',
-              'matte', 'text', 'export'}
+              'matte', 'text', 'export', 'doctor', 'schema'}
+NO_FFMPEG = {'doctor', 'schema'}  # they work without ffmpeg on PATH: doctor reports it missing
 # The pip extra that brings a command's optional Python modules (the media sandbox has them all).
 EXTRAS = {'listen': 'listen', 'ref': 'listen', 'faces': 'faces', 'shots': 'shots', 'capture': 'capture', 'captions': 'captions', 'fonts': 'fonts',
           'signal': 'listen', 'matte': 'matte', 'export': 'export'}
@@ -606,6 +621,13 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
         from .compare import compare_command, summary_lines
         result = compare_command(args.a, args.b, out=args.out, count=args.count, seconds=args.seconds, width=args.width,
                                  max_kb=args.max_kb, cuts=args.cuts, video=args.video, shots=args.shots, jobs=args.jobs)
+    elif command == 'doctor':
+        from .doctor import doctor_command, summary_lines
+        result = doctor_command()
+    elif command == 'schema':
+        from .edl import SCHEMA
+        text = SCHEMA.read_text(encoding='utf-8')
+        return json.loads(text), [str(SCHEMA) if args.path else text.rstrip('\n')]
     elif command == 'fonts':
         from .fonts import fonts_command, summary_lines
         result = fonts_command(family=args.family, script=args.script, licenses=args.licenses)
@@ -633,7 +655,7 @@ def main(argv: list[str] | None = None) -> int:
                 stream.reconfigure(encoding='utf-8', errors='replace')
     args = _parser().parse_args(argv)
     for tool in ('ffmpeg', 'ffprobe'):
-        if not shutil.which(tool):
+        if args.command not in NO_FFMPEG and not shutil.which(tool):
             print(f'rn: error: {tool} not found on PATH', file=sys.stderr)
             return 2
     lines: list[str] = []
@@ -689,6 +711,8 @@ def main(argv: list[str] | None = None) -> int:
         print('\n'.join(lines))
     else:
         _print_summary(args.command, result)
+    if args.command == 'doctor':
+        return 0 if result['ok'] else 1
     return 1 if args.command == 'qa' and result['status'] == 'FAIL' else 0
 
 

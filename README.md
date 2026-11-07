@@ -31,13 +31,14 @@ machine.
 uv tool install "renoise-kit[all]"     # or: pipx install "renoise-kit[all]"
 playwright install chromium            # only for rn capture
 rn --version
+rn doctor                              # what this machine can run, and what to install for the rest
 ```
 
 The same commands work in a POSIX shell, PowerShell and cmd (hence the double quotes). On Windows `rn fonts` reads the
 system font folders directly when fontconfig is not installed, and `rn` writes UTF-8 when its output goes to a pipe.
 
 The core install is Pillow and numpy. Heavier dependencies come as extras, so you can install only what you use. When
-a command needs a missing extra, its error line names the extra to install.
+a command needs a missing extra, its error line names the extra to install; `rn doctor` lists everything missing at once.
 
 | Extra | For | Installs |
 |---|---|---|
@@ -191,6 +192,7 @@ EOF
 | `rn edit EDL batch ["OP ..." ...]` | Several of those operations as one, from arguments or one per line on stdin; written once, nothing on a failure |
 | `rn edit EDL hits SFX --at cuts\|beats\|T1,T2,..` | One sound effect as an audio item at many points: every main-track cut (anchored to the clip's id, so it follows later edits), every beat of an `rn listen --json` result, or given seconds. `--offset`, `--pivot` (the whoosh's peak on the point), `--gain`, `--every N`. The sound can come from `rn assets get` |
 | `rn assemble EDL -o OUT [--preview] [--range A-B] [--placeholders]` | Renders the EDL frame-exactly. `--placeholders` turns missing shots into labelled cards |
+| `rn schema [--path]` | The edit.json JSON Schema shipped with rn, printed (or where the file is) |
 
 **Check and deliver**
 
@@ -200,6 +202,12 @@ EOF
 | `rn compare A B [--cuts] [--shots] [--video sbs.mp4]` | Two videos at the same times on one sheet, cut timing paired, with `--shots` each shot paired with its transition and camera move, optional side-by-side video |
 | `rn finish FILE -o OUT [--height N]` | Brings any video to the delivery standard; `--height` makes a scaled copy |
 | `rn export EDL -o cut.otio\|.fcpxml\|.xml [--srt]` | The edit as a project for Final Cut, Premiere, Resolve or any OTIO tool |
+
+**This machine**
+
+| Command | What it gives |
+|---|---|
+| `rn doctor [--json FILE]` | What this machine can do with rn, offline: Python, ffmpeg / ffprobe and their version, the encoders and every filter rn uses (libass included), each extra's Python modules, Chromium for capture, tesseract, fonts, the face / Whisper / matte models. Each is ok, warn or missing, with the commands it affects and a one-line fix; exit 1 only when the core is broken: Python and its required modules, ffmpeg, ffprobe, the H.264 / AAC encoders |
 
 ## The EDL in one screen
 
@@ -232,8 +240,9 @@ EOF
 - **Bookkeeping.** `id` and `meta` go on anything; `meta` is kept as given. `accept` waives qa warnings judged
   intended.
 
-The full schema is [schema/edit.schema.json](schema/edit.schema.json), with `rn assemble --help` and [SPEC.md](SPEC.md)
-§4. Fields it marks `x-rn-only` (raw filters, masks, image sequences, nested edits, beat and word anchors, delivery
+The full schema ships with rn as [rn/edit.schema.json](rn/edit.schema.json): `rn schema` prints it, and the
+conformance fixtures are in [schema/fixtures](schema/fixtures). See also `rn assemble --help` and [SPEC.md](SPEC.md) §4.
+Fields it marks `x-rn-only` (raw filters, masks, image sequences, nested edits, beat and word anchors, delivery
 loudness, subtitles) are rn's own; another program that renders the rest of the format previews what rn delivers.
 
 ## Conventions

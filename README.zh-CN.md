@@ -24,12 +24,13 @@
 uv tool install "renoise-kit[all]"     # 或者：pipx install "renoise-kit[all]"
 playwright install chromium            # 只有 rn capture 需要
 rn --version
+rn doctor                              # 本机能跑什么，其余的还缺什么、怎么装
 ```
 
 这几条命令在 POSIX shell、PowerShell 和 cmd 里都能直接用（所以用双引号）。Windows 上没装 fontconfig 时，`rn fonts` 直接读系统字体目录；
 `rn` 的输出接到管道时一律是 UTF-8。
 
-核心依赖只有 Pillow 和 numpy。较重的依赖按功能拆成了 extras，用到哪个装哪个。某条命令缺少依赖时，报错的最后一行会写明该装哪个 extra。
+核心依赖只有 Pillow 和 numpy。较重的依赖按功能拆成了 extras，用到哪个装哪个。某条命令缺少依赖时，报错的最后一行会写明该装哪个 extra；`rn doctor` 一次列出所有缺的东西。
 
 | Extra | 用于 | 安装 |
 |---|---|---|
@@ -177,6 +178,7 @@ EOF
 | `rn edit EDL batch ["OP ..." ...]` | 把多步修改合成一次：步骤写在参数里，或从 stdin 每行一步；全部通过才写入，有一步失败就不写 |
 | `rn edit EDL hits SFX --at cuts\|beats\|T1,T2,..` | 把同一个音效放到多个点上，每个点一条音频项：主轨的每个剪点（按片段 id 锚定，之后改剪辑会跟着走）、`rn listen --json` 结果的每个拍点，或给定秒数。可加 `--offset`、`--pivot`（让 whoosh 的峰值落在点上）、`--gain`、`--every N`。音效可以用 `rn assets get` 下载 |
 | `rn assemble EDL -o OUT [--preview] [--range A-B] [--placeholders]` | 帧精确地渲染 EDL；`--placeholders` 会把还没生成的镜头渲染成带说明的卡片 |
+| `rn schema [--path]` | 打印随 rn 一起发布的 edit.json JSON Schema（`--path` 只打印文件位置） |
 
 **验与交付**
 
@@ -186,6 +188,12 @@ EOF
 | `rn compare A B [--cuts] [--shots] [--video sbs.mp4]` | 两个视频按同一时间点对齐到一张图上，并配对比较剪点时间；`--shots` 逐镜头配对比较转场和运镜；可另外输出左右并排的视频 |
 | `rn finish FILE -o OUT [--height N]` | 把任意视频处理成交付标准；`--height` 另出一个缩放版本 |
 | `rn export EDL -o cut.otio\|.fcpxml\|.xml [--srt]` | 导出成 Final Cut、Premiere、达芬奇或任何 OTIO 工具能打开的工程 |
+
+**本机**
+
+| 命令 | 作用 |
+|---|---|
+| `rn doctor [--json FILE]` | 离线检查本机能用 rn 做什么：Python、ffmpeg / ffprobe 及版本、编码器和 rn 用到的每个滤镜（含 libass）、各 extra 的 Python 模块、capture 用的 Chromium、tesseract、字体、人脸 / Whisper / 抠像模型。每项 ok、warn 或 missing，附受影响的命令和一行修复办法；只有核心坏了才返回 1：Python 及必需模块、ffmpeg、ffprobe、H.264 / AAC 编码器 |
 
 ## 一屏看懂 EDL
 
@@ -206,7 +214,7 @@ EOF
 - **合成**：`mask` 接收一张全画幅遮罩，可按亮度或 alpha 取用，也可以反相。`vf` 和 `af` 可以插入一条原始 ffmpeg 滤镜链。
 - **标记与豁免**：任何元素都可以带 `id` 和 `meta`，`meta` 原样保留不做解释。`accept` 用来豁免判断为有意为之的 qa 警告。
 
-完整字段见 [schema/edit.schema.json](schema/edit.schema.json)，以及 `rn assemble --help` 和 [SPEC.md](SPEC.md) §4。schema 里标了 `x-rn-only` 的字段（原始滤镜、遮罩、图像序列、嵌套、拍点和字词锚点、交付响度、字幕）是 rn 自己的扩展；其他程序只要渲染其余部分，预览出来的就是 rn 交付的结果。
+完整字段见随 rn 一起发布的 [rn/edit.schema.json](rn/edit.schema.json)（`rn schema` 会打印它；一致性用例在 [schema/fixtures](schema/fixtures)），以及 `rn assemble --help` 和 [SPEC.md](SPEC.md) §4。schema 里标了 `x-rn-only` 的字段（原始滤镜、遮罩、图像序列、嵌套、拍点和字词锚点、交付响度、字幕）是 rn 自己的扩展；其他程序只要渲染其余部分，预览出来的就是 rn 交付的结果。
 
 ## 约定
 

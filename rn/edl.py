@@ -14,6 +14,9 @@ from pathlib import Path
 
 from .ff import HEX_COLOR, RnError, probe, source_matrix
 
+# The format's JSON Schema, shipped as package data (rn schema prints it): the contract for other hosts.
+SCHEMA = Path(__file__).with_name('edit.schema.json')
+
 # ffmpeg xfade transitions (7.x); 'fade' and 'dissolve' cover most edits.
 XFADE = {
     'fade', 'fadeblack', 'fadewhite', 'fadegrays', 'dissolve', 'pixelize', 'distance', 'radial', 'circleopen', 'circleclose',

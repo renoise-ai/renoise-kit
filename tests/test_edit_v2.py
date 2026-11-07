@@ -1,16 +1,16 @@
 """edit.json version 2: placement and look in "style" under CSS names, keys left / top in px, version 1 upgraded on load,
-and schema/edit.schema.json agreeing with rn on the shared fixtures other hosts test against."""
+and the schema rn ships (rn/edit.schema.json, printed by rn schema) agreeing with rn on the shared fixtures other hosts
+test against."""
 import json
 from pathlib import Path
 
 import pytest
 
-from rn.edl import load
+from rn.edl import SCHEMA, load
 from rn.editops import upgrade_op
 from rn.ff import RnError
 
-SCHEMA_DIR = Path(__file__).resolve().parents[1] / 'schema'
-FIXTURES = SCHEMA_DIR / 'fixtures'
+FIXTURES = Path(__file__).resolve().parents[1] / 'schema' / 'fixtures'
 # Why rn rejects each invalid fixture: part of its error message.
 REJECTED_FOR = {
     'blend-hue': 'mix-blend-mode', 'fit-stretch': 'object-fit', 'key-x': 'keyable here', 'length-space': 'style.left',
@@ -22,7 +22,7 @@ REJECTED_FOR = {
 
 def schema_validator():
     jsonschema = pytest.importorskip('jsonschema')
-    schema = json.loads((SCHEMA_DIR / 'edit.schema.json').read_text(encoding='utf-8'))
+    schema = json.loads(SCHEMA.read_text(encoding='utf-8'))
     jsonschema.Draft202012Validator.check_schema(schema)
     return jsonschema.Draft202012Validator(schema)
 

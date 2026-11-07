@@ -1,6 +1,6 @@
 # renoise-kit：剪辑底层 CLI `rn`
 
-> 状态：v0.7.0（2026-11-07）：新增 `rn shots`：镜头边界（硬切、叠化、经黑 / 白场的淡变、闪白切）与逐镜头画面测量（静止、24→30 重复帧节奏、整帧刚体推拉拟合、质感、像素不变比例），只给数字不下结论，按 CPU 上限多进程测量；移植自 [rea-video](https://github.com/JuneYaooo/rea-video)（Apache-2.0，见 `NOTICE` 与 `LICENSES/`，包的许可证表达式改为 `MIT AND Apache-2.0`）；新 extra `shots`（OpenCV）。`rn qa --placeholders`：按 `rn assemble --placeholders` 的方式读 `--edl`，缺失素材是占位卡而不是报错。`rn edit EDL batch`：多步修改一次执行，逐步校验、全部通过才写回一次（任一步失败不写），步骤可写在参数里或从 stdin 每行一步；`rn probe` 的结果在进程内按文件身份（inode、大小、mtime、ctime）缓存，批量修改时每个素材只探测一次。`rn sheet --crop W:H:X:Y`：每格只取源画面的一块（招牌、字幕、人脸、logo），视频与静帧文件夹都可用。`rn compare --shots`：两边跑 `rn shots`，逐镜头配对比较转场类型和运镜（复刻成片与原片对照）。`rn edit EDL hits`：同一个音效按剪点、拍点或给定秒数一次放成多条 `sfx` 音频项，剪点与拍点写成锚点，之后改剪辑会跟着走。`rn text` 的每个时间段加 `style`：首次读到时的字色、背景色、描边色（没有为 null）和字高，复刻叠字不用猜。
+> 状态：v0.7.0（2026-11-07）：新增 `rn shots`：镜头边界（硬切、叠化、经黑 / 白场的淡变、闪白切）与逐镜头画面测量（静止、24→30 重复帧节奏、整帧刚体推拉拟合、质感、像素不变比例），只给数字不下结论，按 CPU 上限多进程测量；移植自 [rea-video](https://github.com/JuneYaooo/rea-video)（Apache-2.0，见 `NOTICE` 与 `LICENSES/`，包的许可证表达式改为 `MIT AND Apache-2.0`）；新 extra `shots`（OpenCV）。`rn qa --placeholders`：按 `rn assemble --placeholders` 的方式读 `--edl`，缺失素材是占位卡而不是报错。`rn edit EDL batch`：多步修改一次执行，逐步校验、全部通过才写回一次（任一步失败不写），步骤可写在参数里或从 stdin 每行一步；`rn probe` 的结果在进程内按文件身份（inode、大小、mtime、ctime）缓存，批量修改时每个素材只探测一次。`rn sheet --crop W:H:X:Y`：每格只取源画面的一块（招牌、字幕、人脸、logo），视频与静帧文件夹都可用。`rn compare --shots`：两边跑 `rn shots`，逐镜头配对比较转场类型和运镜（复刻成片与原片对照）。`rn edit EDL hits`：同一个音效按剪点、拍点或给定秒数一次放成多条 `sfx` 音频项，剪点与拍点写成锚点，之后改剪辑会跟着走。`rn text` 的每个时间段加 `style`：首次读到时的字色、背景色、描边色（没有为 null）和字高，复刻叠字不用猜。`rn doctor`：一条离线命令（约 0.1 s）报告本机能用 rn 做什么，每项 ok / warn / missing，附受影响的命令和一行修复办法，取代各 skill 自带的 doctor.py；核心（Python 与必需模块、ffmpeg、ffprobe、H.264 / AAC 编码器）坏了才返回 1。`rn schema`：edit.json 的 JSON Schema 随包发布（从仓库的 `schema/edit.schema.json` 移到包内 `rn/edit.schema.json`，作为 package data），沙箱等只装了包的环境也能拿到；`rn doctor` 与 `rn schema` 不要求 PATH 上有 ffmpeg。
 >
 > v0.6.0（2026-10-19）：§3.1 的通用原语全部实现。v0.2.0–v0.3.4 在 Renoise 主仓库 `packages/media-sandbox/kit` 随沙箱模板发布；v0.4.0 起拆为独立仓库与 PyPI 包 `renoise-kit`（命令仍为 `rn`），沙箱模板固定一个版本安装，集成见主仓库 `spec/mcp/03-media-kit.md`。v0.4.0 新增：`rn compare`、`rn assemble --preview`、`rn qa` 的 dead_air / level_jumps / fixed_frame_rate 检查、成片写 `fixed_frame_rate_flag=1`、本地安装（按功能的 extras、人脸模型首次使用时下载并校验、缺 libass 时提前报错）。
 >
@@ -82,6 +82,8 @@ EDL 是可选捷径：创意部分（HTML / canvas、Manim、Blender、ffmpeg �
 | `rn fx [--source]` | v0.3.0：效果代码库目录（`rn/fx/fx.js` 的 `RNFX.*` 与 `rn.fx.*` numpy 版）：grain、vignette、leak、flash、letterbox、rgb_split、glitch、strobe、punch、shake |
 | `rn fonts [--family] [--script] [--licenses]` | v0.3.0：fontconfig 实时数据（没有 fontconfig 时，如 Windows，用 fontTools 直接读系统字体目录）：实际存在的 CSS 字重、可变字体、覆盖文字、许可证（fontTools 读 name 表） |
 | `rn assets search/get` | v0.3.0：CDN 素材库客户端（`RN_ASSETS_URL` 指向 manifest，sha256 校验并缓存）。素材内容尚未采购发布 |
+| `rn doctor [--json FILE]` | v0.7.0：本机能用 rn 做什么，离线、约 0.1 s：Python 版本与 rn 版本（含包内数据文件）、ffmpeg / ffprobe 是否可用及版本（低于 7 为 warn：超过 8000 字符的滤镜图要走 ffmpeg 7 的 `-/filter_complex 文件`）、libx264 / aac 编码器、rn 自己的滤镜图用到的每个 ffmpeg 滤镜（`ffmpeg -filters`，含 libass 的 `subtitles`、`xfade`、`sidechaincompress`、`alimiter`、`ebur128`，逐个标出依赖它的命令；EDL 里原始 `vf` / `af` 另用的滤镜不在内）、各 extra 的 Python 模块（只用 `find_spec` 查找、不导入，版本取自发行包元数据）、Playwright 对应版本的 Chromium、tesseract 及已装语言、fontconfig 与字幕字体（`rn captions` 用的 Noto Sans / Noto Sans CJK，Windows 上为微软雅黑等）、YuNet 模型（`RN_YUNET_MODEL`、沙箱预置路径或 `~/.cache/rn`）、Whisper `small` 与 rembg 默认模型是否已在本地缓存、素材库 manifest 地址（`RN_ASSETS_URL`，只报告不请求）。不下载、不联网。每项 ok / warn / missing，附依赖它的命令和一行修复办法（按 macOS / Linux / Windows 给出）；`--json` 每项固定字段 `name group core status version path detail commands fix`。核心（Python 与 numpy、Pillow，ffmpeg、ffprobe，H.264 / AAC 编码器）坏了返回 1，缺 extra、模型、OCR、字体只缩小能用的范围，返回 0 |
+| `rn schema [--path]` | v0.7.0：打印包内的 edit.json JSON Schema（`rn/edit.schema.json`，与文件逐字节相同），`--path` 打印文件位置，`--json FILE` 另写一份。只装了包的环境（沙箱）也能拿到契约 |
 | `rn captions WORDS.json --size WxH -o caps.ass [--script] [--faces]` | v0.3.0：原稿对齐 Whisper 时间、CJK 按字分块与避头尾、两行均衡断行、平台安全区、避脸；输出 .ass（单一可读样式；字体 Noto Sans CJK，Windows 上用微软雅黑 / Yu Gothic / Malgun Gothic / Segoe UI）、.srt、带词级时间的 .json |
 
 ### 3.1 路线（2026-10-16）：通用原语，不做场景
@@ -222,7 +224,7 @@ v0.5.0 新增：
 **兼容**：没有 `version`（或为 1）的文件在加载时升级为第 2 版（`edl.upgrade`），渲染结果不变；文件本身不改，`rn edit FILE upgrade` 才改写。
 在第 2 版文件里写了第 1 版字段时，报错直接给出新名字（`x is now style.left`）。
 
-**共享 schema**：`schema/edit.schema.json`（JSON Schema 2020-12）是给其他宿主（Web 时间线编辑器等）的契约。标了 `"x-rn-only": true` 的是
+**共享 schema**：`rn/edit.schema.json`（JSON Schema 2020-12，v0.7.0 起随包发布，`rn schema` 打印；一致性用例仍在仓库的 `schema/fixtures/`）是给其他宿主（Web 时间线编辑器等）的契约。标了 `"x-rn-only": true` 的是
 rn 扩展：`vf` / `af`、`mask`、图像序列 `frames`、嵌套 `.json`、`{"shot"}` 位置、`beat` / `word` 锚点、`subtitles`、`mix.lufs` / `true_peak`、
 `output.crf` / `preset`、ffmpeg 独有的混合模式与转场（可移植的转场只有 fade / dissolve / fadeblack / fadewhite）。其余部分是**可移植核心**：
 另一个宿主只要渲染这部分，预览就等于 rn 的成片。进入共享文档的 rn 扩展效果，应先由 rn 烘焙成素材。
@@ -257,7 +259,7 @@ schema 表达不了的跨字段规则由 rn 检查：锚点只能指向之前出
 - 本地：macOS / Linux / Windows。ffmpeg 7+（带 libass；macOS 用 `ffmpeg-full`，keg-only，需放到 PATH 前面；Windows 用 gyan.dev 的 full 版）+ `uv tool install "renoise-kit[all]"`；
   `rn capture` 另需 `playwright install chromium`，`rn text` 需系统 tesseract。核心依赖 Pillow、numpy；可选依赖按功能分 extras
   （listen、transcribe、faces、capture、captions、fonts、matte、export），
-  缺哪个就在 `rn: error:` 行里点名。人脸模型首次使用时下载到 `~/.cache/rn` 并校验 sha256（沙箱里已预置）。
+  缺哪个就在 `rn: error:` 行里点名，`rn doctor` 一次列全。人脸模型首次使用时下载到 `~/.cache/rn` 并校验 sha256（沙箱里已预置）。
 - 沙箱：模板不带 extras 安装固定版本（依赖已由沙箱自己的 install.sh 装好，faces extra 的 opencv 会和 contrib 版冲突）；
   升级流程见主仓库 `spec/mcp/03-media-kit.md`。
 
