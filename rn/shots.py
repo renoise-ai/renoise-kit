@@ -334,7 +334,11 @@ def _rigid(prev, nxt) -> dict | None:
     diff = cv2.absdiff(warped, nxt)[mh:h - mh, mw:w - mw].astype(np.float32)
     bh, bw = diff.shape[0] // 16, diff.shape[1] // 16
     blocks = diff[: bh * 16, : bw * 16].reshape(bh, 16, bw, 16).mean(axis=(1, 3)) if bh and bw else diff
-    return {'scale': math.hypot(float(M[0, 0]), float(M[1, 0])), 'tx': float(M[0, 2]), 'ty': float(M[1, 2]),
+    # How far the frame's corners move: the size of the whole-frame motion, zoom and pan alike (a zoom about the centre
+    # has almost no translation, so its translation alone is noise)
+    corners = np.array([[0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1]], dtype=np.float64)
+    corner = float(np.linalg.norm(corners @ M[:, :2].T + M[:, 2] - corners, axis=1).mean())
+    return {'scale': math.hypot(float(M[0, 0]), float(M[1, 0])), 'tx': float(M[0, 2]), 'ty': float(M[1, 2]), 'corner': corner,
             'flow': float(np.median(np.linalg.norm(p1 - p0, axis=1))), 'resid': float(np.median(resid)),
             'inliers': float((resid < 0.5).mean()), 'local': float((resid > 1.5).mean()), 'left': float(np.percentile(blocks, 98))}
 
@@ -348,8 +352,7 @@ def _motion(fits: list[dict], fps: float, px_scale: float) -> dict:
     speed = float(math.hypot(tx, ty))
     flow, resid = float(np.median(arr['flow'])), float(np.median(arr['resid']))
     inl, local = float(np.median(arr['inliers'])), float(np.median(arr['local']))
-    mag = np.hypot(arr['tx'], arr['ty'])
-    steadiness = float(np.std(mag) / (np.mean(mag) + 1e-6))
+    steadiness = float(np.std(arr['corner']) / (np.mean(arr['corner']) + 1e-6))
     left = float(np.median(arr['left']))
     fit = 0.0
     if (abs(zoom) > 0.004 or speed > 1.5) and flow > 0.08:  # the whole frame moves as one rigid plane

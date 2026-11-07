@@ -81,3 +81,15 @@ def test_qa_reads_an_edit_with_placeholders(tmp_path):
     rn('qa', out, '--edl', edl, '--placeholders', '--json', report)
     checks = {c['check']: c for c in json.loads(report.read_text(encoding='utf-8'))['checks']}
     assert checks['frames']['status'] == 'PASS'
+
+
+def test_a_steady_zoom_is_rigid_whatever_its_translation_noise():
+    """A zoom about the centre has next to no translation: the spread of that noise must not count as an unsteady move."""
+    from rn.shots import _motion
+
+    rng = __import__('numpy').random.default_rng(0)
+    fits = [{'scale': 1.0025, 'tx': float(tx), 'ty': float(ty), 'corner': 0.5 + 0.02 * float(rng.standard_normal()),
+             'flow': 0.6, 'resid': 0.08, 'inliers': 0.98, 'local': 0.0, 'left': 3.0}
+            for tx, ty in rng.normal(0, 0.05, size=(20, 2))]
+    motion = _motion(fits, 24.0, 1.0)
+    assert motion['rigid_fit'] > 0.9 and motion['zoom_per_s'] > 0.05
