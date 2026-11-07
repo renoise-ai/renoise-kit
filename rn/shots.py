@@ -7,8 +7,12 @@
 made or what to do with it.
 
 Boundaries: hard cuts, fades through black or white, dissolves (a frame that is a linear blend of the frames around it,
-told apart from camera moves and animated gradients), and cuts that open on a bright flash. rn cuts finds hard cuts only,
-and its shots stay what EDL {"shot": n} means; rn shots can count more shots on the same file.
+told apart from camera moves and animated gradients), straight wipes (a frame that is the outgoing picture on one side of
+an edge and the incoming one on the other, the edge sweeping the frame), and cuts that open on a bright flash. Each
+dissolve, fade and wipe says how many frames it takes (transition.frames; a fade also its frames out, held near black or
+white, and in; a wipe the way its edge runs: left, right, up, down). Shape wipes (circles, clocks) and slides are not
+told apart: a shape wipe reads as a cut, a slide may read as one shot. rn cuts finds hard cuts only, and its shots stay
+what EDL {"shot": n} means; rn shots can count more shots on the same file.
 
 Per shot, from up to 12 sampled frames and 20 frame pairs (frames touching a transition skipped):
   still    share of consecutive frames that are pixel-identical, first-to-last difference
@@ -182,6 +186,98 @@ def _flash(luma: np.ndarray, start: int, end: int, fps: float) -> float:
     return (k + 1 - start) / fps
 
 
+def _mix(a: np.ndarray, b: np.ndarray, m: np.ndarray) -> dict | None:
+    """How frame m is made of frames a and b pixel by pixel, on the pixels where a and b differ: the share that is b, how
+    far m is from the nearer of the two (residual, relative to their difference) and how solid the b part is (agreement
+    with its 5x5 majority). A wipe is low residual with a solid b part; a dissolve blends every pixel (high residual)."""
+    import cv2
+
+    a, b, m = (x.astype(np.float32) for x in (a, b, m))
+    d = np.abs(b - a)
+    sig = d > max(12.0, 0.35 * float(min(a.std(), b.std())))
+    if sig.mean() < 0.3:
+        return None
+    da, db = np.abs(m - a), np.abs(m - b)
+    to_b = db < da
+    majority = cv2.blur(to_b.astype(np.float32), (5, 5)) > 0.5
+    return {'b_share': float(to_b[sig].mean()), 'residual': float(np.minimum(da, db)[sig].mean() / (d[sig].mean() + 1e-6)),
+            'solid': float((majority == to_b)[sig].mean()), 'to_b': to_b, 'sig': sig}
+
+
+def _edge(to_b: np.ndarray, sig: np.ndarray) -> tuple[float, str, bool]:
+    """The straight edge (vertical or horizontal) that best splits a frame into its a and b parts: how many of the
+    differing pixels it explains (0..1), its axis ('x': a vertical edge, 'y': a horizontal one), and whether b lies
+    after it (right of or below it)."""
+    best = (0.0, 'x', True)
+    for axis, dim in (('x', 1), ('y', 0)):
+        total = sig.sum(axis=1 - dim).astype(np.float64)       # differing pixels per column (x) or row (y)
+        in_b = (to_b & sig).sum(axis=1 - dim).astype(np.float64)
+        n_sig = total.sum()
+        if n_sig == 0:
+            continue
+        b_before = np.concatenate([[0.0], np.cumsum(in_b)[:-1]])  # b pixels before each position
+        a_before = np.concatenate([[0.0], np.cumsum(total - in_b)[:-1]])
+        b_after_fit = (a_before + (in_b.sum() - b_before)) / n_sig  # a before the edge, b after it
+        for fit, b_after in ((b_after_fit, True), (1.0 - b_after_fit, False)):
+            pos = int(np.argmax(fit))
+            if fit[pos] > best[0]:
+                best = (float(fit[pos]), axis, b_after)
+    return best
+
+
+def _span(thumbs, b: int, k: int, limit: int, part) -> tuple[int, int]:
+    """The frames of the transition at boundary b. part(a, b, frame) -> 0..1 says how far a frame is from the frame k
+    before towards the frame k after. A transition is where that moves fast: the run of frames around the fastest change
+    that still change at a fifth of its speed (pictures that move on their own drift slowly, so their own motion stays
+    out). The window doubles while the run reaches its edges (up to `limit` frames each side). Returns (first, last)."""
+    while True:
+        a_ref, b_ref = thumbs[b - k], thumbs[b + k]
+        profile = np.array([part(a_ref, b_ref, thumbs[t]) for t in range(b - k, b + k + 1)])
+        speed = np.abs(np.gradient(profile))
+        if float(profile[-1] - profile[0]) < 0.3 or speed.max() <= 0:
+            return b, b
+        near = range(max(0, k - k // 2), min(len(speed), k + k // 2 + 1))  # the fastest change near b
+        peak = max(near, key=lambda t: speed[t])
+        fast = speed >= 0.2 * speed[peak]
+        lo = hi = peak
+        while lo - 1 >= 0 and (fast[lo - 1] or (lo - 2 >= 0 and fast[lo - 2])):
+            lo -= 1
+        while hi + 1 < len(speed) and (fast[hi + 1] or (hi + 2 < len(speed) and fast[hi + 2])):
+            hi += 1
+        if (lo > 1 and hi < 2 * k - 1) or 2 * k > limit:
+            return b - k + lo, b - k + hi
+        k *= 2
+
+
+def _blend_part(a, b, m) -> float:
+    a, b, m = (x.astype(np.float32) for x in (a, b, m))
+    d = b - a
+    return float(((m - a) * d).sum() / (float((d * d).sum()) or 1.0))
+
+
+def _wipe_part(a, b, m) -> float:
+    found = _mix(a, b, m)
+    return found['b_share'] if found else 0.0
+
+
+def _wipe_edge(thumbs, b: int, lo: int, hi: int) -> str | None:
+    """A wipe's direction, or None when frames lo..hi are not one: the middle frame splits along one straight edge into
+    the outgoing and the incoming picture (well beyond what no edge at all explains), and the incoming picture's share
+    grows by 0.4 or more across the transition as that edge sweeps the frame."""
+    a_ref, b_ref = thumbs[max(0, lo - 1)], thumbs[min(len(thumbs) - 1, hi + 1)]
+    m = _mix(a_ref, b_ref, thumbs[b])
+    if not m:
+        return None
+    fit, axis, b_after = _edge(m['to_b'], m['sig'])
+    base = max(m['b_share'], 1 - m['b_share'])
+    if fit < 0.8 or (fit - base) / max(1e-6, 1 - base) < 0.6:
+        return None
+    if _wipe_part(a_ref, b_ref, thumbs[hi]) - _wipe_part(a_ref, b_ref, thumbs[lo]) < 0.4:
+        return None
+    # the edge runs away from the incoming picture, into the outgoing one
+    return ('left' if b_after else 'right') if axis == 'x' else ('up' if b_after else 'down')
+
+
 def boundaries(track: dict, fps: float, *, min_shot: float = 0.35, threshold: float = 0.30) -> list[dict]:
     """[{start_frame, end_frame, transition_in, score}] from a frame track."""
     n = len(track['luma'])
@@ -192,6 +288,7 @@ def boundaries(track: dict, fps: float, *, min_shot: float = 0.35, threshold: fl
     chg = track['chg']
     chg_base = _local_median(chg, radius)
     found: dict[int, tuple[str, float]] = {}
+    details: dict[int, dict] = {}  # per boundary: how long its transition takes, and how it runs
     for i in range(1, n):  # hard cuts: a spike well above local activity that changes most of the frame
         s = score[i]
         strong = s > threshold and s > base[i] * 2.5 + 0.06 and chg[i] > 0.25
@@ -229,6 +326,8 @@ def boundaries(track: dict, fps: float, *, min_shot: float = 0.35, threshold: fl
                     del found[b]
                 if not any(abs(j - b) < radius for b in found):
                     found[j] = ('fade', 0.5)
+                    details[j] = {'frames': z - a, 'through': 'black' if luma[i] < low else 'white',
+                                  'out_frames': i - a, 'hold_frames': j - i, 'in_frames': z - j}
             i = j
         else:
             i += 1
@@ -260,17 +359,67 @@ def boundaries(track: dict, fps: float, *, min_shot: float = 0.35, threshold: fl
                     for b in near:
                         del found[b]
                     found[i] = ('dissolve', round(1 - resid, 3))
+    if n > 2 * fps:  # wipes: the middle frame is the frame k before on one side of an edge and the frame k after on the other
+        thumbs = track['thumbs']
+        for k in sorted({max(2, int(round(fps * 0.12))), max(3, int(round(fps * 0.2))), max(5, int(round(fps * 0.45)))}):
+            runs, run = [], []
+            for i in range(k, n - k):
+                m = None if any(a <= i <= z for a, z in ramps) else _mix(thumbs[i - k], thumbs[i + k], thumbs[i])
+                if m and m['residual'] < 0.2 and 0.2 <= m['b_share'] <= 0.8 and m['solid'] >= 0.9:
+                    run.append((i, m))
+                elif run:
+                    runs.append(run)
+                    run = []
+            if run:
+                runs.append(run)
+            # one wipe per run of such frames: its frame closest to half way
+            cand = []
+            for run in runs:
+                i, m = min(run, key=lambda e: abs(e[1]['b_share'] - 0.5))
+                cand.append((i, m['residual'], run[0][0], run[-1][0]))
+            for i, resid, first, last in sorted(cand, key=lambda t: t[1]):
+                a_ref, b_ref = thumbs[i - k], thumbs[i + k]
+                # one picture moving (a hand, a pan) is no wipe; neither is a change too quick to have frames in between
+                if _motion_explains(a_ref.astype(np.float32), b_ref.astype(np.float32)) or _steady_morph(thumbs, i, k):
+                    continue
+                limit = int(min(2 * fps, i, n - 1 - i))
+                lo, hi = _span(thumbs, i, min(int(round(fps)), limit), limit, _wipe_part)
+                edge = _wipe_edge(thumbs, i, lo, hi) if hi - lo + 1 >= 3 else None
+                if not edge:
+                    continue
+                near = [b for b in found if lo - 1 <= b <= hi + 1]
+                # a hard cut has no frame made half of each side: one inside the wipe's own frames was the wipe read as a cut
+                if any(abs(i - b) <= 2 * k and b not in near for b in found) or any(found[b][0] != 'cut' for b in near):
+                    continue
+                for b in near:
+                    del found[b]
+                found[i] = ('wipe', round(1 - resid, 3))
+                details[i] = {'frames': hi - lo + 1, 'edge': edge}
+    # how many frames each dissolve takes (wipes were measured when found)
+    ordered = sorted(found)
+    for index, b in enumerate(ordered):
+        if found[b][0] != 'dissolve':
+            continue
+        before = ordered[index - 1] if index else 0
+        after = ordered[index + 1] if index + 1 < len(ordered) else n - 1
+        limit = int(min(4 * fps, b - before, after - b))
+        k = min(int(round(fps)), limit)  # a second each side to start: both pictures settled, the transition inside
+        if k < 2:
+            details[b] = {'frames': None}
+            continue
+        lo, hi = _span(track['thumbs'], b, k, limit, _blend_part)
+        details[b] = {'frames': hi - lo + 1}
     min_len = max(1, int(round(min_shot * fps)))
-    shots, start, trans, sc = [], 0, None, None
+    shots, start, trans, sc, how = [], 0, None, None, None
     for b in sorted(found) + [n]:
         if b - start < min_len and b != n:
             continue
         if b == n and shots and b - start < min_len:
             shots[-1]['end_frame'] = n
             break
-        shots.append({'start_frame': start, 'end_frame': b, 'transition_in': trans, 'score': sc})
+        shots.append({'start_frame': start, 'end_frame': b, 'transition_in': trans, 'score': sc, 'transition': how})
         if b < n:
-            trans, sc = found[b][0], round(found[b][1], 3)
+            trans, sc, how = found[b][0], round(found[b][1], 3), details.get(b)
         start = b
     for s in shots:
         if s['transition_in'] == 'cut':
@@ -525,9 +674,12 @@ def shots_command(path: str, *, min_shot: float = 0.35, threshold: float = 0.30,
             shot['boundary_score'] = s['score']
         if s.get('flash_s'):
             shot['flash_s'] = s['flash_s']
+        if s.get('transition') and s['transition_in'] in ('dissolve', 'fade', 'wipe'):
+            frames = s['transition'].get('frames')
+            shot['transition'] = {**s['transition'], 'seconds': round(frames / fps, 3) if frames else None}
         shots.append({**shot, **m})
     result = {'path': path, 'fps': str(fps_frac), 'frames': n, 'size': list(display), 'workers': workers, 'shots': shots,
-              'transitions': {t: sum(1 for s in shots if s['transition_in'] == t) for t in ('cut', 'flash', 'dissolve', 'fade')}}
+              'transitions': {t: sum(1 for s in shots if s['transition_in'] == t) for t in ('cut', 'flash', 'dissolve', 'fade', 'wipe')}}
     if sheet:
         from .frames import sheet_command
         # first, middle and last frame of every shot, one row per shot
@@ -539,12 +691,19 @@ def shots_command(path: str, *, min_shot: float = 0.35, threshold: float = 0.30,
 
 def summary_lines(result: dict) -> list[str]:
     t = result['transitions']
-    lines = [f'{len(result["shots"])} shots ({t["cut"]} cuts, {t["flash"]} flash cuts, {t["dissolve"]} dissolves, {t["fade"]} fades), '
-             f'measured with {result["workers"]} worker(s)']
+    lines = [f'{len(result["shots"])} shots ({t["cut"]} cuts, {t["flash"]} flash cuts, {t["dissolve"]} dissolves, {t["fade"]} fades, '
+             f'{t["wipe"]} wipes), measured with {result["workers"]} worker(s)']
+
+    def entry(s: dict) -> str:
+        how = s.get('transition') or {}
+        extra = [f'{how["frames"]}f'] if how.get('frames') else []
+        extra += [how['edge']] if how.get('edge') else []
+        extra += [f'through {how["through"]}'] if how.get('through') else []
+        return (s['transition_in'] or 'start') + (f' ({" ".join(extra)})' if extra else '')
     for s in result['shots']:
         m, tx = s['motion'], s['texture']
         lines.append(f'  shot {s["shot"]}: frames {s["start_frame"]}..{s["end_frame"] - 1}  {s["start"]}-{s["end"]}s  '
-                     f'in={s["transition_in"] or "start"}  still {s["still"]["identical_pairs"]:.0%}  '
+                     f'in={entry(s)}  still {s["still"]["identical_pairs"]:.0%}  '
                      f'rigid {m["rigid_fit"]:.2f} zoom {m["zoom_per_s"] * 100:+.1f}%/s pan {m["pan_px_per_s"]:.0f}px/s  '
                      f'flat {tx["flat_blocks"]:.0%} colours {tx["palette95"]} edges {tx["straight_edges"]:.0%} noise {tx["noise_sigma"]:.2f}')
     lines += [f'sheet {page["path"]}' for page in result.get('sheet', [])]

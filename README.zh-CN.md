@@ -150,7 +150,7 @@ EOF
 | `rn frame FILE --index N \| --time T \| --last -o out.png` | 精确取一帧，例如取尾帧来接续镜头 |
 | `rn sheet FILE... [--fps R \| --every N \| --indices ... \| --around T,.. --diff] [--crop W:H:X:Y]` | 带帧号和时间码的接触表，每张不超过 125 KB；`--crop` 让每格只显示画面的一块（招牌、字幕、人脸） |
 | `rn cuts FILE [--sheet JPG]` | 按解码帧号给出镜头边界，较弱的变化列为待确认的 suspects |
-| `rn shots FILE [--jobs N] [--sheet JPG] [--faces]` | 全部镜头（含叠化、淡变），以及每个镜头画面在做什么，全是数字：静止帧、24→30 重复帧节奏、整帧单一缩放 / 平移能解释多少、质感（平坦块、颜色数、横竖直边、噪声、柔和渐变、鲜艳颜色），加 `--faces` 时还有人脸占满画面的频率。只给数字，不下结论 |
+| `rn shots FILE [--jobs N] [--sheet JPG] [--faces]` | 全部镜头（含叠化、淡变、直线擦除，并给出转场帧数和擦除方向），以及每个镜头画面在做什么，全是数字：静止帧、24→30 重复帧节奏、整帧单一缩放 / 平移能解释多少、质感（平坦块、颜色数、横竖直边、噪声、柔和渐变、鲜艳颜色），加 `--faces` 时还有人脸占满画面的频率。只给数字，不下结论 |
 | `rn listen FILE [--transcribe]` | 响度、静音、起音、速度（附半速 / 倍速候选）、拍点时间、Whisper 字词时间，外加一张图 |
 | `rn signal FILE [-o PNG]` | 逐帧的亮度、运动、饱和度、响度、低 / 中 / 高频段、起音强度，以及闪帧和爆音位置 |
 | `rn align A B` | 通过声音判断录音 B 在 A 里的位置：偏移量、`match`、`distinct` |

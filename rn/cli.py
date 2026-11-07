@@ -124,9 +124,10 @@ def _parser() -> argparse.ArgumentParser:
     cuts.add_argument('--sheet', metavar='JPG', help='contact sheet of both sides of every cut and suspect')
     cuts.add_argument('--max-kb', type=int, default=125)
 
-    shots = add('shots', 'every shot (dissolves and fades too) and what its picture does, as numbers',
+    shots = add('shots', 'every shot (dissolves, fades and wipes too) and what its picture does, as numbers',
                 'Boundaries: hard cuts, fades through black/white, dissolves (told apart from camera moves and animated\n'
-                'gradients) and flash cuts. Per shot: still (identical frames), cadence (24->30 pulldown repeats), motion\n'
+                'gradients), straight wipes (with the way the edge runs) and flash cuts; each dissolve, fade and wipe with\n'
+                'how many frames it takes. Per shot: still (identical frames), cadence (24->30 pulldown repeats), motion\n'
                 '(how well one zoom/pan of the whole frame explains it, zoom/s, pan px/s), texture (flat blocks, colours,\n'
                 'straight edges, noise, fine texture, gentle slopes, vivid colour, light/dark smoothness), pixels (unchanged\n'
                 'share, noise in still areas) and with --faces how often a face fills the picture. Numbers only, no\n'

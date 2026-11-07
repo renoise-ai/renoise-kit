@@ -156,3 +156,34 @@ def test_compare_shots_pairs_each_shot_with_its_transition_and_camera(edit_film,
     zoom = shots['pairs'][2]
     assert (zoom['a']['transition_in'], zoom['b']['transition_in']) == ('dissolve', 'cut') and shots['transitions_differ'] == 1
     assert zoom['motion']['a']['zoom_per_s'] > 0.02 and zoom['motion']['b']['zoom_per_s'] > 0.02
+
+
+@pytest.mark.parametrize('xfade, edge', [('wipeleft', 'left'), ('wipeup', 'up')])
+def test_shots_reads_a_wipe_with_its_edge_and_length(tmp_path, xfade, edge):
+    """A straight wipe (0.6 s, 14 frames at 24 fps) between two moving pictures: one boundary half way through it, with
+    the direction its edge runs and how many frames it takes."""
+    a, b, film = tmp_path / 'a.mp4', tmp_path / 'b.mp4', tmp_path / 'film.mp4'
+    ffmpeg('-f', 'lavfi', '-i', 'testsrc2=s=320x240:r=24:d=3', '-pix_fmt', 'yuv420p', str(a))
+    ffmpeg('-f', 'lavfi', '-i', 'mandelbrot=s=320x240:r=24', '-t', '3', '-pix_fmt', 'yuv420p', str(b))
+    ffmpeg('-i', str(a), '-i', str(b), '-filter_complex', f'[0:v][1:v]xfade=transition={xfade}:duration=0.6:offset=2.4[v]',
+           '-map', '[v]', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(film))
+    report = tmp_path / 'shots.json'
+    assert rn('shots', film, '--json', report, '--jobs', 1) == 0
+    result = json.loads(report.read_text(encoding='utf-8'))
+    shots = result['shots']
+    assert [s['transition_in'] for s in shots] == [None, 'wipe'] and result['transitions']['wipe'] == 1
+    assert shots[1]['start'] == pytest.approx(2.7, abs=0.2)
+    assert shots[1]['transition']['edge'] == edge
+    assert 10 <= shots[1]['transition']['frames'] <= 18
+
+
+def test_shots_says_how_long_dissolves_and_fades_take(edit_film, tmp_path):
+    """The film's 0.5 s dissolve (12 frames) and its fade through black (1 s out, 0.5 s black, 1 s in)."""
+    report = tmp_path / 'shots.json'
+    assert rn('shots', edit_film, '--json', report, '--jobs', 2) == 0
+    shots = json.loads(report.read_text(encoding='utf-8'))['shots']
+    dissolve, fade = shots[2]['transition'], shots[3]['transition']
+    assert 9 <= dissolve['frames'] <= 16 and dissolve['seconds'] == pytest.approx(dissolve['frames'] / 24, abs=0.01)
+    assert fade['through'] == 'black' and fade['hold_frames'] >= 12
+    assert fade['frames'] == fade['out_frames'] + fade['hold_frames'] + fade['in_frames'] and 24 <= fade['frames'] <= 64
+    assert 'transition' not in shots[1], 'a hard cut takes no frames'
