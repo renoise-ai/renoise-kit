@@ -631,7 +631,9 @@ def _parser() -> argparse.ArgumentParser:
                   'underneath, labelled with each one\'s own frame index. --cuts runs rn cuts on both and pairs the cuts\n'
                   '(within 0.25 s) with their offsets: the rhythm comparison. --shots runs rn shots on both and pairs each A\n'
                   'shot with the B shot that overlaps it most: transitions (cut, dissolve, fade, flash) and camera moves\n'
-                  '(zoom/s, pan in frame widths/s, direction, rigid fit). --video writes A|B side by side to watch.\n'
+                  '(zoom/s, pan in frame widths/s, direction, rigid fit). --video writes A|B side by side to watch;\n'
+                  '--mode stack puts A above B, blend lays B over A at 50% (framing lines up or visibly does not), diff\n'
+                  'shows |A - B| (black where they match, bright where they differ).\n'
                   'Differences are facts to look at, not scores.')
     compare.add_argument('a')
     compare.add_argument('b')
@@ -645,7 +647,9 @@ def _parser() -> argparse.ArgumentParser:
     compare.add_argument('--shots', action='store_true',
                          help='rn shots on both: each A shot with the B shot that overlaps it most, their transitions and camera moves')
     compare.add_argument('--jobs', type=int, help='--shots: shots measured in parallel (default: every CPU allowed)')
-    compare.add_argument('--video', metavar='MP4', help='also write a side-by-side video (A left, B right, A\'s sound)')
+    compare.add_argument('--video', metavar='MP4', help='also write a video of both with A\'s sound (A left, B right; see --mode)')
+    compare.add_argument('--mode', choices=['side', 'stack', 'blend', 'diff'],
+                         help='--video: side (default), stack (A above B), blend (B over A at 50%%), diff (|A - B|)')
 
     finish = add('finish', 'bring any video to the delivery standard',
                  'For a video you built yourself: H.264 High yuv420p bt709, even size, square pixels, moov first,\n'
@@ -965,8 +969,11 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
         result = export_command(args.edl, args.out, srt=args.srt)
     elif command == 'compare':
         from .compare import compare_command, summary_lines
+        if args.mode and not args.video:
+            raise RnError('--mode goes with --video')
         result = compare_command(args.a, args.b, out=args.out, count=args.count, seconds=args.seconds, width=args.width,
-                                 max_kb=args.max_kb, cuts=args.cuts, video=args.video, shots=args.shots, jobs=args.jobs)
+                                 max_kb=args.max_kb, cuts=args.cuts, video=args.video, shots=args.shots, jobs=args.jobs,
+                                 mode=args.mode or 'side')
     elif command == 'doctor':
         from .doctor import doctor_command, summary_lines
         result = doctor_command()

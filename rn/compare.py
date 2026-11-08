@@ -12,6 +12,12 @@ from .frames import _compose, _save_under, _timecode, extract
 
 PER_PAGE = 6  # times per page: A on the top row, B underneath
 CUT_TOLERANCE = 0.25  # seconds: a cut in B this close to one in A counts as the same cut
+VIDEO_MODES = {  # --video --mode: how A and B share the picture, as the summary line names it
+    'side': 'side by side: {}  (A left, B right)',
+    'stack': 'stacked: {}  (A top, B bottom)',
+    'blend': 'blend: {}  (B at 50% over A: matching edges line up, moved ones show twice)',
+    'diff': 'difference: {}  (|A - B| per channel: black where they match, bright where they differ)',
+}
 
 
 def _video(path: str) -> dict:
@@ -83,10 +89,33 @@ def match_shots(a: dict, b: dict) -> dict:
             'transitions_differ': sum(1 for p in pairs if p['b'] and p['b']['transition_in'] != p['a']['transition_in'])}
 
 
+def _video_graph(mode: str, a: dict) -> str:
+    """The filter graph that puts A (input 0) and B (input 1) in one picture. Both play from their first frame on their
+    own clocks; the shorter one holds its last frame. side: same height (A's, at most 720) next to each other. stack: same
+    width (A's, at most 720) one above the other. blend / diff: B fitted inside A's frame at that height (letterboxed if
+    the shapes differ, never stretched), then mixed 50/50 or subtracted per RGB channel, so a pixel that is the same in
+    both is black in diff."""
+    if mode == 'side':
+        height = min(720, a['height']) // 2 * 2
+        return f'[0:v]scale=-2:{height},setsar=1[a];[1:v]scale=-2:{height},setsar=1[b];[a][b]hstack=inputs=2[v]'
+    if mode == 'stack':
+        width = min(720, a['width']) // 2 * 2
+        return f'[0:v]scale={width}:-2,setsar=1[a];[1:v]scale={width}:-2,setsar=1[b];[a][b]vstack=inputs=2[v]'
+    height = min(720, a['height']) // 2 * 2
+    width = max(2, round(a['width'] * height / a['height'] / 2) * 2)
+    mix = 'all_mode=normal:all_opacity=0.5' if mode == 'blend' else 'all_mode=difference'
+    return (f'[0:v]scale={width}:{height},setsar=1,format=gbrp[a];'
+            f'[1:v]scale={width}:{height}:force_original_aspect_ratio=decrease:force_divisible_by=2,'
+            f'pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=gbrp[b];[b][a]blend={mix}[v]')
+
+
 def compare_command(path_a: str, path_b: str, *, out: str | None, count: int | None, seconds: list[float] | None, width: int,
-                    max_kb: int, cuts: bool, video: str | None, shots: bool = False, jobs: int | None = None) -> dict:
+                    max_kb: int, cuts: bool, video: str | None, shots: bool = False, jobs: int | None = None,
+                    mode: str = 'side') -> dict:
     from PIL import Image, ImageOps
 
+    if mode not in VIDEO_MODES:
+        raise RnError(f'--mode {mode}: expected one of {", ".join(VIDEO_MODES)}')
     info_a, info_b = _video(path_a), _video(path_b)
     fps_a, fps_b = source_fps(info_a), source_fps(info_b)
     frames_a, frames_b = info_a['video']['frames'], info_b['video']['frames']
@@ -138,13 +167,10 @@ def compare_command(path_a: str, path_b: str, *, out: str | None, count: int | N
         from .shots import shots_command
         result['shots'] = match_shots(shots_command(path_a, jobs=jobs), shots_command(path_b, jobs=jobs))
     if video:
-        # Same height side by side, A's sound; the shorter one holds its last frame.
-        height = min(720, info_a['video']['height']) // 2 * 2
-        run(['ffmpeg', '-i', path_a, '-i', path_b, '-filter_complex',
-             f'[0:v]scale=-2:{height},setsar=1[a];[1:v]scale=-2:{height},setsar=1[b];[a][b]hstack=inputs=2[v]',
+        run(['ffmpeg', '-i', path_a, '-i', path_b, '-filter_complex', _video_graph(mode, info_a['video']),
              '-map', '[v]', *(['-map', '0:a:0', '-c:a', 'aac'] if info_a['audio'] else []), '-c:v', 'libx264', '-preset', 'veryfast',
              '-crf', '23', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-y', video])
-        result['video'] = video
+        result['video'] = {'path': video, 'mode': mode}
     return result
 
 
@@ -176,5 +202,5 @@ def summary_lines(result: dict) -> list[str]:
             lines.append(f'{head} -> B{b["shot"]} {b["start"]}-{b["end"]}s {_begins(b)} ({p["covered"]:.0%} covered)'
                          f'\n      A {camera(p["motion"]["a"])}\n      B {camera(p["motion"]["b"])}')
     if 'video' in result:
-        lines.append(f'side by side: {result["video"]}  (A left, B right)')
+        lines.append(VIDEO_MODES[result['video']['mode']].format(result['video']['path']))
     return lines
