@@ -252,6 +252,13 @@ def proof(args, result: dict) -> str | None:
         return _waveform_proof(result, proof_path(result['path']))
     if command == 'grade':
         return result.get('proof')
+    if command == 'assets' and result.get('previews'):
+        from PIL import Image
+
+        from .assets import fetch_preview
+        previews = result['previews']
+        return write_proof([Image.open(fetch_preview(p['url'])) for p in previews], [p['id'] for p in previews],
+                           f'rn assets search {" ".join(args.terms)}'.strip(), proof_path(args.out), columns=4)
     return None
 
 
@@ -302,6 +309,12 @@ def next_steps(args, result: dict) -> list[str]:
                    f'rn faces {_q(args.file)} --reframe {result["reframe"]["size"][0]}x{result["reframe"]["size"][1]} -o reframed.mp4')
     elif command == 'music' and result.get('edl'):
         out.append(f'EDL audio item: {json.dumps(result["edl"], ensure_ascii=False)}')
+    elif command == 'assets' and result.get('files'):
+        for f in result['files']:
+            note = '  (path relative to the EDL)' if 'vf' in f['edl'] else ''
+            out.append(f'EDL {f["place"]}: {json.dumps(f["edl"], ensure_ascii=False)}{note}')
+    elif command == 'assets' and result.get('assets'):
+        out.append(f'rn assets get {" ".join(_q(a["id"]) for a in result["assets"][:3])} -o {_q(args.out)}')
     elif command == 'pack' and result.get('written'):
         sfx = [w['id'] for w in result['written'] if w['id'].split('/')[0] not in ('font', 'look', 'icon')]
         if sfx:
