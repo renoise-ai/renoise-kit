@@ -2,6 +2,10 @@ name: Release
 on:
   push:
     tags: ['v*']
+  # Run by hand on main: publishes the version in rn/__init__.py and tags it v<version>. For when a tag cannot be
+  # pushed (a session whose GitHub access stops at its own branch). The tag pushed here by GITHUB_TOKEN starts no
+  # second run.
+  workflow_dispatch:
 
 jobs:
   pypi:
@@ -9,10 +13,28 @@ jobs:
     environment: pypi
     permissions:
       id-token: write  # PyPI trusted publishing: no token stored in the repo
+      contents: write  # workflow_dispatch: push the v<version> tag
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
+      - name: Version
+        id: version
+        run: echo "version=$(sed -n "s/^__version__ = '\(.*\)'/\1/p" rn/__init__.py)" >> "$GITHUB_OUTPUT"
       - name: Tag matches rn.__version__
-        run: test "${GITHUB_REF_NAME#v}" = "$(sed -n "s/^__version__ = '\(.*\)'/\1/p" rn/__init__.py)"
+        if: github.event_name == 'push'
+        run: test "${GITHUB_REF_NAME#v}" = "${{ steps.version.outputs.version }}"
+      - name: Run by hand from main, version not tagged yet
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          test "$GITHUB_REF_NAME" = main
+          if git ls-remote --exit-code --tags origin "refs/tags/v${{ steps.version.outputs.version }}"; then
+            echo "v${{ steps.version.outputs.version }} is already tagged: push a new version first" >&2
+            exit 1
+          fi
       - run: uv build
       - run: uv publish
+      - name: Tag the published version
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git tag "v${{ steps.version.outputs.version }}" "$GITHUB_SHA"
+          git push origin "v${{ steps.version.outputs.version }}"
