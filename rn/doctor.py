@@ -57,6 +57,7 @@ FILTER_USES = (
     ('rn key', 'scale'),
     ('rn faces --reframe -o', 'crop scale setsar'),
     ('rn listen', 'ebur128'),
+    ('rn clean', 'aresample atrim highpass bandreject afftdn equalizer deesser acompressor apad asetpts volume alimiter ebur128'),
     ('rn look, rn grade', 'select scale'),
     ('rn grade --preview (and EDL "vf": "lut3d=...")', 'lut3d'),
 )
@@ -65,13 +66,14 @@ OPENCV = ('opencv-python-headless', 'opencv-python', 'opencv-contrib-python-head
 # (check name, modules it needs, distributions to read a version from, extra, what imports it). From the import sites in
 # rn/; the extras are pyproject.toml's. An extra of None is a required dependency: part of the core.
 MODULES = (
-    ('numpy', ('numpy',), ('numpy',), None, ['rn shots', 'rn signal', 'rn align', 'rn listen', 'rn key', 'rn grid', 'rn.fx']),
+    ('numpy', ('numpy',), ('numpy',), None, ['rn shots', 'rn signal', 'rn align', 'rn listen', 'rn clean', 'rn key', 'rn grid', 'rn.fx']),
     ('pillow', ('PIL',), ('pillow',), None, ['rn sheet', 'rn compare', 'rn listen', 'rn matte', 'rn key', 'rn grid',
                                              'rn assemble (images, cards)']),
     ('opencv', ('cv2',), OPENCV, 'faces', ['rn faces', 'rn shots', 'rn compare --shots']),
     ('librosa', ('librosa',), ('librosa',), 'listen', ['rn listen', 'rn ref (a video with sound)']),
     ('matplotlib', ('matplotlib',), ('matplotlib',), 'listen', ['rn listen', 'rn ref (a video with sound)', 'rn signal -o']),
-    ('faster-whisper', ('faster_whisper',), ('faster-whisper',), 'transcribe', ['rn listen --transcribe', 'rn ref --transcribe']),
+    ('faster-whisper', ('faster_whisper',), ('faster-whisper',), 'transcribe', ['rn listen --transcribe', 'rn ref --transcribe',
+                                                                                      'rn clean (clarity check)']),
     ('playwright', ('playwright',), ('playwright',), 'capture', ['rn capture']),
     ('pysubs2', ('pysubs2',), ('pysubs2',), 'captions', ['rn captions', 'rn export --srt (from .ass)']),
     ('fonttools', ('fontTools',), ('fonttools',), 'fonts', ['rn fonts --licenses', 'rn fonts without fc-list']),
@@ -303,7 +305,7 @@ def _model_checks() -> list[dict]:
     snapshot = next((p.parent for p in (hub / f'models--{WHISPER_MODEL[1].replace("/", "--")}').glob('snapshots/*/model.bin')), None)
     checks.append(_check('whisper model', 'model', 'ok' if snapshot else 'missing',
                          WHISPER_MODEL[0] if snapshot else f'{WHISPER_MODEL[0]} not in {hub}; downloaded on first use (needs the network)',
-                         [f'rn listen --transcribe (default --model {WHISPER_MODEL[0]})', 'rn ref --transcribe'],
+                         [f'rn listen --transcribe (default --model {WHISPER_MODEL[0]})', 'rn ref --transcribe', 'rn clean (clarity check)'],
                          'run rn listen --transcribe once with network access', path=str(snapshot) if snapshot else None))
     u2net = Path(os.environ.get('U2NET_HOME') or Path(os.environ.get('XDG_DATA_HOME') or Path.home()) / '.u2net')
     onnx = u2net / f'{MATTE_MODEL}.onnx'

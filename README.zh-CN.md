@@ -35,7 +35,7 @@ rn doctor                              # 本机能跑什么，其余的还缺什
 | Extra | 用于 | 安装 |
 |---|---|---|
 | `listen` | `rn listen`、`rn ref`、`rn signal -o` | librosa、matplotlib |
-| `transcribe` | `rn listen --transcribe` | faster-whisper |
+| `transcribe` | `rn listen --transcribe`、`rn clean` 的清晰度检查 | faster-whisper |
 | `faces` | `rn faces` | OpenCV（headless 版）；YuNet 模型在首次使用时下载到 `~/.cache/rn`，并校验 sha256 |
 | `capture` | `rn capture` | Playwright |
 | `captions` | `rn captions` | pysubs2 |
@@ -174,6 +174,7 @@ EOF
 | `rn capture URL -o DIR [--desktop] [--sections "Pricing,Reviews"] [--scroll-video OUT.mp4]` | 用真实浏览器拍线上网站，手机（1080×1920）或桌面：整页截图、按标题找到的区块截图、帧精确的缓动滚动视频，给 App / 产品广告用。`--hide` 隐藏 cookie 横幅 |
 | `rn fx [--source]` | 效果库（颗粒、暗角、漏光、闪白、故障……），以可读源码形式提供，网页和 numpy 都能用 |
 | `rn grade SRC --ref REF... -o look.cube [--strength S] [--preview PNG]` | 生成一个 `.cube` LUT，把片段的影调曲线、彩度和各亮度区的偏色往参考靠；在整段片子的多帧上拟合，不会闪。在 EDL 里用 `"vf": "lut3d=file=look.cube"`（路径相对 EDL）。报告调色前后与参考的距离 |
+| `rn clean FILE -o OUT [--strength strong\|medium\|light] [--target -14] [--no-eq] [--sample]` | 人声清理，先测量：底噪、语音电平和两者的差距、削波、市电嗡声（50/60 Hz 及谐波）。再只用 ffmpeg 滤镜：高通、嗡声陷波（测到才加）、按实测底噪降噪、轻度 EQ、去齿音、轻度压缩、响度到 `--target` LUFS / -1 dBTP。装了 faster-whisper 时，把语音最密的 30 s 在处理前和从 `--strength` 往下每一档处理后各转写一次，保留不丢词的最强一档（没装时说明跳过了检查）。视频的画面逐字节不变，只换声音，口型对齐。`--sample`：10 s 前后对比，两段响度相同 |
 | `rn captions WORDS.json --size WxH -o caps.ass` | 把你的原稿对齐到 Whisper 的时间：中日文按字分块、两行均衡断行、留在安全区内、避开人脸 |
 | `rn captions ... --style clean\|pop\|karaoke\|highlight\|box` | 同一套逐词时间生成的动画字幕：粗描边、弹出、卡拉 OK 填色、正在说的词高亮、底框；可设 `--accent`、`--color`、`--font`、`--position`、`--upper` |
 | `rn template list\|show\|render NAME -o DIR --params '{...}'` | 内置动态模板（大标题、姓名条、标注、数字计数、柱状图、步骤条、人物身后的大字），渲染成 RGBA PNG 放进 EDL 叠加层；页面是可读的 HTML，可复制修改 |
@@ -265,7 +266,7 @@ v0.7.0 起每条命令的摘要还为 agent 多做三件事：
 
 - **`proof: <路径>`**：输出是画面或声音、需要检查的命令（`key`、`matte`、`grid`、`template render`、`capture`、`faces --reframe -o`、`grade`、`music fit`）在输出旁边写一张带标注、不超过 125 KB 的 JPEG（`<输出>.proof.jpg`），一次就能看；`--no-proof` 不写。本来就写了接触表的命令直接给出接触表路径。
 - **`next: <命令>`**：最多两条下一步，用这次运行的真实路径和 id（`rn look` 判为 far → 对应的 `rn grade`；`rn edit init` → 要填的槽位和草稿渲染；`rn assemble` → `rn qa`；可直接粘贴的 EDL 片段）。
-- **耗时提醒**：随素材变长的命令（`shots`、完整 `assemble`、`key`、`matte`、`faces --reframe`、`text`、`listen --transcribe`、`compare --shots|--video`、`ref`、滚动录屏）预计超过 30 s 时，先在 stderr 打印 `rn: about N s …; in a sandbox run it with background: true`。
+- **耗时提醒**：随素材变长的命令（`shots`、完整 `assemble`、`key`、`matte`、`faces --reframe`、`text`、`listen --transcribe`、`clean`（清晰度检查）、`compare --shots|--video`、`ref`、滚动录屏）预计超过 30 s 时，先在 stderr 打印 `rn: about N s …; in a sandbox run it with background: true`。
 
 `rn --help` 按用途分组列出命令（看、拆参考片、做画面与声音、剪辑、交付），并附 5 个常用流程。
 
