@@ -211,7 +211,7 @@ EOF
 
 | Command | What it gives |
 |---|---|
-| `rn qa FILE [--edl EDL] [--accept CHECK[@T]]` | Delivery checks. Format: frames, fps, size, codec, color, faststart, fixed frame rate. Sound: A/V length, loudness, true peak, dead air, level jumps, clicks. Picture: black, frozen, bars. `--placeholders` reads the EDL as `rn assemble --placeholders` does |
+| `rn qa FILE [--edl EDL] [--accept CHECK[@T]]` | Delivery checks. Format: frames, fps, size, codec, color, faststart, fixed frame rate. Sound: A/V length, loudness, true peak, dead air, level jumps, clicks; with `--edl`, cuts in speech (a hard cut where a clip's own source is still sounding across its out or in point: a clipped word, measured without a transcript). Picture: black, frozen, bars. `--placeholders` reads the EDL as `rn assemble --placeholders` does |
 | `rn compare A B [--cuts] [--shots] [--video sbs.mp4]` | Two videos at the same times on one sheet, cut timing paired, with `--shots` each shot paired with its transition (with its measured frames, wipe side or fade colour) and camera move, optional side-by-side video |
 | `rn finish FILE -o OUT [--height N]` | Brings any video to the delivery standard; `--height` makes a scaled copy |
 | `rn finish ... --max-mbps N\|auto` | A bitrate ceiling on the CRF encode (also EDL `output.max_mbps`): clean shots keep their quality, grain stops at the cap |

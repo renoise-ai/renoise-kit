@@ -326,6 +326,9 @@ def _qa_fixes(args, result: dict) -> list[str]:
     bad = {c['check'] for c in result.get('checks', []) if c['status'] != 'PASS'}
     stem = Path(args.file).stem
     out = []
+    speech = next((c for c in result.get('checks', []) if c['check'] == 'cuts_in_speech' and c['status'] != 'PASS' and c.get('cuts')), None)
+    if speech:  # first: a changed edit means a new render, which the other fixes then apply to
+        out.append(_speech_fix(args.edl, speech['cuts']))
     if bad & {'loudness', 'true_peak', 'faststart', 'codec', 'pix_fmt', 'sar', 'color', 'fixed_frame_rate'}:
         out.append(f'rn finish {_q(args.file)} -o {_q(stem + "-fixed.mp4")}   # loudness, peak, codec, faststart, frame-rate flag')
     if 'black_bars' in bad:
@@ -335,6 +338,19 @@ def _qa_fixes(args, result: dict) -> list[str]:
         out.append(f'rn sheet {_q(args.file)} --fps 2   # look at what qa flagged' + (f' ({times[0][:60]})' if times else '')
                    + '; if intended: rn qa ... --accept CHECK@T')
     return out
+
+
+def _speech_fix(edl: str, cuts: list[dict]) -> str:
+    """The first clipped word's edge moved to the nearer pause in its source (a tail's "out", a head's "in")."""
+    found = cuts[0]
+    side, key = ('tail', 'out') if 'tail' in found else ('head', 'in')
+    edge = found[side]
+    more = f' (+{len(cuts) - 1} more cuts)' if len(cuts) > 1 else ''
+    if edge['ref'] and edge[key] is not None:
+        return (f'rn edit {_q(edl)} set {_q(edge["ref"])} {key}={edge[key]:g}' + (' --unset duration' if side == 'tail' else '')
+                + f'   # {found["at"]:g}s cuts {edge["clip"]} mid-sound; its source pauses at {edge[key]:g}s{more}'
+                + f' (pauses: rn listen {_q(edge["source"])} --speech)')
+    return f'rn listen {_q(edge["source"])} --speech   # the pauses near {edge["edge"]:g}s, where {found["at"]:g}s cuts {edge["clip"]} mid-sound{more}'
 
 
 # ---------------------------------------------------------------- run-time estimate

@@ -7,7 +7,6 @@ import re
 import subprocess
 import tempfile
 import unicodedata
-import wave
 from pathlib import Path
 
 from .audio import measure
@@ -273,23 +272,42 @@ def _compare(expected: list[str], words: list[dict], match_min: float) -> dict:
             'differences_total': len(diffs)}
 
 
+def speech_samples(path: str | Path, start: float = 0.0, duration: float | None = None):
+    """The first audio stream as 16 kHz mono float64 (-1..1), as --speech reads it; `start` / `duration` (seconds) decode
+    only that stretch (input seeking: a long source is not decoded from its head)."""
+    import numpy as np
+
+    span = [*(['-ss', f'{start:.6f}'] if start > 0 else []), *(['-t', f'{duration:.6f}'] if duration is not None else [])]
+    result = subprocess.run(['ffmpeg', '-hide_banner', '-v', 'error', '-nostdin', *span, '-i', str(path), '-map', '0:a:0', '-ac', '1',
+                             '-ar', str(SPEECH_RATE), '-f', 's16le', '-'], capture_output=True)
+    if result.returncode != 0:
+        raise RnError(f'{path}: audio decode failed: {result.stderr.decode(errors="replace").strip().splitlines()[-1:]}')
+    return np.frombuffer(result.stdout, dtype=np.int16).astype(np.float64) / 32768
+
+
+def speech_levels(samples):
+    """RMS in dBFS of SPEECH_WIN (20 ms) windows every SPEECH_HOP (10 ms) over speech_samples(); window k starts at
+    sample k * SPEECH_HOP. Whole windows only: none runs past the last sample."""
+    import numpy as np
+
+    count = max(0, (len(samples) - SPEECH_WIN) // SPEECH_HOP + 1)
+    energy = np.concatenate([[0.0], np.cumsum(samples ** 2)])
+    starts = np.arange(count) * SPEECH_HOP
+    rms = np.sqrt(np.maximum(energy[starts + SPEECH_WIN] - energy[starts], 0) / SPEECH_WIN)
+    return 20 * np.log10(np.maximum(rms, 1e-9))
+
+
 def _speech_one(path: str, *, expect: str | None, pause: float, silence_db: float, transcribe: bool, language: str | None,
                 model: str, match_min: float = MATCH_MIN) -> dict:
     import numpy as np
 
     if not probe(path)['audio']:
         raise RnError(f'{path}: no audio stream')
-    with tempfile.TemporaryDirectory() as tmp:
-        wav = Path(tmp) / 'speech.wav'
-        run(['ffmpeg', '-i', path, '-vn', '-ac', '1', '-ar', str(SPEECH_RATE), '-c:a', 'pcm_s16le', '-y', str(wav)])
-        with wave.open(str(wav)) as handle:
-            samples = np.frombuffer(handle.readframes(handle.getnframes()), dtype=np.int16).astype(np.float64) / 32768
+    samples = speech_samples(path)
     duration = len(samples) / SPEECH_RATE
-    count = max(0, (len(samples) - SPEECH_WIN) // SPEECH_HOP + 1)
-    energy = np.concatenate([[0.0], np.cumsum(samples ** 2)])
-    starts = np.arange(count) * SPEECH_HOP
-    rms = np.sqrt(np.maximum(energy[starts + SPEECH_WIN] - energy[starts], 0) / SPEECH_WIN)
-    loud = 20 * np.log10(np.maximum(rms, 1e-9)) >= silence_db
+    levels = speech_levels(samples)
+    count = len(levels)
+    loud = levels >= silence_db
     hop, win = SPEECH_HOP / SPEECH_RATE, SPEECH_WIN / SPEECH_RATE
     # A quiet run of windows a..b-1 is the time no loud window touches: from where window a-1 ends to where window b starts.
     runs, a = [], None
