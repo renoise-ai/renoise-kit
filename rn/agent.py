@@ -297,6 +297,15 @@ def next_steps(args, result: dict) -> list[str]:
         for take in result.get('takes', [result]):
             if (take.get('expect') or {}).get('match') == 'mismatch':
                 out.append(f'regenerate {take["path"]}: it does not say the expected line (heard: "{take["expect"]["heard"][:60]}")')
+    elif command == 'clean':
+        if result.get('video_copied'):
+            out.append(f'rn qa {_q(result["path"])} --lufs {result["loudness"]["target"]:g}')
+        clarity = result.get('clarity') or {}
+        if clarity.get('status') == 'lost':
+            out.append(f'rn listen {_q(result["path"])} --speech --transcribe   # words were lost even at light: read what is left')
+        elif clarity.get('status') == 'skipped' and not result.get('sample'):
+            out.append(f'rn clean {_q(args.file)} -o {_q(args.out)} --strength {result["strength"]["chosen"] or args.strength} --sample'
+                       '   # words unchecked: a 10 s before/after pair at the same loudness')
     elif command in ('key', 'matte', 'template') and result.get('edl'):
         what = 'overlay "mask"' if command != 'template' else 'overlay clip'
         out.append(f'EDL {what}: {json.dumps(result["edl"], ensure_ascii=False)}'
@@ -385,6 +394,15 @@ def estimate(args) -> tuple[float, str] | None:
     command = args.command
     if command == 'capture' and getattr(args, 'scroll_video', None):
         return round(SCROLL_FRAME_S * (args.duration or 0) * (args.fps or 30) + 5), f'{args.duration} s scroll recording'
+    if command == 'clean':
+        import importlib.util
+
+        from .clean import CHECK_SECONDS, STRENGTHS
+        if importlib.util.find_spec('faster_whisper') is None:
+            return None
+        heard = min(_media(args.file)[0], CHECK_SECONDS)
+        tries = 2 + STRENGTHS.index(args.strength)  # the original, then each strength from the requested one down
+        return estimate_seconds('transcribe', heard * tries), f'clarity check: up to {tries} transcriptions of {heard:.0f} s'
     kind = {'shots': 'shots', 'key': 'key', 'matte': 'matte', 'text': 'text', 'ref': 'ref'}.get(command)
     if command == 'faces':
         kind = 'reframe' if getattr(args, 'reframe', None) else 'faces'

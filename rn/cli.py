@@ -1,5 +1,5 @@
 """rn: Renoise media kit. Measure (probe, frame, sheet, cuts, shots, listen, faces, ref, signal, align, text, matte, key, grid, look),
-render (capture, template, fx, fonts, assets, captions, grade), edit and assemble an EDL frame-exactly, compare, finish, QA and export. It measures
+render (capture, template, fx, fonts, assets, captions, grade, clean), edit and assemble an EDL frame-exactly, compare, finish, QA and export. It measures
 and guarantees the mechanics; every creative decision stays yours. rn doctor says what this machine can run; rn schema
 prints the edit.json schema.
 
@@ -573,6 +573,27 @@ def _parser() -> argparse.ArgumentParser:
     music.add_argument('--fade', type=float, metavar='S', help='wanted fade length (default about one bar, 1-3 s)')
     music.add_argument('--loop', action='store_true', help='loop on phrases even when the music is long enough')
 
+    clean = add('clean', 'voice cleanup that measures first and keeps every word clear (noise, hum, rumble, loudness)',
+                'Measures the noise floor (quietest 5 % of 50 ms windows), the speech level (loudest 10 %), the gap between\n'
+                'them, clipping and mains hum (50/60 Hz and harmonics against neighbouring frequencies), then cleans with\n'
+                'ffmpeg filters: high-pass 80 Hz, notches at the hum (only when found), afftdn with a floor from the\n'
+                'measurement, gentle mud/presence EQ, de-esser, gentle compression, loudness to --target LUFS / -1 dBTP.\n'
+                'With faster-whisper (extra "transcribe") the busiest 30 s of speech is transcribed before and after each\n'
+                'strength from --strength down; the strongest that loses no word and at most 0.015 mean confidence is kept.\n'
+                'A video keeps its picture byte for byte (stream copy); only the sound is replaced, same length, no offset.\n'
+                'Example:\n'
+                '  rn clean take.mp4 -o take-clean.mp4 --strength strong --sample')
+    clean.add_argument('file')
+    clean.add_argument('-o', '--out', required=True, help='video in: .mp4/.mov/.m4v/.mkv (or an audio file for the sound only); '
+                                                          'audio in: .wav/.flac/.mp3/.m4a/.aac/.opus')
+    clean.add_argument('--strength', choices=['strong', 'medium', 'light'], default='medium', help='denoise strength to try first (default medium)')
+    clean.add_argument('--target', type=float, default=-14.0, metavar='LUFS', help='integrated loudness of the result (default -14)')
+    clean.add_argument('--no-eq', action='store_true', help='skip the mud/presence EQ')
+    clean.add_argument('--sample', action='store_true',
+                       help='also write <out>.sample-before.wav / .sample-after.wav: 10 s of the busiest speech, both at --target')
+    clean.add_argument('--language', help='clarity check: e.g. zh, ja, en (default: detect)')
+    clean.add_argument('--model', default='small', help='clarity check: faster-whisper model (default small)')
+
     edit = add('edit', 'change an EDL by operations on clip ids (checked before writing)',
                'Each operation lays the whole edit out again and writes the file only if it is valid. Clips are addressed\n'
                'by "id" (rn edit e.json ids gives every clip one) or by position "track:index" / "audio:index".\n'
@@ -711,7 +732,7 @@ SHORT: dict[str, str] = {}
 GROUPS = (
     ('Look (you cannot watch or listen: these are your eyes and ears)', ('probe', 'frame', 'sheet', 'compare', 'look', 'signal', 'listen', 'text', 'faces')),
     ('Break down a reference', ('ref', 'shots', 'cuts', 'align')),
-    ('Make pictures and sound', ('capture', 'template', 'captions', 'key', 'matte', 'grid', 'grade', 'music', 'pack', 'fx', 'fonts', 'assets')),
+    ('Make pictures and sound', ('capture', 'template', 'captions', 'key', 'matte', 'grid', 'grade', 'music', 'clean', 'pack', 'fx', 'fonts', 'assets')),
     ('Edit', ('edit', 'assemble')),
     ('Deliver', ('finish', 'qa', 'export')),
     ('This machine', ('doctor', 'schema')),
@@ -719,7 +740,8 @@ GROUPS = (
 RECIPES = """recipes (each step prints proof: to look at and next: to run):
   remake a reference   rn shots ref.mp4 --keyframes kf --json shots.json && rn edit edit.json init --from-shots shots.json
                        fill each slot (rn edit edit.json set s03 src=gen/s03.mp4), rn assemble edit.json --placeholders --preview
-  talking-head cut     rn listen take.mp4 --speech --json take.json && rn edit edit.json silences c1 --listen take.json
+  talking-head cut     rn clean raw.mp4 -o take.mp4 --sample   # noise, hum, rumble, loudness; every word checked
+                       rn listen take.mp4 --speech --json take.json && rn edit edit.json silences c1 --listen take.json
                        rn listen take.mp4 --transcribe --json words.json && rn captions words.json --style karaoke ...
   product / app ad     rn capture https://site -o site --sections "Pricing" --scroll-video scroll.mp4 --duration 8
                        rn template render callout -o call --params '{...}'; rn pack list --kind sfx
@@ -782,7 +804,7 @@ def _print_summary(command: str, result: dict) -> None:
 
 PROOF_COMMANDS = {'key', 'matte', 'grid', 'template', 'capture', 'faces', 'music', 'grade', 'assets'}  # their output is a picture or sound
 SUMMARIZED = {'look', 'grade', 'template', 'music', 'cuts', 'shots', 'listen', 'faces', 'key', 'grid', 'ref', 'capture', 'fx', 'fonts', 'assets',
-              'captions', 'compare', 'edit', 'signal', 'align',
+              'captions', 'compare', 'edit', 'signal', 'align', 'clean',
               'matte', 'text', 'export', 'doctor', 'schema', 'pack'}
 NO_FFMPEG = {'doctor', 'schema', 'pack'}  # they work without ffmpeg on PATH: doctor reports it missing
 # The pip extra that brings a command's optional Python modules (the media sandbox has them all).
@@ -944,6 +966,10 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
         from .music import fit_command, summary_lines
         result = fit_command(args.file, duration=args.duration, out=args.out, listen=args.listen, start=args.start,
                              end_on=args.end_on, fade=args.fade, loop=True if args.loop else None)
+    elif command == 'clean':
+        from .clean import clean_command, summary_lines
+        result = clean_command(args.file, args.out, strength=args.strength, target=args.target, eq=not args.no_eq, sample=args.sample,
+                               language=args.language, model=args.model)
     elif command == 'signal':
         from .signal import signal_command, summary_lines
         result = signal_command(args.file, out=args.out)

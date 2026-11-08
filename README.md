@@ -43,7 +43,7 @@ a command needs a missing extra, its error line names the extra to install; `rn 
 | Extra | For | Installs |
 |---|---|---|
 | `listen` | `rn listen`, `rn ref`, `rn signal -o` | librosa, matplotlib |
-| `transcribe` | `rn listen --transcribe` | faster-whisper |
+| `transcribe` | `rn listen --transcribe`, the `rn clean` clarity check | faster-whisper |
 | `faces` | `rn faces` | OpenCV (headless); the YuNet model is fetched once into `~/.cache/rn` and checked against its sha256 |
 | `capture` | `rn capture` | Playwright |
 | `captions` | `rn captions` | pysubs2 |
@@ -188,6 +188,7 @@ EOF
 | `rn capture URL -o DIR [--desktop] [--sections "Pricing,Reviews"] [--scroll-video OUT.mp4]` | A live site in a real phone (1080x1920) or desktop browser: the full page, sections found by their heading, and a frame-exact eased scroll-through video for app and product ads. `--hide` drops cookie banners |
 | `rn fx [--source]` | The effects library (grain, vignette, leak, flash, glitch, ...) as readable source for pages and numpy |
 | `rn grade SRC --ref REF... -o look.cube [--strength S] [--preview PNG]` | A `.cube` LUT that moves a clip's tone curve, chroma and zone casts toward the references, fitted on frames across the whole clip (no flicker); apply it with `"vf": "lut3d=file=look.cube"` (path relative to the EDL). Reports the distance before and after |
+| `rn clean FILE -o OUT [--strength strong\|medium\|light] [--target -14] [--no-eq] [--sample]` | Voice cleanup that measures first: noise floor, speech level and the gap between them, clipping, mains hum (50/60 Hz and harmonics). Then ffmpeg filters only: high-pass, notches at the hum (when found), denoise from the measured floor, gentle EQ, de-esser, gentle compression, loudness to `--target` LUFS / -1 dBTP. With faster-whisper it transcribes the busiest 30 s before and after each strength from `--strength` down and keeps the strongest that loses no word (otherwise it says the check was skipped). A video keeps its picture byte for byte, sound replaced in sync. `--sample`: a 10 s before / after pair at the same loudness |
 | `rn captions WORDS.json --size WxH -o caps.ass` | Your script aligned to Whisper timing; CJK chunking, balanced lines, safe areas, kept off faces |
 | `rn captions ... --style clean\|pop\|karaoke\|highlight\|box` | Animated caption styles from the same word timing: heavy outline, pop-in, karaoke fill, the spoken word highlighted, a box; `--accent`, `--color`, `--font`, `--position`, `--upper` |
 | `rn template list\|show\|render NAME -o DIR --params '{...}'` | Built-in motion templates (headline, lower third, callout, counter, bar chart, steps, text behind a person) rendered to RGBA PNGs for an EDL overlay; readable HTML pages to copy and change |
@@ -301,7 +302,7 @@ Three things every summary does for an agent (v0.7.0):
 - **`next: <command>`**: at most two exact next steps from this run's own paths and ids (`rn look` far → the `rn grade`
   line; `rn edit init` → the slot to fill and the draft render; `rn assemble` → `rn qa`; an EDL snippet to paste).
 - **a time warning**: before work that grows with the media (`shots`, a full `assemble`, `key`, `matte`, `faces
-  --reframe`, `text`, `listen --transcribe`, `compare --shots|--video`, `ref`, a scroll recording), rn prints
+  --reframe`, `text`, `listen --transcribe`, `clean` (its clarity check), `compare --shots|--video`, `ref`, a scroll recording), rn prints
   `rn: about N s ...; in a sandbox run it with background: true` on stderr when it expects over 30 s.
 
 `rn --help` lists the commands by job (look, break down a reference, make pictures and sound, edit, deliver) with five recipes.
