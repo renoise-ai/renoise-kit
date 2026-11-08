@@ -212,6 +212,14 @@ def _web_proof(result: dict, path: Path) -> str:
         for i, image in _frames(video['path'], picks):
             images.append(image)
             labels.append(f'scroll #{i}  {i / video["fps"]:.1f}s')
+    if result.get('video'):  # rn capture --demo: a frame from the middle of up to 8 of the steps that take time
+        video = result['video']
+        timed = [s for s in result['steps'] if s['end_frame'] > s['start_frame']]
+        picks = [(s['start_frame'] + s['end_frame'] - 1) // 2 for s in timed[::max(1, -(-len(timed) // 8))]]
+        for i, image in _frames(video['path'], picks):
+            step = next(s for s in timed if s['start_frame'] <= i < s['end_frame'])
+            images.append(image)
+            labels.append(f'{step["index"]}. {step["kind"]}  {i / video["fps"]:.1f}s')
     if not images:
         return ''
     return write_proof(images, labels, f'{result["url"]}'[:90], path, columns=min(4, len(images)))
@@ -312,6 +320,10 @@ def next_steps(args, result: dict) -> list[str]:
                    + ('  ("invert": true keeps graphics off the subject)' if command != 'template' and not result.get('cutout') else ''))
     elif command == 'capture' and result.get('edl'):
         out.append(f'EDL overlay clip: {json.dumps(result["edl"], ensure_ascii=False)}')
+    elif command == 'capture' and result.get('video'):
+        out.append(f'rn sheet {_q(result["video"]["path"])} --fps 2   # check that every step landed')
+        out.append(f'EDL main-track clip: {{"src": "{Path(result["video"]["path"]).as_posix()}"}}'
+                   + (f'  subtitles: {{"file": "{Path(result["srt"]).as_posix()}"}}' if result.get('srt') else ''))
     elif command == 'faces' and result.get('reframe'):
         render = result['reframe'].get('render')
         out.append(f'EDL main-track clip: {{"src": "{render["path"]}"}}' if render else
@@ -392,6 +404,15 @@ def _media(path: str) -> tuple[float, int, int]:
 def estimate(args) -> tuple[float, str] | None:
     """(seconds, what) for the commands whose time grows with the media, or None."""
     command = args.command
+    if command == 'capture' and getattr(args, 'demo', None):
+        try:
+            steps = json.loads(Path(args.demo).read_text(encoding='utf-8'))['steps']
+            seconds = sum(s['pause'] / 1000 if 'pause' in s else 1.3 + 0.08 * len(s.get('type', '')) for s in steps
+                          if 'caption' not in s and 'wait' not in s)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            return None
+        per_frame = SCROLL_FRAME_S * (2 if getattr(args, 'vertical', False) else 1)
+        return round(per_frame * seconds * (args.fps or 30) + 5), f'about {seconds:.0f} s demo recording'
     if command == 'capture' and getattr(args, 'scroll_video', None):
         return round(SCROLL_FRAME_S * (args.duration or 0) * (args.fps or 30) + 5), f'{args.duration} s scroll recording'
     if command == 'clean':
