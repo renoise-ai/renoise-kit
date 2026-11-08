@@ -170,8 +170,9 @@ def get_command(ids: list[str], *, out: str) -> dict:
         target = out_dir / f'{asset_id}{Path(urllib.parse.urlparse(source).path).suffix}'
         target.parent.mkdir(parents=True, exist_ok=True)  # ids may be "<category>/<name>"
         shutil.copyfile(cached, target)
-        files.append({'id': asset_id, 'path': str(target), 'license': asset.get('license'), 'source': asset.get('source'),
-                      **edl_use(asset, str(target))})
+        path = target.as_posix()  # EDL paths and ffmpeg filter arguments take forward slashes on every OS
+        files.append({'id': asset_id, 'path': path, 'license': asset.get('license'), 'source': asset.get('source'),
+                      **edl_use(asset, path)})
     return {'files': files}
 
 
