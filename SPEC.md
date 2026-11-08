@@ -64,6 +64,7 @@ EDL 是可选捷径：创意部分（HTML / canvas、Manim、Blender、ffmpeg �
 | `rn assemble edit.json -o out.mp4 [--dry-run] [--keep]` | 按 EDL 渲染成片：帧精确裁切、变速、适配、转场、叠加层、字幕、混音、响度与峰值 |
 | `rn finish FILE -o out.mp4 [--lufs N\|keep] [--copy-video]` | 不用 EDL 的成片收尾：与 `assemble` 同一套编码规格、响度和编码后 true peak |
 | `rn qa FILE [--edl edit.json] [--expect-*]` | 成片检查：帧数、帧率、尺寸、编码、色彩、faststart、音视频时长、LUFS / true peak、黑场、冻帧、黑边；v0.4.0 加片中数字静音（< -70 dBFS 且 ≥ 60 ms，片头片尾除外）、相邻 100 ms 电平跳变 ≥ 15 dB、H.264 `fixed_frame_rate_flag`（均为 WARN） |
+| `rn qa ... --edl` 的 `cuts_in_speech` | 主轨硬切（无转场）处，两侧放自带声音的片段在各自源文件里测：前段出点、后段入点前后各 30 ms（按 speed 换算成源时间）内每个 20 ms 窗（10 ms 步进，与 `listen --speech` 同）都高于阈值，即剪在声音里（切断了一个字），WARN 并给出剪点时间与两侧片段；阈值取剪点前后 3 s 源音频窗电平第 10 百分位（底噪）到第 90 百分位（话音）的三分之一处，不低于 -45 dBFS；两者差不到 12 dB（持续音、环境声）不判。测源不测成片：配乐、旁白音频项和 `mix.cut_fade` 都不影响结果；`next:` 给出把出点 / 入点移到最近停顿的 `rn edit` 命令 |
 | `rn qa ... --placeholders` | v0.7.0：`--edl` 按 `rn assemble --placeholders` 的方式读，缺失素材不报错（先排整片再补素材时，草稿也能过检查） |
 | `rn assemble ... --preview` | v0.4.0：半尺寸草稿（叠加层像素位置与尺寸同比缩放，主轨 keys 与 ASS 字幕本就按比例），ultrafast / CRF 30。不做区间渲染：锚点、转场、字幕都要平移，见 §3.1 |
 | `rn edit EDL ids\|set\|split\|delete\|insert\|move ...` | v0.5.0：按 `id`（或 `track:index`）改 EDL；每步重新排布整条时间线校验，通过才写回。主轨天然波纹，`delete --lift` 留背景色空隙 |

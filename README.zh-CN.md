@@ -197,7 +197,7 @@ EOF
 
 | 命令 | 作用 |
 |---|---|
-| `rn qa FILE [--edl EDL] [--accept CHECK[@T]]` | 交付检查。格式：帧数、帧率、尺寸、编码、色彩、faststart、固定帧率。声音：音画时长、响度、true peak、片中无声、电平跳变、爆音。画面：黑场、冻帧、黑边。`--placeholders` 按 `rn assemble --placeholders` 的方式读 EDL。 |
+| `rn qa FILE [--edl EDL] [--accept CHECK[@T]]` | 交付检查。格式：帧数、帧率、尺寸、编码、色彩、faststart、固定帧率。声音：音画时长、响度、true peak、片中无声、电平跳变、爆音；给了 `--edl` 时还查剪在话里的剪点（硬切处片段自带的源声音在出点或入点前后仍在响，即切断了一个字，不需要转写）。画面：黑场、冻帧、黑边。`--placeholders` 按 `rn assemble --placeholders` 的方式读 EDL。 |
 | `rn compare A B [--cuts] [--shots] [--video sbs.mp4]` | 两个视频按同一时间点对齐到一张图上，并配对比较剪点时间；`--shots` 逐镜头配对比较转场（连同测到的帧数、擦除方向、淡变颜色）和运镜；可另外输出左右并排的视频 |
 | `rn compare A B --video out.mp4 --mode stack\|blend\|diff` | 换一种方式输出对照视频：A 在上 B 在下（竖版），B 以 50% 不透明度叠在 A 上（地平线、边缘、构图对不对得上一眼可见），或两者之差（相同处为黑，不同处发亮）；默认仍是 `side` 左右并排 |
 | `rn finish FILE -o OUT [--height N]` | 把任意视频处理成交付标准；`--height` 另出一个缩放版本 |

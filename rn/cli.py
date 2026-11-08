@@ -673,8 +673,10 @@ def _parser() -> argparse.ArgumentParser:
              'Frame count, fps, size, codec, pix_fmt, SAR, color tags, faststart, audio/video duration, container\n'
              'duration, true peak, loudness, dead air, level jumps, clicks, black frames, frozen frames, black bars,\n'
              'fixed frame rate. With --edl the expected frames,\n'
-             'size, fps and loudness come from the edit, and its color/still clips are not flagged. FAIL blocks\n'
-             'delivery; WARN means look at it (it may be intended). Check fixes on the new render, not the old one.')
+             'size, fps and loudness come from the edit, and its color/still clips are not flagged; cuts_in_speech\n'
+             'flags hard cuts where a clip\'s own source is still sounding at its out (or in) point: a clipped word.\n'
+             'FAIL blocks delivery; WARN means look at it (it may be intended). Check fixes on the new render, not the\n'
+             'old one.')
     qa.add_argument('file')
     qa.add_argument('--edl')
     qa.add_argument('--placeholders', action='store_true', help='read --edl as rn assemble --placeholders does: missing sources are cards')
