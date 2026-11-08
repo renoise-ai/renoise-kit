@@ -81,7 +81,7 @@ window.renderFrame = i => {
 ```json
 {
   "version": 2,
-  "output": {"width": 1080, "height": 1920, "fps": 30},
+  "output": {"width": 720, "height": 1280, "fps": 30},
   "tracks": [
     {"clips": [
       {"id": "open", "src": "shots/s1.mp4", "in": 0.4, "out": 3.2},
@@ -119,7 +119,7 @@ rn qa cut.mp4 --edl edit.json                    # exit 1 on FAIL; WARN means lo
 ```
 
 ```text
-timeline 1080x1920 30fps  210 frames  7.0s
+timeline 720x1280 30fps  210 frames  7.0s
   open: frames 0..83
   hero: frames 75..119  (xfade 9f)
   hero.1: frames 120..164
@@ -172,7 +172,7 @@ EOF
 | `rn signal FILE [-o PNG]` | Per-frame luma, motion, saturation, loudness, low/mid/high bands, onset strength; flash frames, clicks |
 | `rn align A B` | Where recording B sits inside A, by sound: offset, `match`, `distinct` |
 | `rn faces FILE` | Face boxes and landmarks per frame (measurement only) |
-| `rn faces FILE --track` / `--reframe 1080x1920 -o v.mp4` | One subject's face per frame (picked, followed, gaps filled, smoothed); `--reframe` a moving crop that keeps them in a new aspect, rendered ready to use as `src` |
+| `rn faces FILE --track` / `--reframe 720x1280 -o v.mp4` | One subject's face per frame (picked, followed, gaps filled, smoothed); `--reframe` a moving crop that keeps them in a new aspect, rendered ready to use as `src` |
 | `rn text FILE` | On-screen text lines, their boxes and when they are on screen (tesseract; a line read again within 2 s at the same place is the same appearance, with how many reads and their mean confidence); per line, as first read, the text, background and outline colours (`#rrggbb`, outline null when there is none) and the text height |
 | `rn matte FILE -o DIR` | Subject alpha per frame as grey PNGs, ready to use as an EDL `mask`; `--cutout` for RGBA |
 | `rn key FILE -o DIR` | Backdrop matte without a model: green / blue / any solid colour measured on the frame border, or `--white` (flood fill from the border, so white inside the subject stays); grey PNGs for an EDL `mask`, `--cutout --despill` for RGBA |
@@ -185,7 +185,7 @@ EOF
 | Command | What it gives |
 |---|---|
 | `rn capture page.html -o DIR --frames N --size WxH` | An HTML page rendered frame by frame (`window.renderFrame(i)`) to RGBA PNGs, sharded across Chromiums |
-| `rn capture URL -o DIR [--desktop] [--sections "Pricing,Reviews"] [--scroll-video OUT.mp4]` | A live site in a real phone (1080x1920) or desktop browser: the full page, sections found by their heading, and a frame-exact eased scroll-through video for app and product ads. `--hide` drops cookie banners |
+| `rn capture URL -o DIR [--desktop] [--sections "Pricing,Reviews"] [--scroll-video OUT.mp4]` | A live site in a real phone (720x1280) or desktop browser (1280x720): the full page, sections found by their heading, and a frame-exact eased scroll-through video for app and product ads. `--hide` drops cookie banners |
 | `rn capture URL -o DIR --demo demo.json [--vertical] [--backdrop]` | A scripted product demo (Screen Studio style) as `DIR/demo.mp4`: `click`, `type` (`"into"`), `hover`, `press`, `scroll`, `wait`, `pause`, `zoom` and `caption` steps on selectors or `{"role", "name"}` / `{"text"}` / `{"label"}` / `{"placeholder"}`, after `setup` steps (`localStorage`, `reload`, `goto`). A drawn cursor on eased paths, click ripples, seeded human-speed typing, auto zoom on small targets, an optional rounded window on a gradient and a 9:16 cut that follows the action. Frame-exact: one screenshot per frame on a fake page clock, so the length comes from the script, not the machine; `demo.timeline.json` times every step and captions go to `demo.srt`. A failing step names its number and saves `failed-step-N.png`. Use staged or fictional data, never real credentials |
 | `rn fx [--source]` | The effects library (grain, vignette, leak, flash, glitch, ...) as readable source for pages and numpy |
 | `rn grade SRC --ref REF... -o look.cube [--strength S] [--preview PNG]` | A `.cube` LUT that moves a clip's tone curve, chroma and zone casts toward the references, fitted on frames across the whole clip (no flicker); apply it with `"vf": "lut3d=file=look.cube"` (path relative to the EDL). Reports the distance before and after |
@@ -206,7 +206,7 @@ EOF
 | `rn edit EDL init --from-shots SHOTS.json [--src REF] [--size WxH] [--fps R]` | A new edit whose main track is a reference's shots (from `rn shots --json`), frame for frame: one clip per shot (`s01`, `s02`, ...), dissolves and wipes made again as xfade overlaps of their measured frames, fades through black or white as fade-out / fade-in filters, so the total is the reference's length. Each source is `gen/<id>.mp4`, a placeholder card until it exists (fill a slot with `rn edit EDL set s03 src=...`); `--src` cuts every clip from the reference itself, a rebuild to check against it. `meta` keeps each shot's times, transition, keyframe, camera and speed |
 | `rn edit EDL silences CLIP --listen L.json [--min S] [--pad S] [--keep-gap S]` | Cuts a talking clip's long pauses (and the dead air before the first and after the last word) out of it as `ranges`, from `rn listen` of its source |
 | `rn edit EDL snap --listen L.json [--to beats\|downbeats] [--tolerance S]` | Main-track cuts onto the nearest beat or downbeat by rolling edits: the clip before ends later or earlier and the clip after starts later or earlier in its own source, so nothing else moves. Cuts that cannot move (too far, no source to spare) stay and are listed with the reason |
-| `rn assemble EDL -o OUT [--preview] [--range A-B] [--placeholders]` | Renders the EDL frame-exactly. `--placeholders` turns missing shots into labelled cards |
+| `rn assemble EDL -o OUT [--preview] [--range A-B] [--placeholders] [--full-size]` | Renders the EDL frame-exactly. `--placeholders` turns missing shots into labelled cards. Never enlarges the footage: when `output` is bigger than the main-track videos (480p generations in an edit laid out from a 1080p reference), it renders at their size and says so; `--full-size` keeps `output`, only when the user asks for that resolution |
 | `rn schema [--path]` | The edit.json JSON Schema shipped with rn, printed (or where the file is) |
 
 **Check and deliver**

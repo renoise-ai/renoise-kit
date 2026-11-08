@@ -413,7 +413,7 @@ def init_op(path: Path, from_shots: str, *, size: str | None = None, fps: str | 
         out_fps = Fraction(str(fps)) if fps else src_fps
         width, height = (int(v) for v in size.lower().split('x')) if size else (int(ref_size[0]), int(ref_size[1]))
     except (ValueError, ZeroDivisionError):
-        raise RnError('--size WxH (e.g. 1080x1920), --fps a number or "30000/1001"') from None
+        raise RnError('--size WxH (e.g. 720x1280), --fps a number or "30000/1001"') from None
     width, height = width // 2 * 2, height // 2 * 2
     path.parent.mkdir(parents=True, exist_ok=True)
     ref = None

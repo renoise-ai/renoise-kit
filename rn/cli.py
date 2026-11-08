@@ -250,7 +250,7 @@ def _parser() -> argparse.ArgumentParser:
     faces.add_argument('--smooth', type=float, default=0.25, metavar='S', help='Gaussian smoothing of the track, sigma in seconds (0: off)')
     faces.add_argument('--max-gap', type=int, default=12, metavar='N', help='frames without the face that are filled in (default 12)')
     faces.add_argument('--reframe', metavar='WxH',
-                       help='a moving crop with this aspect that keeps the subject in frame (implies --track), e.g. 1080x1920 '
+                       help='a moving crop with this aspect that keeps the subject in frame (implies --track), e.g. 720x1280 '
                             'from 16:9; -o renders it')
     faces.add_argument('--zoom', type=float, default=1.0, help='--reframe: crop tighter than the largest window (>= 1)')
     faces.add_argument('-o', '--out', metavar='MP4', help='--reframe: render the reframed video (H.264, sound copied) to use as "src"')
@@ -310,7 +310,7 @@ def _parser() -> argparse.ArgumentParser:
                   'A live site (http/https URL) instead: real screenshots in a phone (default) or desktop browser:\n'
                   '  rn capture https://example.com -o site                                   # full.png, the whole page\n'
                   '  rn capture https://example.com -o site --sections "Pricing,Reviews" --hide "#cookie-banner"\n'
-                  '  rn capture https://example.com -o site --scroll-video site/scroll.mp4 --duration 6   # 1080x1920 scroll\n'
+                  '  rn capture https://example.com -o site --scroll-video site/scroll.mp4 --duration 6   # 720x1280 scroll\n'
                   'A scripted product demo (Screen Studio style): drawn cursor, click ripples, typing, auto zoom, frame-exact:\n'
                   '  rn capture https://staging.example.com -o demo --demo demo.json [--vertical] [--backdrop]\n'
                   '  demo.json: {"setup": [{"localStorage": {...}}, {"reload": true}], "steps": [{"click": "#new"},\n'
@@ -321,7 +321,7 @@ def _parser() -> argparse.ArgumentParser:
     capture.add_argument('page', help='an HTML file with renderFrame(i), or an http(s) URL of a live site')
     capture.add_argument('-o', '--out', required=True, help='output folder (its PNGs are replaced)')
     capture.add_argument('--frames', type=int, help='page: frames to render (required for a page)')
-    capture.add_argument('--size', metavar='WxH', help='output pixels (page default 1080x1920; URL: 1080x1920 mobile, 1920x1080 desktop)')
+    capture.add_argument('--size', metavar='WxH', help='output pixels (page default 720x1280; URL: 720x1280 mobile, 1280x720 desktop; more only when the user asks)')
     capture.add_argument('--fps', type=float, default=30)
     capture.add_argument('--shards', type=int, default=4, help='parallel Chromium instances (each boots in 1-3 s)')
     capture.add_argument('--start', type=int, default=0, help='first frame index (render a part)')
@@ -334,7 +334,7 @@ def _parser() -> argparse.ArgumentParser:
     web.add_argument('--scroll-video', metavar='MP4', help='a scroll from top to bottom, frame-exact, eased, held at both ends')
     web.add_argument('--duration', type=float, default=8.0, metavar='S', help='--scroll-video length (default 8 s)')
     web.add_argument('--hide', metavar='"SEL,SEL"', help='CSS selectors to hide first: cookie banners, chat bubbles, pop-ups')
-    web.add_argument('--demo', metavar='JSON', help='record a scripted demo to DIR/demo.mp4 (desktop 1920x1080 by default; a local '
+    web.add_argument('--demo', metavar='JSON', help='record a scripted demo to DIR/demo.mp4 (desktop 1280x720 by default; a local '
                      'HTML file works too)')
     web.add_argument('--vertical', action='store_true', help='--demo: also a 9:16 demo-vertical.mp4 that follows the action')
     web.add_argument('--backdrop', action='store_true', help='--demo: the page in a rounded window on a gradient')
@@ -420,13 +420,13 @@ def _parser() -> argparse.ArgumentParser:
                    'readable: rn template show NAME prints its params (with defaults) and its path to copy and change.\n'
                    '  rn template list\n'
                    '  rn template show counter\n'
-                   '  rn template render counter -o stat --size 1080x1920 --duration 3 --params \'{"to": 250, "suffix": "%%"}\'\n'
+                   '  rn template render counter -o stat --duration 3 --params \'{"to": 250, "suffix": "%%"}\'\n'
                    'Then in the EDL: {"frames": "stat/%%05d.png", "fps": 30, "at": 2.0}. Every template takes font (a CSS family\n'
                    'list) and font_file (a font file loaded first), in / out (entrance and fade-out seconds) and colours.')
     template.add_argument('action', choices=['list', 'show', 'render'])
     template.add_argument('name', nargs='?')
     template.add_argument('-o', '--out', help='render: output folder (its PNGs are replaced)')
-    template.add_argument('--size', default='1080x1920', metavar='WxH')
+    template.add_argument('--size', default='720x1280', metavar='WxH', help='default 720x1280; more only when the user asks')
     template.add_argument('--fps', type=float, default=30)
     template.add_argument('--duration', type=float, default=3.0, help='seconds (default 3)')
     template.add_argument('--params', metavar='JSON|@file', help='parameter overrides')
@@ -514,7 +514,7 @@ def _parser() -> argparse.ArgumentParser:
                    'field is allowed anywhere; full JSON Schema: rn schema):\n'
                    '{\n'
                    '  "version": 2,\n'
-                   '  "output": {"width": 1080, "height": 1920, "fps": 30, "background": "#000000", "crf": 18,\n'
+                   '  "output": {"width": 720, "height": 1280, "fps": 30, "background": "#000000", "crf": 18,\n'
                    '             "max_mbps": "auto"},             # optional bitrate ceiling: Mb/s or auto\n'
                    '  "tracks": [\n'
                    '    {"clips": [                                  # track 0 = main track, clips back to back\n'
@@ -564,6 +564,9 @@ def _parser() -> argparse.ArgumentParser:
     assemble.add_argument('--placeholders', action='store_true',
                           help='a missing source becomes a card (id, meta.label or meta.prompt) for its time span instead of an error')
     assemble.add_argument('--range', metavar='A-B', help='render only seconds A to B of the timeline (laid out in full, so anchors hold)')
+    assemble.add_argument('--full-size', action='store_true',
+                          help='render at output.width x output.height even when that enlarges the footage (default: the '
+                               'main-track footage\'s own size, never larger; only when the user asks for that resolution)')
     assemble.add_argument('--no-cache', action='store_true',
                           help='render every slot afresh (default: reuse slots and nested edits from .rn-cache next to the EDL, or RN_CACHE)')
 
@@ -758,7 +761,7 @@ RECIPES = """recipes (each step prints proof: to look at and next: to run):
                        rn template render callout -o call --params '{...}'; rn pack list --kind sfx
   music-driven edit    rn listen song.mp3 --json song.json && rn music fit song.mp3 --duration 28 -o bed.m4a
                        rn edit edit.json snap --listen song.json; rn edit edit.json hits whoosh/swish-1 --at cuts
-  16:9 to 9:16         rn faces wide.mp4 --reframe 1080x1920 -o vertical.mp4 (then rn sheet vertical.mp4 --count 12)"""
+  16:9 to 9:16         rn faces wide.mp4 --reframe 720x1280 -o vertical.mp4 (then rn sheet vertical.mp4 --count 12)"""
 
 
 def _grouped_help(commands) -> str:
@@ -827,7 +830,7 @@ def _size(text: str) -> tuple[int, int]:
     try:
         width, height = (int(part) for part in text.lower().split('x'))
     except ValueError:
-        raise RnError(f'size "{text}": expected WxH like 1080x1920') from None
+        raise RnError(f'size "{text}": expected WxH like 720x1280') from None
     return width, height
 
 
@@ -965,7 +968,7 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
             raise RnError('rn capture PAGE.html needs --frames N (or give an http(s) URL to shoot a live site)')
         if args.device or args.full or args.sections or args.scroll_video or args.hide:
             raise RnError('--mobile/--desktop/--full/--sections/--scroll-video/--hide are for an http(s) URL')
-        width, height = _size(args.size or '1080x1920')
+        width, height = _size(args.size or '720x1280')
         result = capture_command(args.page, out=args.out, frames=args.frames, width=width, height=height, fps=args.fps,
                                  shards=args.shards, start=args.start)
     elif command == 'template':
@@ -1099,7 +1102,8 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == 'assemble':
             from .assemble import assemble_command
             result = assemble_command(args.edl, args.out, dry_run=args.dry_run, keep=args.keep, preview=args.preview,
-                                      cache=not args.no_cache, placeholders=args.placeholders, time_range=args.range)
+                                      cache=not args.no_cache, placeholders=args.placeholders, time_range=args.range,
+                                      full_size=args.full_size)
         elif args.command == 'finish':
             from .assemble import finish_command
             lufs = None if args.lufs == 'keep' else float(args.lufs)

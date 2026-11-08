@@ -425,11 +425,26 @@ PREVIEW_SCALE = 0.5
 
 
 def _preview(edit: Edit, scale: float) -> None:
-    """A draft: smaller frame, fast encode. Overlay pixel positions and sizes scale with the frame; main-track keys are
-    fractions of the frame and libass scales subtitles by their PlayRes, so the draft is the same edit, smaller.
+    """A draft: smaller frame, fast encode.
     ponytail: renders the whole timeline; a time range needs anchors, transitions and subtitles shifted, add if drafts get slow."""
-    edit.width, edit.height = (max(2, round(v * scale / 2) * 2) for v in (edit.width, edit.height))
+    _scale(edit, scale)
     edit.crf, edit.preset, edit.max_mbps = 30, 'ultrafast', None
+
+
+def footage_scale(edit: Edit) -> float:
+    """The largest scale, at most 1, at which no main-track video shaped like the frame is enlarged. Generated footage is
+    usually 480p or 720p while an edit laid out from a 1080p reference asks for 1080p: rendering at the footage's own size
+    keeps the file small and invents no detail. Clips of another shape (cropped or reframed) and stills do not count."""
+    frame = edit.width / edit.height
+    scales = [min(w / edit.width, h / edit.height) for c in edit.base if c.kind == 'video' and c.src_size
+              for w, h in [c.src_size] if abs(w / h / frame - 1) < 0.1]
+    return min([1.0, *scales])
+
+
+def _scale(edit: Edit, scale: float) -> None:
+    """The same edit in a smaller frame. Overlay pixel positions and sizes scale with the frame; main-track keys are
+    fractions of the frame and libass scales subtitles by their PlayRes."""
+    edit.width, edit.height = (max(2, round(v * scale / 2) * 2) for v in (edit.width, edit.height))
     for clip in edit.overlays:
         if clip.kind != 'color' and not (clip.w or clip.h):
             clip.w = (clip.src_size or (probe(clip.source)['video']['width'],))[0]
@@ -516,8 +531,14 @@ def _span(edit: Edit, time_range: str | None) -> tuple[int, int]:
 
 
 def assemble_command(edl_path: str, out: str, *, dry_run: bool, keep: bool, preview: bool = False, cache: bool = True,
-                     placeholders: bool = False, time_range: str | None = None) -> dict:
+                     placeholders: bool = False, time_range: str | None = None, full_size: bool = False) -> dict:
     edit = load(edl_path, placeholders=placeholders)
+    native = 1.0 if full_size else footage_scale(edit)
+    if native < 1:  # the lowest resolution unless the user asked for more (--full-size)
+        asked = f'{edit.width}x{edit.height}'
+        _scale(edit, native)
+        edit.warnings.append(f'output {asked} rendered at {edit.width}x{edit.height}, the main-track footage\'s own size; '
+                             f'--full-size renders {asked} (only when the user asks for that resolution)')
     if edit.subtitles and not has_filter('subtitles'):
         raise RnError('this ffmpeg has no libass, so it cannot burn subtitles; on macOS: brew install ffmpeg-full, then put '
                       '"$(brew --prefix ffmpeg-full)/bin" first on PATH')

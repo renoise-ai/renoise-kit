@@ -313,3 +313,21 @@ def test_qa_handles_matroska(media, tmp_path):
     subprocess.run(['ffmpeg', '-v', 'error', '-i', str(media / 'bars.mp4'), '-c', 'copy', '-y', str(mkv)], check=True)
     result = qa_result(tmp_path, mkv)
     assert 'av_duration' in checks(result)
+
+
+def test_assemble_never_enlarges_the_footage_unless_asked(media, tmp_path, capsys):
+    # An edit laid out at twice the footage's size (a 1080p reference, 480p generations) renders at the footage's size
+    edl = write_edl(media, {
+        'output': {'width': 640, 'height': 480, 'fps': 24},
+        'tracks': [{'clips': [{'src': 'ramp.mp4', 'duration': 0.5}]}, {'clips': [{'color': '#ff0000', 'at': 0, 'duration': 0.5,
+                                                                                    'style': {'left': 40, 'top': 40, 'width': 200, 'height': 100}}]}],
+    }, 'big.json')
+    out = tmp_path / 'small.mp4'
+    assert rn('assemble', edl, '-o', out) == 0
+    video = probe(out)['video']
+    assert (video['width'], video['height']) == (320, 240)
+    assert 'output 640x480 rendered at 320x240' in capsys.readouterr().out
+    full = tmp_path / 'full.mp4'
+    assert rn('assemble', edl, '-o', full, '--full-size') == 0
+    video = probe(full)['video']
+    assert (video['width'], video['height']) == (640, 480)
