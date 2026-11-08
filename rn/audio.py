@@ -15,6 +15,7 @@ from .ff import RnError, run
 AAC_BITRATE = '192k'
 SAMPLE_RATE = 48000
 MAX_LIMITER_PASSES = 6
+AAC = ('-c:a', 'aac', '-b:a', AAC_BITRATE)
 
 
 def measure(path: str | Path, *, stream: str = 'a:0') -> dict:
@@ -35,9 +36,10 @@ def measure(path: str | Path, *, stream: str = 'a:0') -> dict:
     return {'lufs': pick('I'), 'lra': pick('LRA'), 'true_peak': pick('Peak')}
 
 
-def finish_audio(mix_wav: Path, out_m4a: Path, *, lufs: float | None, true_peak: float, reference: Path | None = None) -> dict:
-    """mix_wav -> AAC whose encoded true peak is at or below `true_peak` dBTP. The LUFS gain is measured on `reference`
-    (default mix_wav): an excerpt keeps the level of the whole mix."""
+def finish_audio(mix_wav: Path, out_m4a: Path, *, lufs: float | None, true_peak: float, reference: Path | None = None,
+                 codec: tuple[str, ...] = AAC, channels: int = 2) -> dict:
+    """mix_wav -> AAC (or `codec`, e.g. ('-c:a', 'pcm_s24le') for a WAV) whose encoded true peak is at or below `true_peak`
+    dBTP. The LUFS gain is measured on `reference` (default mix_wav): an excerpt keeps the level of the whole mix."""
     gain_db = 0.0
     if lufs is not None:
         measured = measure(reference or mix_wav)['lufs']
@@ -49,7 +51,7 @@ def finish_audio(mix_wav: Path, out_m4a: Path, *, lufs: float | None, true_peak:
         limit = 10 ** (ceiling / 20)
         run(['ffmpeg', '-i', str(mix_wav), '-af',
              f'volume={gain_db:.3f}dB,alimiter=limit={max(0.0625, limit):.5f}:level=disabled:latency=1:attack=5:release=50,'
-             f'aresample={SAMPLE_RATE}', '-c:a', 'aac', '-b:a', AAC_BITRATE, '-ar', str(SAMPLE_RATE), '-ac', '2', '-y', str(out_m4a)])
+             f'aresample={SAMPLE_RATE}', *codec, '-ar', str(SAMPLE_RATE), '-ac', str(channels), '-y', str(out_m4a)])
         measured = measure(out_m4a)
         attempts.append({'limiter_dbfs': round(ceiling, 2), 'true_peak': measured['true_peak']})
         if measured['true_peak'] is None or measured['true_peak'] <= true_peak:
@@ -93,13 +95,14 @@ def max_mbps_value(value, where: str):
     return number
 
 
-def mux(video: Path, audio_m4a: Path | None, out: Path, *, frames: int) -> None:
+def mux(video: Path, audio_m4a: Path | None, out: Path, *, frames: int | None) -> None:
     """Copies both streams into an MP4 with moov first. The audio was already cut to the video's length by sample;
-    no -shortest: on ffmpeg 7 it trims the video to the AAC stream, which can end a few ms early, dropping frames."""
+    no -shortest: on ffmpeg 7 it trims the video to the AAC stream, which can end a few ms early, dropping frames.
+    frames=None copies every video packet and all the audio (rn clean: the sound keeps its own length)."""
     args = ['ffmpeg', '-i', str(video)]
     if audio_m4a:
         args += ['-i', str(audio_m4a), '-map', '0:v:0', '-map', '1:a:0', '-c:a', 'copy']
     else:
         args += ['-map', '0:v:0']
     out.parent.mkdir(parents=True, exist_ok=True)
-    run(args + ['-c:v', 'copy', '-frames:v', str(frames), '-movflags', '+faststart', '-y', str(out)])
+    run(args + ['-c:v', 'copy', *(['-frames:v', str(frames)] if frames else []), '-movflags', '+faststart', '-y', str(out)])

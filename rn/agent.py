@@ -212,6 +212,14 @@ def _web_proof(result: dict, path: Path) -> str:
         for i, image in _frames(video['path'], picks):
             images.append(image)
             labels.append(f'scroll #{i}  {i / video["fps"]:.1f}s')
+    if result.get('video'):  # rn capture --demo: a frame from the middle of up to 8 of the steps that take time
+        video = result['video']
+        timed = [s for s in result['steps'] if s['end_frame'] > s['start_frame']]
+        picks = [(s['start_frame'] + s['end_frame'] - 1) // 2 for s in timed[::max(1, -(-len(timed) // 8))]]
+        for i, image in _frames(video['path'], picks):
+            step = next(s for s in timed if s['start_frame'] <= i < s['end_frame'])
+            images.append(image)
+            labels.append(f'{step["index"]}. {step["kind"]}  {i / video["fps"]:.1f}s')
     if not images:
         return ''
     return write_proof(images, labels, f'{result["url"]}'[:90], path, columns=min(4, len(images)))
@@ -297,12 +305,25 @@ def next_steps(args, result: dict) -> list[str]:
         for take in result.get('takes', [result]):
             if (take.get('expect') or {}).get('match') == 'mismatch':
                 out.append(f'regenerate {take["path"]}: it does not say the expected line (heard: "{take["expect"]["heard"][:60]}")')
+    elif command == 'clean':
+        if result.get('video_copied'):
+            out.append(f'rn qa {_q(result["path"])} --lufs {result["loudness"]["target"]:g}')
+        clarity = result.get('clarity') or {}
+        if clarity.get('status') == 'lost':
+            out.append(f'rn listen {_q(result["path"])} --speech --transcribe   # words were lost even at light: read what is left')
+        elif clarity.get('status') == 'skipped' and not result.get('sample'):
+            out.append(f'rn clean {_q(args.file)} -o {_q(args.out)} --strength {result["strength"]["chosen"] or args.strength} --sample'
+                       '   # words unchecked: a 10 s before/after pair at the same loudness')
     elif command in ('key', 'matte', 'template') and result.get('edl'):
         what = 'overlay "mask"' if command != 'template' else 'overlay clip'
         out.append(f'EDL {what}: {json.dumps(result["edl"], ensure_ascii=False)}'
                    + ('  ("invert": true keeps graphics off the subject)' if command != 'template' and not result.get('cutout') else ''))
     elif command == 'capture' and result.get('edl'):
         out.append(f'EDL overlay clip: {json.dumps(result["edl"], ensure_ascii=False)}')
+    elif command == 'capture' and result.get('video'):
+        out.append(f'rn sheet {_q(result["video"]["path"])} --fps 2   # check that every step landed')
+        out.append(f'EDL main-track clip: {{"src": "{Path(result["video"]["path"]).as_posix()}"}}'
+                   + (f'  subtitles: {{"file": "{Path(result["srt"]).as_posix()}"}}' if result.get('srt') else ''))
     elif command == 'faces' and result.get('reframe'):
         render = result['reframe'].get('render')
         out.append(f'EDL main-track clip: {{"src": "{render["path"]}"}}' if render else
@@ -326,6 +347,9 @@ def _qa_fixes(args, result: dict) -> list[str]:
     bad = {c['check'] for c in result.get('checks', []) if c['status'] != 'PASS'}
     stem = Path(args.file).stem
     out = []
+    speech = next((c for c in result.get('checks', []) if c['check'] == 'cuts_in_speech' and c['status'] != 'PASS' and c.get('cuts')), None)
+    if speech:  # first: a changed edit means a new render, which the other fixes then apply to
+        out.append(_speech_fix(args.edl, speech['cuts']))
     if bad & {'loudness', 'true_peak', 'faststart', 'codec', 'pix_fmt', 'sar', 'color', 'fixed_frame_rate'}:
         out.append(f'rn finish {_q(args.file)} -o {_q(stem + "-fixed.mp4")}   # loudness, peak, codec, faststart, frame-rate flag')
     if 'black_bars' in bad:
@@ -335,6 +359,19 @@ def _qa_fixes(args, result: dict) -> list[str]:
         out.append(f'rn sheet {_q(args.file)} --fps 2   # look at what qa flagged' + (f' ({times[0][:60]})' if times else '')
                    + '; if intended: rn qa ... --accept CHECK@T')
     return out
+
+
+def _speech_fix(edl: str, cuts: list[dict]) -> str:
+    """The first clipped word's edge moved to the nearer pause in its source (a tail's "out", a head's "in")."""
+    found = cuts[0]
+    side, key = ('tail', 'out') if 'tail' in found else ('head', 'in')
+    edge = found[side]
+    more = f' (+{len(cuts) - 1} more cuts)' if len(cuts) > 1 else ''
+    if edge['ref'] and edge[key] is not None:
+        return (f'rn edit {_q(edl)} set {_q(edge["ref"])} {key}={edge[key]:g}' + (' --unset duration' if side == 'tail' else '')
+                + f'   # {found["at"]:g}s cuts {edge["clip"]} mid-sound; its source pauses at {edge[key]:g}s{more}'
+                + f' (pauses: rn listen {_q(edge["source"])} --speech)')
+    return f'rn listen {_q(edge["source"])} --speech   # the pauses near {edge["edge"]:g}s, where {found["at"]:g}s cuts {edge["clip"]} mid-sound{more}'
 
 
 # ---------------------------------------------------------------- run-time estimate
@@ -367,8 +404,26 @@ def _media(path: str) -> tuple[float, int, int]:
 def estimate(args) -> tuple[float, str] | None:
     """(seconds, what) for the commands whose time grows with the media, or None."""
     command = args.command
+    if command == 'capture' and getattr(args, 'demo', None):
+        try:
+            steps = json.loads(Path(args.demo).read_text(encoding='utf-8'))['steps']
+            seconds = sum(s['pause'] / 1000 if 'pause' in s else 1.3 + 0.08 * len(s.get('type', '')) for s in steps
+                          if 'caption' not in s and 'wait' not in s)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            return None
+        per_frame = SCROLL_FRAME_S * (2 if getattr(args, 'vertical', False) else 1)
+        return round(per_frame * seconds * (args.fps or 30) + 5), f'about {seconds:.0f} s demo recording'
     if command == 'capture' and getattr(args, 'scroll_video', None):
         return round(SCROLL_FRAME_S * (args.duration or 0) * (args.fps or 30) + 5), f'{args.duration} s scroll recording'
+    if command == 'clean':
+        import importlib.util
+
+        from .clean import CHECK_SECONDS, STRENGTHS
+        if importlib.util.find_spec('faster_whisper') is None:
+            return None
+        heard = min(_media(args.file)[0], CHECK_SECONDS)
+        tries = 2 + STRENGTHS.index(args.strength)  # the original, then each strength from the requested one down
+        return estimate_seconds('transcribe', heard * tries), f'clarity check: up to {tries} transcriptions of {heard:.0f} s'
     kind = {'shots': 'shots', 'key': 'key', 'matte': 'matte', 'text': 'text', 'ref': 'ref'}.get(command)
     if command == 'faces':
         kind = 'reframe' if getattr(args, 'reframe', None) else 'faces'

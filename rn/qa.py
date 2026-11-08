@@ -75,6 +75,116 @@ def _covered(interval: tuple[float, float | None], ranges: list[tuple[float, flo
     return any(a - 0.05 <= start and stop <= b + 0.05 for a, b in ranges)
 
 
+# cuts_in_speech. GUARD: s of output time each side of a cut edge that must all be sound for the edge to sit inside one;
+# more than a 20 ms window (a whole window on each side of the edge), less than the shortest pause between words
+# (~50 ms), so an edge placed anywhere in a pause passes. CONTEXT: s of source each side of the edge whose levels set
+# the threshold (local: a take's level drifts). CONTRAST: dB between the context's sound (90th percentile window) and
+# its floor (10th) below which it has no pauses to find (a tone, steady ambience) and is not judged.
+SPEECH_GUARD = 0.03
+SPEECH_CONTEXT = 3.0
+SPEECH_CONTRAST = 12.0
+
+
+def _edge_in_sound(source: Path, at: float, guard: float) -> dict:
+    """Whether source time `at` falls inside a sound: every 20 ms window (10 ms hop, rn listen --speech's windows)
+    centred within `guard` of it is above a threshold set by the source around it. The threshold is a third of the way
+    (in dB) from the context's floor (10th percentile window) to its sound (90th percentile), never below SPEECH_DB
+    (rn listen --speech's fixed one), so a noisy room and a clean TTS take are judged alike: on a clean take it is
+    SPEECH_DB and the gaps found are --speech's; in room noise it sits above the noise. A third, not half: a word's
+    quiet consonants and decaying end still count as sound (a cut there still clips the word); a pause only needs one
+    window below it. A context with less than SPEECH_CONTRAST dB between the two is steady sound (a tone, ambience, a
+    music wall) with no pauses to cut in: not judged. A guard that reaches past the source's first or last sample is
+    not inside a sound: the source starts or ends there, the edit cut nothing away. Also the nearest quiet window
+    centre before and after `at` (source seconds), for the fix."""
+    import numpy as np
+
+    from .listen import SPEECH_DB, SPEECH_HOP, SPEECH_RATE, SPEECH_WIN, speech_levels, speech_samples
+
+    start = max(0.0, at - SPEECH_CONTEXT)
+    samples = speech_samples(source, start, at + SPEECH_CONTEXT - start)
+    levels = np.maximum(speech_levels(samples), -100.0)
+    if len(levels) < 10:
+        return {'judged': False}
+    floor, sound = float(np.percentile(levels, 10)), float(np.percentile(levels, 90))
+    if sound - floor < SPEECH_CONTRAST:
+        return {'judged': False}
+    threshold = max(SPEECH_DB, floor + (sound - floor) / 3)
+    hop, win = SPEECH_HOP / SPEECH_RATE, SPEECH_WIN / SPEECH_RATE
+    centres = start + np.arange(len(levels)) * hop + win / 2
+    near = np.abs(centres - at) <= guard + 1e-9
+    covered = at - guard - win / 2 >= start - 1e-9 and at + guard + win / 2 <= start + len(samples) / SPEECH_RATE + 1e-9
+    quiet = centres[levels < threshold]
+    before, after = quiet[quiet < at], quiet[quiet > at]
+    return {'judged': True, 'inside': bool(covered and near.any() and (levels[near] >= threshold).all()),
+            'threshold': round(threshold, 1), 'quiet_before': round(float(before[-1]), 3) if len(before) else None,
+            'quiet_after': round(float(after[0]), 3) if len(after) else None}
+
+
+def _ref(clip) -> str | None:
+    """How rn edit names a main-track clip: its id, or "0:N" by position; None for a span of "ranges" (no own entry)."""
+    if clip.id and '.ranges[' not in clip.where:
+        return clip.id
+    match = re.fullmatch(r'tracks\[0\]\.clips\[(\d+)\]', clip.where)
+    return f'0:{match.group(1)}' if match else None
+
+
+def cuts_in_speech(edit: Edit) -> tuple[list[dict], int, int]:
+    """Main-track hard cuts that land inside a sound of the clips' own audio (a clipped word): (findings, cuts checked,
+    edges not judged).
+
+    Measured on each clip's SOURCE at its edges, not on the render: in the mix a music bed, a voice-over item or a
+    room-tone item keeps sounding across every cut, and mix.cut_fade dips the clip's own sound right at the cut, so the
+    render cannot tell a clipped word from a covered or faded one. The source has neither. For clip A ending at
+    source time a_out and clip B starting at b_in, A's sound is cut off when A's source is still sounding from
+    SPEECH_GUARD before a_out to SPEECH_GUARD after it (the word went on past the out point), and B starts mid-sound
+    when B's source sounds across b_in the same way. A cut_fade (at most 0.25 s, usually ~10 ms of click removal)
+    softens the edge but the word is still truncated, so it does not waive the finding. Only hard cuts (no transition:
+    an xfade already crossfades the sound) and clips that play their own sound (video "src" with an audio stream,
+    "audio" on, no speed ramp) count; audio items (music, voice, sfx) are never cut by a main-track cut. ponytail:
+    nested edits are not opened (their sound is a render of its own); a clip's gain_db / keys.gain_db / af are not
+    applied (a clip faded to silence at the cut by its own keys still reads as cut off); speech with no gap between two
+    words reads as one sound, so a cut on that word boundary is flagged too."""
+    fps = edit.fps
+    findings, checked, unjudged = [], 0, 0
+    for i in range(1, len(edit.base)):
+        a, b = edit.base[i - 1], edit.base[i]
+        if b.transition_frames:
+            continue
+        sides = {}
+        for side, clip in (('tail', a), ('head', b)):
+            if not (clip.kind == 'video' and clip.audio and clip.has_audio):
+                continue
+            edge = clip.start_s + (float(clip.frames / fps) * clip.speed if side == 'tail' else 0.0)
+            sides[side] = (clip, round(edge, 3), _edge_in_sound(clip.source, edge, SPEECH_GUARD * clip.speed))
+        if not sides:
+            continue
+        checked += 1
+        unjudged += sum(1 for _, _, m in sides.values() if not m['judged'])
+        hit = {side: v for side, v in sides.items() if v[2]['judged'] and v[2]['inside']}
+        if not hit:
+            continue
+        finding = {'at': round(float(b.timeline_start / fps), 3), 'out_of': a.id or a.where, 'into': b.id or b.where}
+        for side, (clip, edge, measured) in hit.items():
+            # The nearer quiet point: before it drops (tail) / keeps (head) the clipped word, after it keeps / drops it.
+            options = [t for t in (measured['quiet_before'], measured['quiet_after']) if t is not None and
+                       (t > clip.start_s if side == 'tail' else t < clip.start_s + float(clip.frames / fps) * clip.speed)]
+            fix = min(options, key=lambda t: abs(t - edge)) if options else None
+            finding[side] = {'clip': clip.id or clip.where, 'ref': _ref(clip), 'source': str(clip.source), 'edge': edge,
+                             'quiet_before': measured['quiet_before'], 'quiet_after': measured['quiet_after'],
+                             ('out' if side == 'tail' else 'in'): fix}
+        findings.append(finding)
+    return findings, checked, unjudged
+
+
+def _speech_detail(f: dict) -> str:
+    parts = []
+    if 'tail' in f:
+        parts.append(f"{f['out_of']} cut off mid-sound (source {f['tail']['edge']:.2f}s)")
+    if 'head' in f:
+        parts.append(f"{f['into']} starts mid-sound (source {f['head']['edge']:.2f}s)")
+    return f"{f['at']:.2f}s {f['out_of']}|{f['into']}: " + ', '.join(parts)
+
+
 def parse_accept(values: list[str]) -> list[dict]:
     """--accept CHECK or CHECK@SECONDS."""
     accepted = []
@@ -184,6 +294,16 @@ def qa_command(path: str, *, edl: str | None, placeholders: bool = False, frames
             check('loudness', 'WARN', 'audio track is silent')
     else:
         check('audio', 'FAIL' if require_audio else 'WARN', 'no audio track')
+    if edit and audio:
+        found, checked, unjudged = cuts_in_speech(edit)
+        if checked:
+            clipped, dropped = keep('cuts_in_speech', found, lambda f: (f['at'], f['at']))
+            check('cuts_in_speech', 'WARN' if clipped else 'PASS', note(
+                ('; '.join(_speech_detail(f) for f in clipped[:6]) + (f' (+{len(clipped) - 6} more)' if len(clipped) > 6 else '')
+                 + ' (a clipped word: move the edge into a pause)') if clipped else
+                f'{checked} hard cuts with clip sound, none inside a sound', dropped)
+                + (f'; {unjudged} edges in steady sound not judged' if unjudged else ''))
+            checks[-1]['cuts'] = clipped
     container = info['duration'] or 0
     if container > video_seconds + max(frame_time, 0.05):
         check('container_duration', 'WARN', f'container {container:.3f}s > video {video_seconds:.3f}s (a longer stream stretches playback)')

@@ -43,7 +43,7 @@ a command needs a missing extra, its error line names the extra to install; `rn 
 | Extra | For | Installs |
 |---|---|---|
 | `listen` | `rn listen`, `rn ref`, `rn signal -o` | librosa, matplotlib |
-| `transcribe` | `rn listen --transcribe` | faster-whisper |
+| `transcribe` | `rn listen --transcribe`, the `rn clean` clarity check | faster-whisper |
 | `faces` | `rn faces` | OpenCV (headless); the YuNet model is fetched once into `~/.cache/rn` and checked against its sha256 |
 | `capture` | `rn capture` | Playwright |
 | `captions` | `rn captions` | pysubs2 |
@@ -165,7 +165,7 @@ EOF
 | `rn frame FILE --index N \| --time T \| --last -o out.png` | One exact frame, e.g. a tail frame to continue a shot |
 | `rn sheet FILE... [--fps R \| --every N \| --indices ... \| --around T,.. --diff] [--crop W:H:X:Y]` | Contact sheets labelled with frame number and timecode, each under 125 KB; `--crop` zooms every tile into one region (a sign, a caption, a face) |
 | `rn cuts FILE [--sheet JPG]` | Shot boundaries by decoded frame, plus weaker "suspects" to check |
-| `rn shots FILE [--jobs N] [--sheet JPG] [--faces] [--beats [LISTEN.json]]` | Every shot, dissolves, fades and straight wipes included (with how many frames each takes and a wipe's direction), and what its picture does as numbers: still frames, 24→30 repeat cadence, how well one zoom / pan of the whole frame explains it, texture (flat blocks, colours, straight edges, noise, soft gradients, vivid colour), and with `--faces` how often a face fills the picture, with `--beats` how each cut sits against the music's beats. `--keyframes DIR` writes one full-size frame per shot, clear of its transitions: the sharpest of five by default (`--which mid|first|last`). Numbers only, no labels |
+| `rn shots FILE [--jobs N] [--sheet JPG] [--faces] [--beats [LISTEN.json]]` | Every shot, dissolves, fades and straight wipes included (with how many frames each takes and a wipe's direction), and what its picture does as numbers: still frames, 24→30 repeat cadence, how well one zoom / pan of the whole frame explains it, texture (flat blocks, colours, straight edges, noise, soft gradients, vivid colour), and with `--faces` how often a face fills the picture, with `--beats` how each cut sits against the music's beats. A camera move that changes inside a shot (a still start before a pan, a push-in that turns into a tilt) comes in phases, with a path an EDL clip takes as keys; the opening's first two seconds come as numbers (first cut, boundaries, how long the first frame holds, how busy it is against the rest, when sound starts). `--keyframes DIR` writes one full-size frame per shot, clear of its transitions: the sharpest of five by default (`--which mid|first|last`). Numbers only, no labels |
 | `rn listen FILE [--transcribe]` | Loudness, silences, onsets, tempo with half/double candidates, beat times and downbeats (4/4), Whisper word times, one picture |
 | `rn listen FILE... --speech [--expect TEXT\|@FILE] [--transcribe]` | Voice takes: where the speech starts and ends inside the file, its length, the pauses in it; with `--expect` the words per second, and with `--transcribe` `match: ok\|mismatch` against the intended text and where it differs |
 | `rn music fit MUSIC --duration S [-o bed.m4a]` | A music bed exactly as long as the edit: starts on a downbeat, the final fade begins on a phrase (4 bars), shorter music loops on phrases with a crossfade. Without `-o` it prints the EDL audio item (`in`, `out`, `fade_out`) |
@@ -186,8 +186,10 @@ EOF
 |---|---|
 | `rn capture page.html -o DIR --frames N --size WxH` | An HTML page rendered frame by frame (`window.renderFrame(i)`) to RGBA PNGs, sharded across Chromiums |
 | `rn capture URL -o DIR [--desktop] [--sections "Pricing,Reviews"] [--scroll-video OUT.mp4]` | A live site in a real phone (1080x1920) or desktop browser: the full page, sections found by their heading, and a frame-exact eased scroll-through video for app and product ads. `--hide` drops cookie banners |
+| `rn capture URL -o DIR --demo demo.json [--vertical] [--backdrop]` | A scripted product demo (Screen Studio style) as `DIR/demo.mp4`: `click`, `type` (`"into"`), `hover`, `press`, `scroll`, `wait`, `pause`, `zoom` and `caption` steps on selectors or `{"role", "name"}` / `{"text"}` / `{"label"}` / `{"placeholder"}`, after `setup` steps (`localStorage`, `reload`, `goto`). A drawn cursor on eased paths, click ripples, seeded human-speed typing, auto zoom on small targets, an optional rounded window on a gradient and a 9:16 cut that follows the action. Frame-exact: one screenshot per frame on a fake page clock, so the length comes from the script, not the machine; `demo.timeline.json` times every step and captions go to `demo.srt`. A failing step names its number and saves `failed-step-N.png`. Use staged or fictional data, never real credentials |
 | `rn fx [--source]` | The effects library (grain, vignette, leak, flash, glitch, ...) as readable source for pages and numpy |
 | `rn grade SRC --ref REF... -o look.cube [--strength S] [--preview PNG]` | A `.cube` LUT that moves a clip's tone curve, chroma and zone casts toward the references, fitted on frames across the whole clip (no flicker); apply it with `"vf": "lut3d=file=look.cube"` (path relative to the EDL). Reports the distance before and after |
+| `rn clean FILE -o OUT [--strength strong\|medium\|light] [--target -14] [--no-eq] [--sample]` | Voice cleanup that measures first: noise floor, speech level and the gap between them, clipping, mains hum (50/60 Hz and harmonics). Then ffmpeg filters only: high-pass, notches at the hum (when found), denoise from the measured floor, gentle EQ, de-esser, gentle compression, loudness to `--target` LUFS / -1 dBTP. With faster-whisper it transcribes the busiest 30 s before and after each strength from `--strength` down and keeps the strongest that loses no word (otherwise it says the check was skipped). A video keeps its picture byte for byte, sound replaced in sync. `--sample`: a 10 s before / after pair at the same loudness |
 | `rn captions WORDS.json --size WxH -o caps.ass` | Your script aligned to Whisper timing; CJK chunking, balanced lines, safe areas, kept off faces |
 | `rn captions ... --style clean\|pop\|karaoke\|highlight\|box` | Animated caption styles from the same word timing: heavy outline, pop-in, karaoke fill, the spoken word highlighted, a box; `--accent`, `--color`, `--font`, `--position`, `--upper` |
 | `rn template list\|show\|render NAME -o DIR --params '{...}'` | Built-in motion templates (headline, lower third, callout, counter, bar chart, steps, text behind a person) rendered to RGBA PNGs for an EDL overlay; readable HTML pages to copy and change |
@@ -211,8 +213,9 @@ EOF
 
 | Command | What it gives |
 |---|---|
-| `rn qa FILE [--edl EDL] [--accept CHECK[@T]]` | Delivery checks. Format: frames, fps, size, codec, color, faststart, fixed frame rate. Sound: A/V length, loudness, true peak, dead air, level jumps, clicks. Picture: black, frozen, bars. `--placeholders` reads the EDL as `rn assemble --placeholders` does |
+| `rn qa FILE [--edl EDL] [--accept CHECK[@T]]` | Delivery checks. Format: frames, fps, size, codec, color, faststart, fixed frame rate. Sound: A/V length, loudness, true peak, dead air, level jumps, clicks; with `--edl`, cuts in speech (a hard cut where a clip's own source is still sounding across its out or in point: a clipped word, measured without a transcript). Picture: black, frozen, bars. `--placeholders` reads the EDL as `rn assemble --placeholders` does |
 | `rn compare A B [--cuts] [--shots] [--video sbs.mp4]` | Two videos at the same times on one sheet, cut timing paired, with `--shots` each shot paired with its transition (with its measured frames, wipe side or fade colour) and camera move, optional side-by-side video |
+| `rn compare A B --video out.mp4 --mode stack\|blend\|diff` | The comparison video another way: A above B (vertical posts), B over A at 50% (horizons, edges and framing line up or visibly do not), or the difference (black where they match, bright where they differ); `side` stays the default |
 | `rn finish FILE -o OUT [--height N]` | Brings any video to the delivery standard; `--height` makes a scaled copy |
 | `rn finish ... --max-mbps N\|auto` | A bitrate ceiling on the CRF encode (also EDL `output.max_mbps`): clean shots keep their quality, grain stops at the cap |
 | `rn export EDL -o cut.otio\|.fcpxml\|.xml [--srt]` | The edit as a project for Final Cut, Premiere, Resolve or any OTIO tool |
@@ -300,7 +303,7 @@ Three things every summary does for an agent (v0.7.0):
 - **`next: <command>`**: at most two exact next steps from this run's own paths and ids (`rn look` far → the `rn grade`
   line; `rn edit init` → the slot to fill and the draft render; `rn assemble` → `rn qa`; an EDL snippet to paste).
 - **a time warning**: before work that grows with the media (`shots`, a full `assemble`, `key`, `matte`, `faces
-  --reframe`, `text`, `listen --transcribe`, `compare --shots|--video`, `ref`, a scroll recording), rn prints
+  --reframe`, `text`, `listen --transcribe`, `clean` (its clarity check), `compare --shots|--video`, `ref`, a scroll recording), rn prints
   `rn: about N s ...; in a sandbox run it with background: true` on stderr when it expects over 30 s.
 
 `rn --help` lists the commands by job (look, break down a reference, make pictures and sound, edit, deliver) with five recipes.

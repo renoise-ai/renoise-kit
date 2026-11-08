@@ -35,7 +35,7 @@ rn doctor                              # 本机能跑什么，其余的还缺什
 | Extra | 用于 | 安装 |
 |---|---|---|
 | `listen` | `rn listen`、`rn ref`、`rn signal -o` | librosa、matplotlib |
-| `transcribe` | `rn listen --transcribe` | faster-whisper |
+| `transcribe` | `rn listen --transcribe`、`rn clean` 的清晰度检查 | faster-whisper |
 | `faces` | `rn faces` | OpenCV（headless 版）；YuNet 模型在首次使用时下载到 `~/.cache/rn`，并校验 sha256 |
 | `capture` | `rn capture` | Playwright |
 | `captions` | `rn captions` | pysubs2 |
@@ -151,7 +151,7 @@ EOF
 | `rn frame FILE --index N \| --time T \| --last -o out.png` | 精确取一帧，例如取尾帧来接续镜头 |
 | `rn sheet FILE... [--fps R \| --every N \| --indices ... \| --around T,.. --diff] [--crop W:H:X:Y]` | 带帧号和时间码的接触表，每张不超过 125 KB；`--crop` 让每格只显示画面的一块（招牌、字幕、人脸） |
 | `rn cuts FILE [--sheet JPG]` | 按解码帧号给出镜头边界，较弱的变化列为待确认的 suspects |
-| `rn shots FILE [--jobs N] [--sheet JPG] [--faces] [--beats [LISTEN.json]]` | 全部镜头（含叠化、淡变、直线擦除，并给出转场帧数和擦除方向），以及每个镜头画面在做什么，全是数字：静止帧、24→30 重复帧节奏、整帧单一缩放 / 平移能解释多少、质感（平坦块、颜色数、横竖直边、噪声、柔和渐变、鲜艳颜色），加 `--faces` 时还有人脸占满画面的频率，加 `--beats` 时还有每个剪点与音乐拍点的偏差。`--keyframes DIR` 为每个镜头输出一张避开转场的原尺寸关键帧，默认取 5 帧里最清晰的（`--which mid|first|last`）。只给数字，不下结论 |
+| `rn shots FILE [--jobs N] [--sheet JPG] [--faces] [--beats [LISTEN.json]]` | 全部镜头（含叠化、淡变、直线擦除，并给出转场帧数和擦除方向），以及每个镜头画面在做什么，全是数字：静止帧、24→30 重复帧节奏、整帧单一缩放 / 平移能解释多少、质感（平坦块、颜色数、横竖直边、噪声、柔和渐变、鲜艳颜色），加 `--faces` 时还有人脸占满画面的频率，加 `--beats` 时还有每个剪点与音乐拍点的偏差。镜头内运镜有变化时（先静止后平移、推近后转为上摇）分段给出，并附可直接用作 EDL 片段关键帧的相机路径；开头 2 秒给出数字（第一刀时间、边界数、首帧停留多久、比后面忙多少、声音从何时开始）。`--keyframes DIR` 为每个镜头输出一张避开转场的原尺寸关键帧，默认取 5 帧里最清晰的（`--which mid|first|last`）。只给数字，不下结论 |
 | `rn listen FILE [--transcribe]` | 响度、静音、起音、速度（附半速 / 倍速候选）、拍点与强拍（4/4）时间、Whisper 字词时间，外加一张图 |
 | `rn listen FILE... --speech [--expect TEXT\|@FILE] [--transcribe]` | 配音 take：语音在文件里的起止、长度、中间的停顿；加 `--expect` 给出语速，再加 `--transcribe` 给出与期望文字的 `match: ok\|mismatch` 和不同之处 |
 | `rn music fit MUSIC --duration S [-o bed.m4a]` | 把配乐做成正好成片长度的音乐床：从强拍开始，最后的淡出从乐句（4 小节）边界开始，不够长就在乐句边界交叉淡化循环。不给 `-o` 时只打印 EDL 音频项（`in`、`out`、`fade_out`） |
@@ -172,8 +172,10 @@ EOF
 |---|---|
 | `rn capture page.html -o DIR --frames N --size WxH` | HTML 页面（`window.renderFrame(i)`）逐帧渲染成 RGBA PNG，可用多个 Chromium 分片并行 |
 | `rn capture URL -o DIR [--desktop] [--sections "Pricing,Reviews"] [--scroll-video OUT.mp4]` | 用真实浏览器拍线上网站，手机（1080×1920）或桌面：整页截图、按标题找到的区块截图、帧精确的缓动滚动视频，给 App / 产品广告用。`--hide` 隐藏 cookie 横幅 |
+| `rn capture URL -o DIR --demo demo.json [--vertical] [--backdrop]` | 脚本化的产品演示录屏（Screen Studio 风格），写 `DIR/demo.mp4`：`click`、`type`（`"into"`）、`hover`、`press`、`scroll`、`wait`、`pause`、`zoom`、`caption` 步骤，目标是选择器或 `{"role", "name"}` / `{"text"}` / `{"label"}` / `{"placeholder"}`，先执行 `setup`（`localStorage`、`reload`、`goto`）。rn 画的光标走缓动路径、点击波纹、按人速打字（固定种子的小抖动）、小目标自动放大，可选渐变背景上的圆角窗口，以及跟随操作的 9:16 版本。帧精确：页面用假时钟，每帧一张截图，时长由脚本决定、与机器快慢无关；`demo.timeline.json` 给出每步起止时间，字幕写进 `demo.srt`。某步失败会报出第几步并存 `failed-step-N.png`。只用演示或虚构数据，不要写真实账号密码 |
 | `rn fx [--source]` | 效果库（颗粒、暗角、漏光、闪白、故障……），以可读源码形式提供，网页和 numpy 都能用 |
 | `rn grade SRC --ref REF... -o look.cube [--strength S] [--preview PNG]` | 生成一个 `.cube` LUT，把片段的影调曲线、彩度和各亮度区的偏色往参考靠；在整段片子的多帧上拟合，不会闪。在 EDL 里用 `"vf": "lut3d=file=look.cube"`（路径相对 EDL）。报告调色前后与参考的距离 |
+| `rn clean FILE -o OUT [--strength strong\|medium\|light] [--target -14] [--no-eq] [--sample]` | 人声清理，先测量：底噪、语音电平和两者的差距、削波、市电嗡声（50/60 Hz 及谐波）。再只用 ffmpeg 滤镜：高通、嗡声陷波（测到才加）、按实测底噪降噪、轻度 EQ、去齿音、轻度压缩、响度到 `--target` LUFS / -1 dBTP。装了 faster-whisper 时，把语音最密的 30 s 在处理前和从 `--strength` 往下每一档处理后各转写一次，保留不丢词的最强一档（没装时说明跳过了检查）。视频的画面逐字节不变，只换声音，口型对齐。`--sample`：10 s 前后对比，两段响度相同 |
 | `rn captions WORDS.json --size WxH -o caps.ass` | 把你的原稿对齐到 Whisper 的时间：中日文按字分块、两行均衡断行、留在安全区内、避开人脸 |
 | `rn captions ... --style clean\|pop\|karaoke\|highlight\|box` | 同一套逐词时间生成的动画字幕：粗描边、弹出、卡拉 OK 填色、正在说的词高亮、底框；可设 `--accent`、`--color`、`--font`、`--position`、`--upper` |
 | `rn template list\|show\|render NAME -o DIR --params '{...}'` | 内置动态模板（大标题、姓名条、标注、数字计数、柱状图、步骤条、人物身后的大字），渲染成 RGBA PNG 放进 EDL 叠加层；页面是可读的 HTML，可复制修改 |
@@ -197,8 +199,9 @@ EOF
 
 | 命令 | 作用 |
 |---|---|
-| `rn qa FILE [--edl EDL] [--accept CHECK[@T]]` | 交付检查。格式：帧数、帧率、尺寸、编码、色彩、faststart、固定帧率。声音：音画时长、响度、true peak、片中无声、电平跳变、爆音。画面：黑场、冻帧、黑边。`--placeholders` 按 `rn assemble --placeholders` 的方式读 EDL。 |
+| `rn qa FILE [--edl EDL] [--accept CHECK[@T]]` | 交付检查。格式：帧数、帧率、尺寸、编码、色彩、faststart、固定帧率。声音：音画时长、响度、true peak、片中无声、电平跳变、爆音；给了 `--edl` 时还查剪在话里的剪点（硬切处片段自带的源声音在出点或入点前后仍在响，即切断了一个字，不需要转写）。画面：黑场、冻帧、黑边。`--placeholders` 按 `rn assemble --placeholders` 的方式读 EDL。 |
 | `rn compare A B [--cuts] [--shots] [--video sbs.mp4]` | 两个视频按同一时间点对齐到一张图上，并配对比较剪点时间；`--shots` 逐镜头配对比较转场（连同测到的帧数、擦除方向、淡变颜色）和运镜；可另外输出左右并排的视频 |
+| `rn compare A B --video out.mp4 --mode stack\|blend\|diff` | 换一种方式输出对照视频：A 在上 B 在下（竖版），B 以 50% 不透明度叠在 A 上（地平线、边缘、构图对不对得上一眼可见），或两者之差（相同处为黑，不同处发亮）；默认仍是 `side` 左右并排 |
 | `rn finish FILE -o OUT [--height N]` | 把任意视频处理成交付标准；`--height` 另出一个缩放版本 |
 | `rn finish ... --max-mbps N\|auto` | 给 CRF 编码加码率上限（EDL 里是 `output.max_mbps`）：干净的镜头画质不变，颗粒重的镜头压在上限 |
 | `rn export EDL -o cut.otio\|.fcpxml\|.xml [--srt]` | 导出成 Final Cut、Premiere、达芬奇或任何 OTIO 工具能打开的工程 |
@@ -265,7 +268,7 @@ v0.7.0 起每条命令的摘要还为 agent 多做三件事：
 
 - **`proof: <路径>`**：输出是画面或声音、需要检查的命令（`key`、`matte`、`grid`、`template render`、`capture`、`faces --reframe -o`、`grade`、`music fit`）在输出旁边写一张带标注、不超过 125 KB 的 JPEG（`<输出>.proof.jpg`），一次就能看；`--no-proof` 不写。本来就写了接触表的命令直接给出接触表路径。
 - **`next: <命令>`**：最多两条下一步，用这次运行的真实路径和 id（`rn look` 判为 far → 对应的 `rn grade`；`rn edit init` → 要填的槽位和草稿渲染；`rn assemble` → `rn qa`；可直接粘贴的 EDL 片段）。
-- **耗时提醒**：随素材变长的命令（`shots`、完整 `assemble`、`key`、`matte`、`faces --reframe`、`text`、`listen --transcribe`、`compare --shots|--video`、`ref`、滚动录屏）预计超过 30 s 时，先在 stderr 打印 `rn: about N s …; in a sandbox run it with background: true`。
+- **耗时提醒**：随素材变长的命令（`shots`、完整 `assemble`、`key`、`matte`、`faces --reframe`、`text`、`listen --transcribe`、`clean`（清晰度检查）、`compare --shots|--video`、`ref`、滚动录屏）预计超过 30 s 时，先在 stderr 打印 `rn: about N s …; in a sandbox run it with background: true`。
 
 `rn --help` 按用途分组列出命令（看、拆参考片、做画面与声音、剪辑、交付），并附 5 个常用流程。
 

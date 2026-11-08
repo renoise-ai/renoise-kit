@@ -1,5 +1,5 @@
 """rn: Renoise media kit. Measure (probe, frame, sheet, cuts, shots, listen, faces, ref, signal, align, text, matte, key, grid, look),
-render (capture, template, fx, fonts, assets, captions, grade), edit and assemble an EDL frame-exactly, compare, finish, QA and export. It measures
+render (capture, template, fx, fonts, assets, captions, grade, clean), edit and assemble an EDL frame-exactly, compare, finish, QA and export. It measures
 and guarantees the mechanics; every creative decision stays yours. rn doctor says what this machine can run; rn schema
 prints the edit.json schema.
 
@@ -310,7 +310,14 @@ def _parser() -> argparse.ArgumentParser:
                   'A live site (http/https URL) instead: real screenshots in a phone (default) or desktop browser:\n'
                   '  rn capture https://example.com -o site                                   # full.png, the whole page\n'
                   '  rn capture https://example.com -o site --sections "Pricing,Reviews" --hide "#cookie-banner"\n'
-                  '  rn capture https://example.com -o site --scroll-video site/scroll.mp4 --duration 6   # 1080x1920 scroll')
+                  '  rn capture https://example.com -o site --scroll-video site/scroll.mp4 --duration 6   # 1080x1920 scroll\n'
+                  'A scripted product demo (Screen Studio style): drawn cursor, click ripples, typing, auto zoom, frame-exact:\n'
+                  '  rn capture https://staging.example.com -o demo --demo demo.json [--vertical] [--backdrop]\n'
+                  '  demo.json: {"setup": [{"localStorage": {...}}, {"reload": true}], "steps": [{"click": "#new"},\n'
+                  '    {"type": "Q3 plan", "into": {"placeholder": "Title"}}, {"press": "Enter"}, {"caption": "Saved"},\n'
+                  '    {"wait": {"text": "Saved"}}, {"zoom": "#chart"}, {"pause": 800}, {"zoom": "off"}, {"scroll": 600}]}\n'
+                  '  Targets: a selector, {"role", "name"}, {"text"}, {"label"} or {"placeholder"}. Staged or fictional data only:\n'
+                  '  never real credentials. Writes demo.mp4 (+ demo-vertical.mp4, demo.srt) and demo.timeline.json (step times).')
     capture.add_argument('page', help='an HTML file with renderFrame(i), or an http(s) URL of a live site')
     capture.add_argument('-o', '--out', required=True, help='output folder (its PNGs are replaced)')
     capture.add_argument('--frames', type=int, help='page: frames to render (required for a page)')
@@ -327,6 +334,10 @@ def _parser() -> argparse.ArgumentParser:
     web.add_argument('--scroll-video', metavar='MP4', help='a scroll from top to bottom, frame-exact, eased, held at both ends')
     web.add_argument('--duration', type=float, default=8.0, metavar='S', help='--scroll-video length (default 8 s)')
     web.add_argument('--hide', metavar='"SEL,SEL"', help='CSS selectors to hide first: cookie banners, chat bubbles, pop-ups')
+    web.add_argument('--demo', metavar='JSON', help='record a scripted demo to DIR/demo.mp4 (desktop 1920x1080 by default; a local '
+                     'HTML file works too)')
+    web.add_argument('--vertical', action='store_true', help='--demo: also a 9:16 demo-vertical.mp4 that follows the action')
+    web.add_argument('--backdrop', action='store_true', help='--demo: the page in a rounded window on a gradient')
 
     signal = add('signal', 'frame-by-frame numbers: luma, motion, saturation, loudness, bands, onsets, clicks',
                  'One series per quantity on the video\'s frame clock (30/s for audio alone): luma, frame difference and\n'
@@ -573,6 +584,27 @@ def _parser() -> argparse.ArgumentParser:
     music.add_argument('--fade', type=float, metavar='S', help='wanted fade length (default about one bar, 1-3 s)')
     music.add_argument('--loop', action='store_true', help='loop on phrases even when the music is long enough')
 
+    clean = add('clean', 'voice cleanup that measures first and keeps every word clear (noise, hum, rumble, loudness)',
+                'Measures the noise floor (quietest 5 % of 50 ms windows), the speech level (loudest 10 %), the gap between\n'
+                'them, clipping and mains hum (50/60 Hz and harmonics against neighbouring frequencies), then cleans with\n'
+                'ffmpeg filters: high-pass 80 Hz, notches at the hum (only when found), afftdn with a floor from the\n'
+                'measurement, gentle mud/presence EQ, de-esser, gentle compression, loudness to --target LUFS / -1 dBTP.\n'
+                'With faster-whisper (extra "transcribe") the busiest 30 s of speech is transcribed before and after each\n'
+                'strength from --strength down; the strongest that loses no word and at most 0.015 mean confidence is kept.\n'
+                'A video keeps its picture byte for byte (stream copy); only the sound is replaced, same length, no offset.\n'
+                'Example:\n'
+                '  rn clean take.mp4 -o take-clean.mp4 --strength strong --sample')
+    clean.add_argument('file')
+    clean.add_argument('-o', '--out', required=True, help='video in: .mp4/.mov/.m4v/.mkv (or an audio file for the sound only); '
+                                                          'audio in: .wav/.flac/.mp3/.m4a/.aac/.opus')
+    clean.add_argument('--strength', choices=['strong', 'medium', 'light'], default='medium', help='denoise strength to try first (default medium)')
+    clean.add_argument('--target', type=float, default=-14.0, metavar='LUFS', help='integrated loudness of the result (default -14)')
+    clean.add_argument('--no-eq', action='store_true', help='skip the mud/presence EQ')
+    clean.add_argument('--sample', action='store_true',
+                       help='also write <out>.sample-before.wav / .sample-after.wav: 10 s of the busiest speech, both at --target')
+    clean.add_argument('--language', help='clarity check: e.g. zh, ja, en (default: detect)')
+    clean.add_argument('--model', default='small', help='clarity check: faster-whisper model (default small)')
+
     edit = add('edit', 'change an EDL by operations on clip ids (checked before writing)',
                'Each operation lays the whole edit out again and writes the file only if it is valid. Clips are addressed\n'
                'by "id" (rn edit e.json ids gives every clip one) or by position "track:index" / "audio:index".\n'
@@ -631,7 +663,9 @@ def _parser() -> argparse.ArgumentParser:
                   'underneath, labelled with each one\'s own frame index. --cuts runs rn cuts on both and pairs the cuts\n'
                   '(within 0.25 s) with their offsets: the rhythm comparison. --shots runs rn shots on both and pairs each A\n'
                   'shot with the B shot that overlaps it most: transitions (cut, dissolve, fade, flash) and camera moves\n'
-                  '(zoom/s, pan in frame widths/s, direction, rigid fit). --video writes A|B side by side to watch.\n'
+                  '(zoom/s, pan in frame widths/s, direction, rigid fit). --video writes A|B side by side to watch;\n'
+                  '--mode stack puts A above B, blend lays B over A at 50% (framing lines up or visibly does not), diff\n'
+                  'shows |A - B| (black where they match, bright where they differ).\n'
                   'Differences are facts to look at, not scores.')
     compare.add_argument('a')
     compare.add_argument('b')
@@ -645,7 +679,9 @@ def _parser() -> argparse.ArgumentParser:
     compare.add_argument('--shots', action='store_true',
                          help='rn shots on both: each A shot with the B shot that overlaps it most, their transitions and camera moves')
     compare.add_argument('--jobs', type=int, help='--shots: shots measured in parallel (default: every CPU allowed)')
-    compare.add_argument('--video', metavar='MP4', help='also write a side-by-side video (A left, B right, A\'s sound)')
+    compare.add_argument('--video', metavar='MP4', help='also write a video of both with A\'s sound (A left, B right; see --mode)')
+    compare.add_argument('--mode', choices=['side', 'stack', 'blend', 'diff'],
+                         help='--video: side (default), stack (A above B), blend (B over A at 50%%), diff (|A - B|)')
 
     finish = add('finish', 'bring any video to the delivery standard',
                  'For a video you built yourself: H.264 High yuv420p bt709, even size, square pixels, moov first,\n'
@@ -669,8 +705,10 @@ def _parser() -> argparse.ArgumentParser:
              'Frame count, fps, size, codec, pix_fmt, SAR, color tags, faststart, audio/video duration, container\n'
              'duration, true peak, loudness, dead air, level jumps, clicks, black frames, frozen frames, black bars,\n'
              'fixed frame rate. With --edl the expected frames,\n'
-             'size, fps and loudness come from the edit, and its color/still clips are not flagged. FAIL blocks\n'
-             'delivery; WARN means look at it (it may be intended). Check fixes on the new render, not the old one.')
+             'size, fps and loudness come from the edit, and its color/still clips are not flagged; cuts_in_speech\n'
+             'flags hard cuts where a clip\'s own source is still sounding at its out (or in) point: a clipped word.\n'
+             'FAIL blocks delivery; WARN means look at it (it may be intended). Check fixes on the new render, not the\n'
+             'old one.')
     qa.add_argument('file')
     qa.add_argument('--edl')
     qa.add_argument('--placeholders', action='store_true', help='read --edl as rn assemble --placeholders does: missing sources are cards')
@@ -705,7 +743,7 @@ SHORT: dict[str, str] = {}
 GROUPS = (
     ('Look (you cannot watch or listen: these are your eyes and ears)', ('probe', 'frame', 'sheet', 'compare', 'look', 'signal', 'listen', 'text', 'faces')),
     ('Break down a reference', ('ref', 'shots', 'cuts', 'align')),
-    ('Make pictures and sound', ('capture', 'template', 'captions', 'key', 'matte', 'grid', 'grade', 'music', 'pack', 'fx', 'fonts', 'assets')),
+    ('Make pictures and sound', ('capture', 'template', 'captions', 'key', 'matte', 'grid', 'grade', 'music', 'clean', 'pack', 'fx', 'fonts', 'assets')),
     ('Edit', ('edit', 'assemble')),
     ('Deliver', ('finish', 'qa', 'export')),
     ('This machine', ('doctor', 'schema')),
@@ -713,7 +751,8 @@ GROUPS = (
 RECIPES = """recipes (each step prints proof: to look at and next: to run):
   remake a reference   rn shots ref.mp4 --keyframes kf --json shots.json && rn edit edit.json init --from-shots shots.json
                        fill each slot (rn edit edit.json set s03 src=gen/s03.mp4), rn assemble edit.json --placeholders --preview
-  talking-head cut     rn listen take.mp4 --speech --json take.json && rn edit edit.json silences c1 --listen take.json
+  talking-head cut     rn clean raw.mp4 -o take.mp4 --sample   # noise, hum, rumble, loudness; every word checked
+                       rn listen take.mp4 --speech --json take.json && rn edit edit.json silences c1 --listen take.json
                        rn listen take.mp4 --transcribe --json words.json && rn captions words.json --style karaoke ...
   product / app ad     rn capture https://site -o site --sections "Pricing" --scroll-video scroll.mp4 --duration 8
                        rn template render callout -o call --params '{...}'; rn pack list --kind sfx
@@ -776,7 +815,7 @@ def _print_summary(command: str, result: dict) -> None:
 
 PROOF_COMMANDS = {'key', 'matte', 'grid', 'template', 'capture', 'faces', 'music', 'grade', 'assets'}  # their output is a picture or sound
 SUMMARIZED = {'look', 'grade', 'template', 'music', 'cuts', 'shots', 'listen', 'faces', 'key', 'grid', 'ref', 'capture', 'fx', 'fonts', 'assets',
-              'captions', 'compare', 'edit', 'signal', 'align',
+              'captions', 'compare', 'edit', 'signal', 'align', 'clean',
               'matte', 'text', 'export', 'doctor', 'schema', 'pack'}
 NO_FFMPEG = {'doctor', 'schema', 'pack'}  # they work without ffmpeg on PATH: doctor reports it missing
 # The pip extra that brings a command's optional Python modules (the media sandbox has them all).
@@ -897,6 +936,22 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
         from .ref import ref_command, summary_lines
         result = ref_command(args.file, out=args.out, every=args.every, transcribe=args.transcribe, language=args.language,
                              model=args.model, threshold=args.threshold)
+    elif command == 'capture' and args.demo:
+        from .demo import demo_command, demo_summary_lines
+        if args.full or args.sections or args.scroll_video or args.frames is not None:
+            raise RnError('--demo records on its own: shoot --full/--sections/--scroll-video in another run')
+        url = args.page
+        if not url.startswith(('http://', 'https://', 'file:')):
+            if not Path(url).is_file():
+                raise RnError(f'no such page: {url} (give an http(s) URL or an HTML file)')
+            url = Path(url).resolve().as_uri()
+        split = lambda text: [part.strip() for part in text.split(',') if part.strip()] if text else []  # noqa: E731
+        result = demo_command(url, demo=args.demo, out=args.out, device=args.device or 'desktop',
+                              size=_size(args.size) if args.size else None, fps=args.fps, vertical=args.vertical,
+                              backdrop=args.backdrop, hide=split(args.hide))
+        return result, demo_summary_lines(result)
+    elif command == 'capture' and (args.vertical or args.backdrop):
+        raise RnError('--vertical and --backdrop go with --demo')
     elif command == 'capture' and args.page.startswith(('http://', 'https://')):
         from .capture import web_command, web_summary_lines
         split = lambda text: [part.strip() for part in text.split(',') if part.strip()] if text else []  # noqa: E731
@@ -938,6 +993,10 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
         from .music import fit_command, summary_lines
         result = fit_command(args.file, duration=args.duration, out=args.out, listen=args.listen, start=args.start,
                              end_on=args.end_on, fade=args.fade, loop=True if args.loop else None)
+    elif command == 'clean':
+        from .clean import clean_command, summary_lines
+        result = clean_command(args.file, args.out, strength=args.strength, target=args.target, eq=not args.no_eq, sample=args.sample,
+                               language=args.language, model=args.model)
     elif command == 'signal':
         from .signal import signal_command, summary_lines
         result = signal_command(args.file, out=args.out)
@@ -965,8 +1024,11 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
         result = export_command(args.edl, args.out, srt=args.srt)
     elif command == 'compare':
         from .compare import compare_command, summary_lines
+        if args.mode and not args.video:
+            raise RnError('--mode goes with --video')
         result = compare_command(args.a, args.b, out=args.out, count=args.count, seconds=args.seconds, width=args.width,
-                                 max_kb=args.max_kb, cuts=args.cuts, video=args.video, shots=args.shots, jobs=args.jobs)
+                                 max_kb=args.max_kb, cuts=args.cuts, video=args.video, shots=args.shots, jobs=args.jobs,
+                                 mode=args.mode or 'side')
     elif command == 'doctor':
         from .doctor import doctor_command, summary_lines
         result = doctor_command()

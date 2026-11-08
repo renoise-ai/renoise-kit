@@ -533,7 +533,7 @@ def _rigid(prev, nxt) -> dict | None:
 def _motion(fits: list[dict], fps: float, px_scale: float) -> dict:
     if not fits:
         return {'pairs': 0, 'rigid_fit': 0.0, 'zoom_per_s': 0.0, 'pan_px_per_s': 0.0, 'pan_dir_deg': 0.0, 'local_motion': 0.0}
-    arr = {k: np.array([m[k] for m in fits]) for k in fits[0]}
+    arr = {k: np.array([m[k] for m in fits]) for k in fits[0] if k != 'i'}
     zoom = (np.median(arr['scale']) - 1.0) * fps
     tx, ty = np.median(arr['tx']) * fps, np.median(arr['ty']) * fps
     speed = float(math.hypot(tx, ty))
@@ -548,6 +548,76 @@ def _motion(fits: list[dict], fps: float, px_scale: float) -> dict:
     return {'pairs': len(fits), 'rigid_fit': round(fit, 3), 'zoom_per_s': round(float(zoom), 4),
             'pan_px_per_s': round(speed * px_scale, 1), 'pan_dir_deg': round(math.degrees(math.atan2(ty, tx)), 1) if speed > 0 else 0.0,
             'local_motion': round(local, 3), 'rigid_residual_px': round(resid * px_scale, 3)}
+
+
+PHASE_MIN_S = 0.4  # a camera phase lasts at least this long
+PHASE_MIN_PAIRS = 3  # and is measured on at least this many frame pairs
+PHASE_ZOOM = 0.02  # phases differ by at least 2% zoom per second
+PHASE_PAN = 0.03  # or by a pan of 3% of the frame width per second
+
+
+def _camera(fits: list[dict], fps: float, size: tuple[int, int], frames: int) -> dict | None:
+    """The camera's move through the shot in phases: the measured frame pairs (zoom and pan of the whole picture) split
+    where the move changes clearly, as a push-in that turns into a tilt, or a still start before a pan. Each phase has
+    its zoom per second, pan in frame widths per second and direction (the picture's motion, as in "motion"). A split
+    needs both sides at least PHASE_MIN_S long and their means apart by PHASE_ZOOM or PHASE_PAN and by twice their
+    standard error, so a handheld shake stays one phase. "path" is the same as keys from the shot's first frame:
+    t (seconds), scale (1 at the start), x and y (the picture's shift, in frame widths and heights), which an EDL clip's
+    keys take as they are. None when fewer than 2 x PHASE_MIN_PAIRS pairs were measured."""
+    if len(fits) < 2 * PHASE_MIN_PAIRS:
+        return None
+    w, h = size
+    fits = sorted(fits, key=lambda f: f['i'])
+    t = np.array([(f['i'] - 0.5) / fps for f in fits])
+    # the shift of the frame's centre: a fit's translation is about the top-left corner, where a zoom alone moves it
+    raw = np.array([[(f['scale'] - 1.0) * fps, (f['tx'] + (f['scale'] - 1.0) * w / 2) * fps / w,
+                     (f['ty'] + (f['scale'] - 1.0) * h / 2) * fps / w] for f in fits])
+    v = raw.copy()
+    for k in range(1, len(v) - 1):  # a 3-point median per component: one bad pair does not start a phase
+        v[k] = np.median(raw[k - 1:k + 2], axis=0)
+    duration = frames / fps
+    cuts: list[int] = []
+
+    def differs(a: np.ndarray, b: np.ndarray) -> bool:
+        ma, mb = a.mean(axis=0), b.mean(axis=0)
+        se = np.sqrt(a.var(axis=0) / len(a) + b.var(axis=0) / len(b))
+        zoom = abs(ma[0] - mb[0]) >= max(PHASE_ZOOM, 2 * se[0])
+        pan_gap, pan_se = float(np.hypot(*(ma[1:] - mb[1:]))), float(np.hypot(*se[1:]))
+        return zoom or pan_gap >= max(PHASE_PAN, 2 * pan_se)
+
+    def split(lo: int, hi: int) -> None:
+        best, gain = None, 0.0
+        total = float(((v[lo:hi] - v[lo:hi].mean(axis=0)) ** 2).sum())
+        for k in range(lo + PHASE_MIN_PAIRS, hi - PHASE_MIN_PAIRS + 1):
+            left = (t[k - 1] + t[k]) / 2 - (0.0 if lo == 0 else (t[lo - 1] + t[lo]) / 2)
+            right = (duration if hi == len(v) else (t[hi - 1] + t[hi]) / 2) - (t[k - 1] + t[k]) / 2
+            # the test reads the unsmoothed pairs: smoothing would hide a shake's spread and make noise look like a move
+            if left < PHASE_MIN_S or right < PHASE_MIN_S or not differs(raw[lo:k], raw[k:hi]):
+                continue
+            rest = sum(float(((part - part.mean(axis=0)) ** 2).sum()) for part in (v[lo:k], v[k:hi]))
+            if total - rest > gain:
+                best, gain = k, total - rest
+        if best is not None:
+            split(lo, best)
+            cuts.append(best)
+            split(best, hi)
+
+    split(0, len(v))
+    bounds = [0] + cuts + [len(v)]
+    phases, path = [], [{'t': 0.0, 'scale': 1.0, 'x': 0.0, 'y': 0.0}]
+    scale, x, y = 1.0, 0.0, 0.0
+    for a, b in zip(bounds, bounds[1:]):
+        start = 0.0 if a == 0 else (t[a - 1] + t[a]) / 2
+        end = duration if b == len(v) else (t[b - 1] + t[b]) / 2
+        zoom, px, py = v[a:b].mean(axis=0)
+        speed = float(np.hypot(px, py))
+        phases.append({'start': round(float(start), 3), 'end': round(float(end), 3), 'zoom_per_s': round(float(zoom), 4),
+                       'pan_widths_per_s': round(speed, 4), 'pan_dir_deg': round(math.degrees(math.atan2(py, px)), 1) if speed > 0 else 0.0})
+        span = end - start
+        scale *= (1.0 + zoom / fps) ** (span * fps)
+        x, y = x + px * span, y + py * w / h * span
+        path.append({'t': round(float(end), 3), 'scale': round(float(scale), 4), 'x': round(float(x), 4), 'y': round(float(y), 4)})
+    return {'phases': phases, 'path': path}
 
 
 FACE_MIN_AREA = 0.02  # a face counts when its box covers at least this share of the picture
@@ -621,7 +691,7 @@ def _measure(job: tuple) -> dict:
                 still = d < 6
                 tnoise.append(float(np.mean(d[still])) if still.any() else 0.0)
                 if i in pairs and (fit := _rigid(prev, gray)):
-                    fits.append(fit)
+                    fits.append({**fit, 'i': i})
         prev = gray
     tex = [_texture(f) for f in sampled] or [_texture(np.zeros((32, 32, 3), np.uint8))]
     texture = {k: round(float(np.median([t[k] for t in tex])), 4) for k in tex[0]}
@@ -646,6 +716,7 @@ def _measure(job: tuple) -> dict:
                   'pair_diff_p90': round(float(np.percentile(mad, 90)), 3), 'first_last_diff': round(first_last, 2)},
         'cadence': {'repeat_share': round(float(same.mean()), 3), 'repeat_period': period, 'repeat_regularity': regularity},
         'motion': _motion(fits, fps, display[0] / float(width or display[0])),
+        **({'camera': camera} if (camera := _camera(fits, fps, (width or display[0], round((width or display[0]) * display[1] / display[0])), total)) else {}),
         'texture': texture,
         'pixels': {'unchanged': round(float(np.median(zeros)), 4) if zeros else 0.0,
                    'still_noise': round(float(np.median(tnoise)), 3) if tnoise else 0.0},
@@ -741,6 +812,48 @@ def _keyframes(path: str, shots: list[dict], fps: float, out: str, which: str) -
             shot['keyframe'] = {'path': str(target), 'index': index, 'time': round(index / fps, 4), 'sharpness': round(sharpness, 1)}
 
 
+OPENING_S = 2.0  # the opening a viewer decides in
+SOUND_DB = -40.0  # the opening's sound starts where a 10 ms window first reaches this level (dBFS)
+
+
+def _opening_sound(path: str, fps: float) -> float | None:
+    """When sound starts in the first OPENING_S seconds (seconds from the start), or None when it stays below SOUND_DB."""
+    import subprocess
+
+    raw = subprocess.run(['ffmpeg', '-v', 'error', '-nostdin', '-i', str(path), '-t', str(OPENING_S), '-vn', '-ac', '1', '-ar', '16000',
+                          '-f', 's16le', '-'], capture_output=True).stdout
+    samples = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+    hop = 160
+    for k in range(0, max(0, len(samples) - hop + 1), hop):
+        rms = float(np.sqrt(np.mean(samples[k:k + hop] ** 2)) + 1e-12)
+        if 20 * math.log10(rms) >= SOUND_DB:
+            return round(k / 16000.0, 3)
+    return None
+
+
+def _opening(track: dict, shots: list[dict], fps: float, path: str, has_audio: bool) -> dict:
+    """The first OPENING_S seconds as numbers: when the first cut comes and how many boundaries fall inside them, how long
+    the first frame holds before the picture changes, how busy the opening is against the rest (mean frame-to-frame
+    change, first OPENING_S seconds over the rest: above 1 is busier), and when sound starts."""
+    n = len(track['luma'])
+    head = min(n, max(2, int(round(OPENING_S * fps))))
+    thumbs = track['thumbs']
+    first = thumbs[0].astype(np.float32)
+    held = next((i for i in range(1, n) if float(np.abs(thumbs[i].astype(np.float32) - first).mean()) > 2.0), None)
+    pix = track['pix']
+    busy = None
+    if n > head + 1 and float(pix[head:].mean()) > 0:
+        busy = round(float(pix[1:head].mean() / pix[head:].mean()), 2)
+    later = shots[1:]
+    out = {'first_cut_s': later[0]['start'] if later else None,
+           'boundaries_in_opening': sum(1 for sh in later if sh['start'] < OPENING_S),
+           'first_frame_holds_s': round(held / fps, 3) if held is not None else round(n / fps, 3),
+           'busy_vs_rest': busy}
+    if has_audio:
+        out['sound_from_s'] = _opening_sound(path, fps)
+    return out
+
+
 def shots_command(path: str, *, min_shot: float = 0.35, threshold: float = 0.30, jobs: int | None = None,
                   sheet: str | None = None, max_kb: int = 125, faces: bool = False, face_model: str | None = None,
                   beats: str | None = None, keyframes: str | None = None, which: str = 'sharpest') -> dict:
@@ -759,6 +872,9 @@ def shots_command(path: str, *, min_shot: float = 0.35, threshold: float = 0.30,
     with tempfile.TemporaryDirectory(prefix='rn-shots-', ignore_cleanup_errors=True) as scratch:
         track = _track(path, display, Path(scratch))
         found = boundaries(track, fps, min_shot=min_shot, threshold=threshold)
+        for s in found:
+            s['start'] = round(s['start_frame'] / fps, 4)
+        opening = _opening(track, found, fps, path, bool(info['audio']))
         del track['thumbs']  # the memory map must close before its file goes
     n = len(track['luma'])
     for s in found:
@@ -804,6 +920,7 @@ def shots_command(path: str, *, min_shot: float = 0.35, threshold: float = 0.30,
         _keyframes(path, shots, fps, keyframes, which)
     result = {'path': path, 'fps': str(fps_frac), 'frames': n, 'size': list(display), 'workers': workers, 'shots': shots,
               'transitions': {t: sum(1 for s in shots if s['transition_in'] == t) for t in ('cut', 'flash', 'dissolve', 'fade', 'wipe')},
+              'opening': opening,
               **({'beats': beat_info} if beat_info else {}),
               **({'keyframes': {'dir': keyframes, 'which': which}} if keyframes else {})}
     if sheet:
@@ -832,6 +949,16 @@ def summary_lines(result: dict) -> list[str]:
                      f'in={entry(s)}  still {s["still"]["identical_pairs"]:.0%}  '
                      f'rigid {m["rigid_fit"]:.2f} zoom {m["zoom_per_s"] * 100:+.1f}%/s pan {m["pan_px_per_s"]:.0f}px/s  '
                      f'flat {tx["flat_blocks"]:.0%} colours {tx["palette95"]} edges {tx["straight_edges"]:.0%} noise {tx["noise_sigma"]:.2f}')
+        phases = (s.get('camera') or {}).get('phases') or []
+        if len(phases) > 1:
+            lines.append('    camera: ' + ' > '.join(f'{p["start"]:.1f}-{p["end"]:.1f}s zoom {p["zoom_per_s"] * 100:+.1f}%/s '
+                                                   f'pan {p["pan_widths_per_s"] * 100:.1f}%w/s @{p["pan_dir_deg"]:.0f}°' for p in phases))
+    o = result.get('opening')
+    if o:
+        lines.append(f'opening ({OPENING_S:g}s): first cut {"at " + format(o["first_cut_s"], "g") + "s" if o["first_cut_s"] is not None else "none"}, '
+                     f'{o["boundaries_in_opening"]} boundaries, first frame holds {o["first_frame_holds_s"]}s, '
+                     f'busy vs rest {o["busy_vs_rest"] if o["busy_vs_rest"] is not None else "n/a"}'
+                     + (f', sound from {o["sound_from_s"]}s' if o.get('sound_from_s') is not None else ', no sound' if 'sound_from_s' in o else ''))
     if result.get('beats'):
         b = result['beats']
         lines.append(f'beats ({b["source"]}): {b["count"]} at {b["bpm"]} bpm{"" if b["clear"] else " (no clear pulse)"}; '
