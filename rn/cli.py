@@ -310,7 +310,14 @@ def _parser() -> argparse.ArgumentParser:
                   'A live site (http/https URL) instead: real screenshots in a phone (default) or desktop browser:\n'
                   '  rn capture https://example.com -o site                                   # full.png, the whole page\n'
                   '  rn capture https://example.com -o site --sections "Pricing,Reviews" --hide "#cookie-banner"\n'
-                  '  rn capture https://example.com -o site --scroll-video site/scroll.mp4 --duration 6   # 1080x1920 scroll')
+                  '  rn capture https://example.com -o site --scroll-video site/scroll.mp4 --duration 6   # 1080x1920 scroll\n'
+                  'A scripted product demo (Screen Studio style): drawn cursor, click ripples, typing, auto zoom, frame-exact:\n'
+                  '  rn capture https://staging.example.com -o demo --demo demo.json [--vertical] [--backdrop]\n'
+                  '  demo.json: {"setup": [{"localStorage": {...}}, {"reload": true}], "steps": [{"click": "#new"},\n'
+                  '    {"type": "Q3 plan", "into": {"placeholder": "Title"}}, {"press": "Enter"}, {"caption": "Saved"},\n'
+                  '    {"wait": {"text": "Saved"}}, {"zoom": "#chart"}, {"pause": 800}, {"zoom": "off"}, {"scroll": 600}]}\n'
+                  '  Targets: a selector, {"role", "name"}, {"text"}, {"label"} or {"placeholder"}. Staged or fictional data only:\n'
+                  '  never real credentials. Writes demo.mp4 (+ demo-vertical.mp4, demo.srt) and demo.timeline.json (step times).')
     capture.add_argument('page', help='an HTML file with renderFrame(i), or an http(s) URL of a live site')
     capture.add_argument('-o', '--out', required=True, help='output folder (its PNGs are replaced)')
     capture.add_argument('--frames', type=int, help='page: frames to render (required for a page)')
@@ -327,6 +334,10 @@ def _parser() -> argparse.ArgumentParser:
     web.add_argument('--scroll-video', metavar='MP4', help='a scroll from top to bottom, frame-exact, eased, held at both ends')
     web.add_argument('--duration', type=float, default=8.0, metavar='S', help='--scroll-video length (default 8 s)')
     web.add_argument('--hide', metavar='"SEL,SEL"', help='CSS selectors to hide first: cookie banners, chat bubbles, pop-ups')
+    web.add_argument('--demo', metavar='JSON', help='record a scripted demo to DIR/demo.mp4 (desktop 1920x1080 by default; a local '
+                     'HTML file works too)')
+    web.add_argument('--vertical', action='store_true', help='--demo: also a 9:16 demo-vertical.mp4 that follows the action')
+    web.add_argument('--backdrop', action='store_true', help='--demo: the page in a rounded window on a gradient')
 
     signal = add('signal', 'frame-by-frame numbers: luma, motion, saturation, loudness, bands, onsets, clicks',
                  'One series per quantity on the video\'s frame clock (30/s for audio alone): luma, frame difference and\n'
@@ -897,6 +908,22 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
         from .ref import ref_command, summary_lines
         result = ref_command(args.file, out=args.out, every=args.every, transcribe=args.transcribe, language=args.language,
                              model=args.model, threshold=args.threshold)
+    elif command == 'capture' and args.demo:
+        from .demo import demo_command, demo_summary_lines
+        if args.full or args.sections or args.scroll_video or args.frames is not None:
+            raise RnError('--demo records on its own: shoot --full/--sections/--scroll-video in another run')
+        url = args.page
+        if not url.startswith(('http://', 'https://', 'file:')):
+            if not Path(url).is_file():
+                raise RnError(f'no such page: {url} (give an http(s) URL or an HTML file)')
+            url = Path(url).resolve().as_uri()
+        split = lambda text: [part.strip() for part in text.split(',') if part.strip()] if text else []  # noqa: E731
+        result = demo_command(url, demo=args.demo, out=args.out, device=args.device or 'desktop',
+                              size=_size(args.size) if args.size else None, fps=args.fps, vertical=args.vertical,
+                              backdrop=args.backdrop, hide=split(args.hide))
+        return result, demo_summary_lines(result)
+    elif command == 'capture' and (args.vertical or args.backdrop):
+        raise RnError('--vertical and --backdrop go with --demo')
     elif command == 'capture' and args.page.startswith(('http://', 'https://')):
         from .capture import web_command, web_summary_lines
         split = lambda text: [part.strip() for part in text.split(',') if part.strip()] if text else []  # noqa: E731

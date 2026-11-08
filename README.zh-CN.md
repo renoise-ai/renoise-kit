@@ -172,6 +172,7 @@ EOF
 |---|---|
 | `rn capture page.html -o DIR --frames N --size WxH` | HTML 页面（`window.renderFrame(i)`）逐帧渲染成 RGBA PNG，可用多个 Chromium 分片并行 |
 | `rn capture URL -o DIR [--desktop] [--sections "Pricing,Reviews"] [--scroll-video OUT.mp4]` | 用真实浏览器拍线上网站，手机（1080×1920）或桌面：整页截图、按标题找到的区块截图、帧精确的缓动滚动视频，给 App / 产品广告用。`--hide` 隐藏 cookie 横幅 |
+| `rn capture URL -o DIR --demo demo.json [--vertical] [--backdrop]` | 脚本化的产品演示录屏（Screen Studio 风格），写 `DIR/demo.mp4`：`click`、`type`（`"into"`）、`hover`、`press`、`scroll`、`wait`、`pause`、`zoom`、`caption` 步骤，目标是选择器或 `{"role", "name"}` / `{"text"}` / `{"label"}` / `{"placeholder"}`，先执行 `setup`（`localStorage`、`reload`、`goto`）。rn 画的光标走缓动路径、点击波纹、按人速打字（固定种子的小抖动）、小目标自动放大，可选渐变背景上的圆角窗口，以及跟随操作的 9:16 版本。帧精确：页面用假时钟，每帧一张截图，时长由脚本决定、与机器快慢无关；`demo.timeline.json` 给出每步起止时间，字幕写进 `demo.srt`。某步失败会报出第几步并存 `failed-step-N.png`。只用演示或虚构数据，不要写真实账号密码 |
 | `rn fx [--source]` | 效果库（颗粒、暗角、漏光、闪白、故障……），以可读源码形式提供，网页和 numpy 都能用 |
 | `rn grade SRC --ref REF... -o look.cube [--strength S] [--preview PNG]` | 生成一个 `.cube` LUT，把片段的影调曲线、彩度和各亮度区的偏色往参考靠；在整段片子的多帧上拟合，不会闪。在 EDL 里用 `"vf": "lut3d=file=look.cube"`（路径相对 EDL）。报告调色前后与参考的距离 |
 | `rn captions WORDS.json --size WxH -o caps.ass` | 把你的原稿对齐到 Whisper 的时间：中日文按字分块、两行均衡断行、留在安全区内、避开人脸 |
