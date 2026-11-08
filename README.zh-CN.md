@@ -151,7 +151,7 @@ EOF
 | `rn frame FILE --index N \| --time T \| --last -o out.png` | 精确取一帧，例如取尾帧来接续镜头 |
 | `rn sheet FILE... [--fps R \| --every N \| --indices ... \| --around T,.. --diff] [--crop W:H:X:Y]` | 带帧号和时间码的接触表，每张不超过 125 KB；`--crop` 让每格只显示画面的一块（招牌、字幕、人脸） |
 | `rn cuts FILE [--sheet JPG]` | 按解码帧号给出镜头边界，较弱的变化列为待确认的 suspects |
-| `rn shots FILE [--jobs N] [--sheet JPG] [--faces] [--beats [LISTEN.json]]` | 全部镜头（含叠化、淡变、直线擦除，并给出转场帧数和擦除方向），以及每个镜头画面在做什么，全是数字：静止帧、24→30 重复帧节奏、整帧单一缩放 / 平移能解释多少、质感（平坦块、颜色数、横竖直边、噪声、柔和渐变、鲜艳颜色），加 `--faces` 时还有人脸占满画面的频率，加 `--beats` 时还有每个剪点与音乐拍点的偏差。`--keyframes DIR` 为每个镜头输出一张避开转场的原尺寸关键帧，默认取 5 帧里最清晰的（`--which mid|first|last`）。只给数字，不下结论 |
+| `rn shots FILE [--jobs N] [--sheet JPG] [--faces] [--beats [LISTEN.json]]` | 全部镜头（含叠化、淡变、直线擦除，并给出转场帧数和擦除方向），以及每个镜头画面在做什么，全是数字：静止帧、24→30 重复帧节奏、整帧单一缩放 / 平移能解释多少、质感（平坦块、颜色数、横竖直边、噪声、柔和渐变、鲜艳颜色），加 `--faces` 时还有人脸占满画面的频率，加 `--beats` 时还有每个剪点与音乐拍点的偏差。镜头内运镜有变化时（先静止后平移、推近后转为上摇）分段给出，并附可直接用作 EDL 片段关键帧的相机路径；开头 2 秒给出数字（第一刀时间、边界数、首帧停留多久、比后面忙多少、声音从何时开始）。`--keyframes DIR` 为每个镜头输出一张避开转场的原尺寸关键帧，默认取 5 帧里最清晰的（`--which mid|first|last`）。只给数字，不下结论 |
 | `rn listen FILE [--transcribe]` | 响度、静音、起音、速度（附半速 / 倍速候选）、拍点与强拍（4/4）时间、Whisper 字词时间，外加一张图 |
 | `rn listen FILE... --speech [--expect TEXT\|@FILE] [--transcribe]` | 配音 take：语音在文件里的起止、长度、中间的停顿；加 `--expect` 给出语速，再加 `--transcribe` 给出与期望文字的 `match: ok\|mismatch` 和不同之处 |
 | `rn music fit MUSIC --duration S [-o bed.m4a]` | 把配乐做成正好成片长度的音乐床：从强拍开始，最后的淡出从乐句（4 小节）边界开始，不够长就在乐句边界交叉淡化循环。不给 `-o` 时只打印 EDL 音频项（`in`、`out`、`fade_out`） |
