@@ -1,0 +1,26 @@
+{
+ "sets": [
+  {"dir": "sfx/kenney-interface/Audio", "glob": "*.ogg", "kind": "sfx", "category": "ui",
+   "license": "CC0-1.0", "source": "https://kenney.nl/assets/interface-sounds", "author": "Kenney",
+   "tags": ["ui", "click", "interface"],
+   "description": "{title}: a short interface sound for app and screen-recording videos"},
+  {"dir": "sfx/kenney/sci-fi_sounds/Audio", "glob": "*.ogg", "kind": "sfx", "category": "sci-fi",
+   "license": "CC0-1.0", "source": "https://kenney.nl/assets/sci-fi-sounds", "author": "Kenney",
+   "tags": ["sci-fi", "laser", "tech"],
+   "description": "{title}: a sci-fi sound effect for tech and game footage"},
+  {"dir": "sfx/kenney/RPGsounds_Kenney/OGG", "glob": "*.ogg", "kind": "sfx", "category": "foley",
+   "license": "CC0-1.0", "source": "https://kenney.nl/assets/rpg-audio", "author": "Kenney",
+   "tags": ["foley", "handling"],
+   "description": "{title}: a close foley sound for hands-on product shots"},
+  {"dir": "overlays/kenney-particles/PNG", "glob": "*.png", "kind": "texture", "category": "particle",
+   "license": "CC0-1.0", "source": "https://kenney.nl/assets/particle-pack", "author": "Kenney",
+   "tags": ["particle", "sticker"],
+   "description": "{title}: a white particle sprite, on black or on transparency; screen-blend it over a point to stress, tinted if needed",
+   "use": {"image": "{src}", "style": {"mix-blend-mode": "screen"}}},
+  {"dir": "textures/ambientcg", "glob": "*/*_Color.jpg", "kind": "texture", "category": "material",
+   "license": "CC0-1.0", "source": "https://ambientcg.com", "author": "ambientCG (Lennart Demes)",
+   "tags": ["material", "background", "collage"], "strip": "_1K-JPG_Color$",
+   "description": "{title}: a flat, tileable material photo as a backdrop or text plate",
+   "use": {"image": "{src}", "style": {"mix-blend-mode": "multiply"}}}
+ ]
+}
