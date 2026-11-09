@@ -1,26 +1,2275 @@
 {
  "sets": [
-  {"dir": "sfx/kenney-interface/Audio", "glob": "*.ogg", "kind": "sfx", "category": "ui",
-   "license": "CC0-1.0", "source": "https://kenney.nl/assets/interface-sounds", "author": "Kenney",
-   "tags": ["ui", "click", "interface"],
-   "description": "{title}: a short interface sound for app and screen-recording videos"},
-  {"dir": "sfx/kenney/sci-fi_sounds/Audio", "glob": "*.ogg", "kind": "sfx", "category": "sci-fi",
-   "license": "CC0-1.0", "source": "https://kenney.nl/assets/sci-fi-sounds", "author": "Kenney",
-   "tags": ["sci-fi", "laser", "tech"],
-   "description": "{title}: a sci-fi sound effect for tech and game footage"},
-  {"dir": "sfx/kenney/RPGsounds_Kenney/OGG", "glob": "*.ogg", "kind": "sfx", "category": "foley",
-   "license": "CC0-1.0", "source": "https://kenney.nl/assets/rpg-audio", "author": "Kenney",
-   "tags": ["foley", "handling"],
-   "description": "{title}: a close foley sound for hands-on product shots"},
-  {"dir": "overlays/kenney-particles/PNG", "glob": "*.png", "kind": "texture", "category": "particle",
-   "license": "CC0-1.0", "source": "https://kenney.nl/assets/particle-pack", "author": "Kenney",
-   "tags": ["particle", "sticker"],
+  {
+   "dir": "sfx/kenney-interface/Audio",
+   "glob": "*.ogg",
+   "kind": "sfx",
+   "category": "ui",
+   "license": "CC0-1.0",
+   "source": "https://kenney.nl/assets/interface-sounds",
+   "author": "Kenney",
+   "tags": [
+    "ui",
+    "click",
+    "interface"
+   ],
+   "description": "{title}: a short interface sound for app and screen-recording videos"
+  },
+  {
+   "dir": "sfx/kenney/sci-fi_sounds/Audio",
+   "glob": "*.ogg",
+   "kind": "sfx",
+   "category": "sci-fi",
+   "license": "CC0-1.0",
+   "source": "https://kenney.nl/assets/sci-fi-sounds",
+   "author": "Kenney",
+   "tags": [
+    "sci-fi",
+    "laser",
+    "tech"
+   ],
+   "description": "{title}: a sci-fi sound effect for tech and game footage"
+  },
+  {
+   "dir": "sfx/kenney/RPGsounds_Kenney/OGG",
+   "glob": "*.ogg",
+   "kind": "sfx",
+   "category": "foley",
+   "license": "CC0-1.0",
+   "source": "https://kenney.nl/assets/rpg-audio",
+   "author": "Kenney",
+   "tags": [
+    "foley",
+    "handling"
+   ],
+   "description": "{title}: a close foley sound for hands-on product shots"
+  },
+  {
+   "dir": "overlays/kenney-particles/PNG",
+   "glob": "*.png",
+   "kind": "texture",
+   "category": "particle",
+   "license": "CC0-1.0",
+   "source": "https://kenney.nl/assets/particle-pack",
+   "author": "Kenney",
+   "tags": [
+    "particle",
+    "sticker"
+   ],
    "description": "{title}: a white particle sprite, on black or on transparency; screen-blend it over a point to stress, tinted if needed",
-   "use": {"image": "{src}", "style": {"mix-blend-mode": "screen"}}},
-  {"dir": "textures/ambientcg", "glob": "*/*_Color.jpg", "kind": "texture", "category": "material",
-   "license": "CC0-1.0", "source": "https://ambientcg.com", "author": "ambientCG (Lennart Demes)",
-   "tags": ["material", "background", "collage"], "strip": "_1K-JPG_Color$",
+   "use": {
+    "image": "{src}",
+    "style": {
+     "mix-blend-mode": "screen"
+    }
+   }
+  },
+  {
+   "dir": "textures/ambientcg",
+   "glob": "*/*_Color.jpg",
+   "kind": "texture",
+   "category": "material",
+   "license": "CC0-1.0",
+   "source": "https://ambientcg.com",
+   "author": "ambientCG (Lennart Demes)",
+   "tags": [
+    "material",
+    "background",
+    "collage"
+   ],
+   "strip": "_1K-JPG_Color$",
    "description": "{title}: a flat, tileable material photo as a backdrop or text plate",
-   "use": {"image": "{src}", "style": {"mix-blend-mode": "multiply"}}}
+   "use": {
+    "image": "{src}",
+    "style": {
+     "mix-blend-mode": "multiply"
+    }
+   }
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/appear-and-vanish",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "appear-and-vanish",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "appear-and-vanish",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/booms-and-bass",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "booms-and-bass",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "booms-and-bass",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/bounce-spin-zoom",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "bounce-spin-zoom",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "bounce-spin-zoom",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/celebration",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "celebration",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "celebration",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/cinematic-hits",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "cinematic-hits",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "cinematic-hits",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/data",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "data",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "data",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/digital",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "digital",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "digital",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/everyday-props",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "everyday-props",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "everyday-props",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/foley",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "foley",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "foley",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/impacts",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "impacts",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "impacts",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/interface",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "interface",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "interface",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/keyboard",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "keyboard",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "keyboard",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/logo-stings",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "logo-stings",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "logo-stings",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/mechanical",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "mechanical",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "mechanical",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/money",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "money",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "money",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/notifications",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "notifications",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "notifications",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/phone",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "phone",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "phone",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/pops",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "pops",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "pops",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/reverse-whooshes",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "reverse-whooshes",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "reverse-whooshes",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/risers-and-fallers",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "risers-and-fallers",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "risers-and-fallers",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/shape-changes",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "shape-changes",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "shape-changes",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/shimmers",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "shimmers",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "shimmers",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/swipes",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "swipes",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "swipes",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/swishes-and-zips",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "swishes-and-zips",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "swishes-and-zips",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/time",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "time",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "time",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/tones",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "tones",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "tones",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/whooshes",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "whooshes",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "whooshes",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/wyzowl_sfx-kit/sounds/writing-and-drawing",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "writing-and-drawing",
+   "license": "CC0-1.0",
+   "source": "https://github.com/wyzowl/sfx-kit",
+   "author": "Wyzowl",
+   "tags": [
+    "writing-and-drawing",
+    "sfx",
+    "video"
+   ],
+   "description": "{title}: a {category} sound effect for cuts, logos and interface",
+   "max": 8
+  },
+  {
+   "dir": "sfx/mixkit/ambience",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "ambience",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-sound-effects/",
+   "author": "Mixkit",
+   "tags": [
+    "ambience",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 10
+  },
+  {
+   "dir": "sfx/mixkit/camera",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "camera",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-sound-effects/",
+   "author": "Mixkit",
+   "tags": [
+    "camera",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 10
+  },
+  {
+   "dir": "sfx/mixkit/cinematic",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "cinematic",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-sound-effects/",
+   "author": "Mixkit",
+   "tags": [
+    "cinematic",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 10
+  },
+  {
+   "dir": "sfx/mixkit/cinematic",
+   "glob": "*.mp3",
+   "kind": "sfx",
+   "category": "cinematic",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-sound-effects/",
+   "author": "Mixkit",
+   "tags": [
+    "cinematic",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 10
+  },
+  {
+   "dir": "sfx/mixkit/click",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "click",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-sound-effects/",
+   "author": "Mixkit",
+   "tags": [
+    "click",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 10
+  },
+  {
+   "dir": "sfx/mixkit/click",
+   "glob": "*.mp3",
+   "kind": "sfx",
+   "category": "click",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-sound-effects/",
+   "author": "Mixkit",
+   "tags": [
+    "click",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 10
+  },
+  {
+   "dir": "sfx/mixkit/glitch",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "glitch",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-sound-effects/",
+   "author": "Mixkit",
+   "tags": [
+    "glitch",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 10
+  },
+  {
+   "dir": "sfx/mixkit/glitch",
+   "glob": "*.mp3",
+   "kind": "sfx",
+   "category": "glitch",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-sound-effects/",
+   "author": "Mixkit",
+   "tags": [
+    "glitch",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 10
+  },
+  {
+   "dir": "sfx/mixkit/impact",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "impact",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-sound-effects/",
+   "author": "Mixkit",
+   "tags": [
+    "impact",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 10
+  },
+  {
+   "dir": "sfx/mixkit/impact",
+   "glob": "*.mp3",
+   "kind": "sfx",
+   "category": "impact",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-sound-effects/",
+   "author": "Mixkit",
+   "tags": [
+    "impact",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 10
+  },
+  {
+   "dir": "sfx/mixkit/interface",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "interface",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-sound-effects/",
+   "author": "Mixkit",
+   "tags": [
+    "interface",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 10
+  },
+  {
+   "dir": "sfx/mixkit/magic",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "magic",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-sound-effects/",
+   "author": "Mixkit",
+   "tags": [
+    "magic",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 10
+  },
+  {
+   "dir": "sfx/mixkit/magic",
+   "glob": "*.mp3",
+   "kind": "sfx",
+   "category": "magic",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-sound-effects/",
+   "author": "Mixkit",
+   "tags": [
+    "magic",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 10
+  },
+  {
+   "dir": "sfx/mixkit/swoosh",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "swoosh",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-sound-effects/",
+   "author": "Mixkit",
+   "tags": [
+    "swoosh",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 10
+  },
+  {
+   "dir": "sfx/mixkit/swoosh",
+   "glob": "*.mp3",
+   "kind": "sfx",
+   "category": "swoosh",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-sound-effects/",
+   "author": "Mixkit",
+   "tags": [
+    "swoosh",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 10
+  },
+  {
+   "dir": "sfx/mixkit/transition",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "transition",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-sound-effects/",
+   "author": "Mixkit",
+   "tags": [
+    "transition",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 10
+  },
+  {
+   "dir": "sfx/mixkit/whoosh",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "whoosh",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-sound-effects/",
+   "author": "Mixkit",
+   "tags": [
+    "whoosh",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 10
+  },
+  {
+   "dir": "music/alvana-audio/sfx/ambience",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "ambience",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "ambience",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/body",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "body",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "body",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/break",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "break",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "break",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/camera",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "camera",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "camera",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/casino",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "casino",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "casino",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/creature",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "creature",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "creature",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/data",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "data",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "data",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/door",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "door",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "door",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/explosion",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "explosion",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "explosion",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/foley",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "foley",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "foley",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/footsteps",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "footsteps",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "footsteps",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/game",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "game",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "game",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/glitch",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "glitch",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "glitch",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/impact",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "impact",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "impact",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/jingle",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "jingle",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "jingle",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/keyboard",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "keyboard",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "keyboard",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/magic",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "magic",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "magic",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/mechanical",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "mechanical",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "mechanical",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/misc",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "misc",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "misc",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/money",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "money",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "money",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/notification",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "notification",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "notification",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/paper",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "paper",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "paper",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/pop",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "pop",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "pop",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/riser",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "riser",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "riser",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/scifi",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "scifi",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "scifi",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/transition",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "transition",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "transition",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/ui",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "ui",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "ui",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/water",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "water",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "water",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "music/alvana-audio/sfx/whoosh",
+   "glob": "*.wav",
+   "kind": "sfx",
+   "category": "whoosh",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "whoosh",
+    "sfx"
+   ],
+   "description": "{title}: a {category} sound effect for video edits",
+   "max": 12
+  },
+  {
+   "dir": "sfx/meta-open-sound/systems/instruments",
+   "glob": "*/*/*.ogg",
+   "kind": "sfx",
+   "category": "instrument",
+   "license": "CC0-1.0",
+   "source": "https://github.com/facebookincubator/Meta-open-sound",
+   "author": "Meta Open Sound",
+   "tags": [
+    "instrument",
+    "sample",
+    "note"
+   ],
+   "description": "{title}: a single instrument note, for score and sound design"
+  },
+  {
+   "dir": "sfx/meta-open-sound/corpora/oculus-audio-pack/ogg",
+   "glob": "*.ogg",
+   "kind": "sfx",
+   "category": "foley",
+   "license": "CC0-1.0",
+   "source": "https://github.com/facebookincubator/Meta-open-sound",
+   "author": "Meta Open Sound",
+   "tags": [
+    "foley",
+    "prop",
+    "movement"
+   ],
+   "description": "{title}: a close prop foley sound for hands-on shots"
+  },
+  {
+   "dir": "music/alvana-audio/music/ambient",
+   "glob": "*.mp3",
+   "kind": "music",
+   "category": "ambient",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "ambient",
+    "music",
+    "bed"
+   ],
+   "description": "{title}: a {category} music bed to loop under a voice-over"
+  },
+  {
+   "dir": "music/alvana-audio/music/calm",
+   "glob": "*.mp3",
+   "kind": "music",
+   "category": "calm",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "calm",
+    "music",
+    "bed"
+   ],
+   "description": "{title}: a {category} music bed to loop under a voice-over"
+  },
+  {
+   "dir": "music/alvana-audio/music/chill",
+   "glob": "*.mp3",
+   "kind": "music",
+   "category": "chill",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "chill",
+    "music",
+    "bed"
+   ],
+   "description": "{title}: a {category} music bed to loop under a voice-over"
+  },
+  {
+   "dir": "music/alvana-audio/music/chiptune",
+   "glob": "*.mp3",
+   "kind": "music",
+   "category": "chiptune",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "chiptune",
+    "music",
+    "bed"
+   ],
+   "description": "{title}: a {category} music bed to loop under a voice-over"
+  },
+  {
+   "dir": "music/alvana-audio/music/dark",
+   "glob": "*.mp3",
+   "kind": "music",
+   "category": "dark",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "dark",
+    "music",
+    "bed"
+   ],
+   "description": "{title}: a {category} music bed to loop under a voice-over"
+  },
+  {
+   "dir": "music/alvana-audio/music/funk",
+   "glob": "*.mp3",
+   "kind": "music",
+   "category": "funk",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "funk",
+    "music",
+    "bed"
+   ],
+   "description": "{title}: a {category} music bed to loop under a voice-over"
+  },
+  {
+   "dir": "music/alvana-audio/music/hiphop",
+   "glob": "*.mp3",
+   "kind": "music",
+   "category": "hiphop",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "hiphop",
+    "music",
+    "bed"
+   ],
+   "description": "{title}: a {category} music bed to loop under a voice-over"
+  },
+  {
+   "dir": "music/alvana-audio/music/horror",
+   "glob": "*.mp3",
+   "kind": "music",
+   "category": "horror",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "horror",
+    "music",
+    "bed"
+   ],
+   "description": "{title}: a {category} music bed to loop under a voice-over"
+  },
+  {
+   "dir": "music/alvana-audio/music/intro",
+   "glob": "*.mp3",
+   "kind": "music",
+   "category": "intro",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "intro",
+    "music",
+    "bed"
+   ],
+   "description": "{title}: a {category} music bed to loop under a voice-over"
+  },
+  {
+   "dir": "music/alvana-audio/music/lofi",
+   "glob": "*.mp3",
+   "kind": "music",
+   "category": "lofi",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "lofi",
+    "music",
+    "bed"
+   ],
+   "description": "{title}: a {category} music bed to loop under a voice-over"
+  },
+  {
+   "dir": "music/alvana-audio/music/sad",
+   "glob": "*.mp3",
+   "kind": "music",
+   "category": "sad",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "sad",
+    "music",
+    "bed"
+   ],
+   "description": "{title}: a {category} music bed to loop under a voice-over"
+  },
+  {
+   "dir": "music/alvana-audio/music/scifi",
+   "glob": "*.mp3",
+   "kind": "music",
+   "category": "scifi",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "scifi",
+    "music",
+    "bed"
+   ],
+   "description": "{title}: a {category} music bed to loop under a voice-over"
+  },
+  {
+   "dir": "music/alvana-audio/music/synthwave",
+   "glob": "*.mp3",
+   "kind": "music",
+   "category": "synthwave",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "synthwave",
+    "music",
+    "bed"
+   ],
+   "description": "{title}: a {category} music bed to loop under a voice-over"
+  },
+  {
+   "dir": "music/alvana-audio/music/upbeat",
+   "glob": "*.mp3",
+   "kind": "music",
+   "category": "upbeat",
+   "license": "CC0-1.0",
+   "source": "https://github.com/seyedpouramir/alvana-audio",
+   "author": "alvana audio",
+   "tags": [
+    "upbeat",
+    "music",
+    "bed"
+   ],
+   "description": "{title}: a {category} music bed to loop under a voice-over"
+  },
+  {
+   "dir": "overlays/mixkit/bokeh",
+   "glob": "*.mp4",
+   "kind": "overlay",
+   "category": "bokeh",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-stock-video/",
+   "author": "Mixkit",
+   "tags": [
+    "bokeh",
+    "overlay"
+   ],
+   "description": "{title}: a {category} overlay clip; screen it over the footage",
+   "use": {
+    "src": "{src}",
+    "style": {
+     "mix-blend-mode": "screen"
+    }
+   }
+  },
+  {
+   "dir": "overlays/mixkit/dust",
+   "glob": "*.mp4",
+   "kind": "overlay",
+   "category": "dust",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-stock-video/",
+   "author": "Mixkit",
+   "tags": [
+    "dust",
+    "overlay"
+   ],
+   "description": "{title}: a {category} overlay clip; screen it over the footage",
+   "use": {
+    "src": "{src}",
+    "style": {
+     "mix-blend-mode": "screen"
+    }
+   }
+  },
+  {
+   "dir": "overlays/mixkit/film-grain",
+   "glob": "*.mp4",
+   "kind": "overlay",
+   "category": "film-grain",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-stock-video/",
+   "author": "Mixkit",
+   "tags": [
+    "film-grain",
+    "overlay"
+   ],
+   "description": "{title}: a {category} overlay clip; screen it over the footage",
+   "use": {
+    "src": "{src}",
+    "style": {
+     "mix-blend-mode": "screen"
+    }
+   }
+  },
+  {
+   "dir": "overlays/mixkit/fire",
+   "glob": "*.mp4",
+   "kind": "overlay",
+   "category": "fire",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-stock-video/",
+   "author": "Mixkit",
+   "tags": [
+    "fire",
+    "overlay"
+   ],
+   "description": "{title}: a {category} overlay clip; screen it over the footage",
+   "use": {
+    "src": "{src}",
+    "style": {
+     "mix-blend-mode": "screen"
+    }
+   }
+  },
+  {
+   "dir": "overlays/mixkit/glitch",
+   "glob": "*.mp4",
+   "kind": "overlay",
+   "category": "glitch",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-stock-video/",
+   "author": "Mixkit",
+   "tags": [
+    "glitch",
+    "overlay"
+   ],
+   "description": "{title}: a {category} overlay clip; screen it over the footage",
+   "use": {
+    "src": "{src}",
+    "style": {
+     "mix-blend-mode": "screen"
+    }
+   }
+  },
+  {
+   "dir": "overlays/mixkit/light-leaks",
+   "glob": "*.mp4",
+   "kind": "overlay",
+   "category": "light-leaks",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-stock-video/",
+   "author": "Mixkit",
+   "tags": [
+    "light-leaks",
+    "overlay"
+   ],
+   "description": "{title}: a {category} overlay clip; screen it over the footage",
+   "use": {
+    "src": "{src}",
+    "style": {
+     "mix-blend-mode": "screen"
+    }
+   }
+  },
+  {
+   "dir": "overlays/mixkit/overlay",
+   "glob": "*.mp4",
+   "kind": "overlay",
+   "category": "overlay",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-stock-video/",
+   "author": "Mixkit",
+   "tags": [
+    "overlay",
+    "overlay"
+   ],
+   "description": "{title}: a {category} overlay clip; screen it over the footage",
+   "use": {
+    "src": "{src}",
+    "style": {
+     "mix-blend-mode": "screen"
+    }
+   }
+  },
+  {
+   "dir": "overlays/mixkit/particles",
+   "glob": "*.mp4",
+   "kind": "overlay",
+   "category": "particles",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-stock-video/",
+   "author": "Mixkit",
+   "tags": [
+    "particles",
+    "overlay"
+   ],
+   "description": "{title}: a {category} overlay clip; screen it over the footage",
+   "use": {
+    "src": "{src}",
+    "style": {
+     "mix-blend-mode": "screen"
+    }
+   }
+  },
+  {
+   "dir": "overlays/mixkit/rain",
+   "glob": "*.mp4",
+   "kind": "overlay",
+   "category": "rain",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-stock-video/",
+   "author": "Mixkit",
+   "tags": [
+    "rain",
+    "overlay"
+   ],
+   "description": "{title}: a {category} overlay clip; screen it over the footage",
+   "use": {
+    "src": "{src}",
+    "style": {
+     "mix-blend-mode": "screen"
+    }
+   }
+  },
+  {
+   "dir": "overlays/mixkit/smoke",
+   "glob": "*.mp4",
+   "kind": "overlay",
+   "category": "smoke",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-stock-video/",
+   "author": "Mixkit",
+   "tags": [
+    "smoke",
+    "overlay"
+   ],
+   "description": "{title}: a {category} overlay clip; screen it over the footage",
+   "use": {
+    "src": "{src}",
+    "style": {
+     "mix-blend-mode": "screen"
+    }
+   }
+  },
+  {
+   "dir": "overlays/mixkit/snow",
+   "glob": "*.mp4",
+   "kind": "overlay",
+   "category": "snow",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-stock-video/",
+   "author": "Mixkit",
+   "tags": [
+    "snow",
+    "overlay"
+   ],
+   "description": "{title}: a {category} overlay clip; screen it over the footage",
+   "use": {
+    "src": "{src}",
+    "style": {
+     "mix-blend-mode": "screen"
+    }
+   }
+  },
+  {
+   "dir": "overlays/mixkit/sparks",
+   "glob": "*.mp4",
+   "kind": "overlay",
+   "category": "sparks",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-stock-video/",
+   "author": "Mixkit",
+   "tags": [
+    "sparks",
+    "overlay"
+   ],
+   "description": "{title}: a {category} overlay clip; screen it over the footage",
+   "use": {
+    "src": "{src}",
+    "style": {
+     "mix-blend-mode": "screen"
+    }
+   }
+  },
+  {
+   "dir": "overlays/mixkit/transition",
+   "glob": "*.mp4",
+   "kind": "overlay",
+   "category": "transition",
+   "license": "Mixkit-Free",
+   "source": "https://mixkit.co/free-stock-video/",
+   "author": "Mixkit",
+   "tags": [
+    "transition",
+    "overlay"
+   ],
+   "description": "{title}: a {category} overlay clip; screen it over the footage",
+   "use": {
+    "src": "{src}",
+    "style": {
+     "mix-blend-mode": "screen"
+    }
+   }
+  },
+  {
+   "dir": "overlays/archive-org",
+   "glob": "*/*.mp4",
+   "kind": "overlay",
+   "category": "film",
+   "license": "Public-Domain",
+   "source": "https://archive.org",
+   "author": "archive.org",
+   "tags": [
+    "film",
+    "light-leak",
+    "burn",
+    "vhs"
+   ],
+   "description": "{title}: a scanned film overlay; screen it over the footage",
+   "use": {
+    "src": "{src}",
+    "style": {
+     "mix-blend-mode": "screen"
+    }
+   },
+   "files": {
+    "Countdow1960.mp4": {
+     "skip": true,
+     "description": "the download is truncated"
+    },
+    "Aesthetic Overlay Green Screen  VHS  old film grain overlay  scratches_1080p.mp4": {
+     "skip": true,
+     "description": "the download is truncated"
+    },
+    "4K_RainbowSparkle.mp4": {
+     "skip": true,
+     "description": "the download is truncated"
+    },
+    "4K_Light_Pulse.mp4": {
+     "skip": true,
+     "description": "the download is truncated"
+    }
+   }
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/Chromebook/*.png",
+   "kind": "texture",
+   "category": "chromebook",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/HtcOneM8/*.png",
+   "kind": "texture",
+   "category": "htc-one-m8",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/HuaweiP8/*.png",
+   "kind": "texture",
+   "category": "huawei-p8",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/Lumia920/*.png",
+   "kind": "texture",
+   "category": "lumia-920",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/Lumia930/*.png",
+   "kind": "texture",
+   "category": "lumia-930",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/Macbook/*.png",
+   "kind": "texture",
+   "category": "macbook",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/Macbook2015/*.png",
+   "kind": "texture",
+   "category": "macbook-2015",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/MacbookPro/*.png",
+   "kind": "texture",
+   "category": "macbook-pro",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/Pixel/*.png",
+   "kind": "texture",
+   "category": "pixel",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/SamsungTV/*.png",
+   "kind": "texture",
+   "category": "samsung-tv",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/Surface/*.png",
+   "kind": "texture",
+   "category": "surface",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/SurfacePro3/*.png",
+   "kind": "texture",
+   "category": "surface-pro-3",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/SurfaceStudio/*.png",
+   "kind": "texture",
+   "category": "surface-studio",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/galaxyS3/*.png",
+   "kind": "texture",
+   "category": "galaxy-s3",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/galaxyS5/*.png",
+   "kind": "texture",
+   "category": "galaxy-s5",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/galaxyTab4/*.png",
+   "kind": "texture",
+   "category": "galaxy-tab-4",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/iMac/*.png",
+   "kind": "texture",
+   "category": "i-mac",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/iPad/*.png",
+   "kind": "texture",
+   "category": "i-pad",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/iPadAir2/*.png",
+   "kind": "texture",
+   "category": "i-pad-air-2",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/iPadPro/*.png",
+   "kind": "texture",
+   "category": "i-pad-pro",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/iPhone5/*.png",
+   "kind": "texture",
+   "category": "i-phone-5",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/iPhone6/*.png",
+   "kind": "texture",
+   "category": "i-phone-6",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/iPhone6Plus/*.png",
+   "kind": "texture",
+   "category": "i-phone-6plus",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/iPhone7/*.png",
+   "kind": "texture",
+   "category": "i-phone-7",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/iPhoneSE/*.png",
+   "kind": "texture",
+   "category": "i-phone-se",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/iPhoneX/*.png",
+   "kind": "texture",
+   "category": "i-phone-x",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/iPhoneXS/*.png",
+   "kind": "texture",
+   "category": "i-phone-xs",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "mockups/html5-device-mockups",
+   "glob": "device-mockups/iPhoneXSMax/*.png",
+   "kind": "texture",
+   "category": "i-phone-xsmax",
+   "license": "MIT",
+   "source": "https://github.com/pixelsign/html5-device-mockups",
+   "author": "Angelos Arnis, Tomi Hiltunen",
+   "tags": [
+    "device",
+    "mockup",
+    "frame"
+   ],
+   "description": "{title}: a device frame, put the screen recording inside it"
+  },
+  {
+   "dir": "transitions/lumas",
+   "glob": "*.pgm",
+   "kind": "texture",
+   "category": "transition",
+   "license": "GPL-2.0",
+   "source": "https://invent.kde.org/multimedia/kdenlive",
+   "author": "Kdenlive",
+   "tags": [
+    "luma",
+    "wipe",
+    "transition"
+   ],
+   "description": "{title}: a greyscale luma wipe mask for xfade and maskedmerge"
+  },
+  {
+   "dir": "luts/YahiaAngelo_Film-Luts",
+   "glob": "**/*.cube",
+   "kind": "lut",
+   "category": "film",
+   "license": "MIT",
+   "source": "https://github.com/YahiaAngelo/Film-Luts",
+   "author": "Yahia",
+   "tags": [
+    "film",
+    "kodak",
+    "fuji"
+   ],
+   "description": "{title}: a {category} look, apply it with lut3d"
+  },
+  {
+   "dir": "luts/darkyboys_openluts",
+   "glob": "**/*.cube",
+   "kind": "lut",
+   "category": "creative",
+   "license": "CC0-1.0",
+   "source": "https://github.com/darkyboys/openluts",
+   "author": "darkyboys",
+   "tags": [
+    "teal-orange",
+    "contrast"
+   ],
+   "description": "{title}: a {category} look, apply it with lut3d"
+  },
+  {
+   "dir": "luts/slaycamera_luts",
+   "glob": "**/*.cube",
+   "kind": "lut",
+   "category": "cinema",
+   "license": "CC-BY-4.0",
+   "source": "https://github.com/slaycamera/luts",
+   "author": "slaycamera",
+   "tags": [
+    "cinema",
+    "film"
+   ],
+   "description": "{title}: a {category} look, apply it with lut3d"
+  },
+  {
+   "dir": "luts/sfi0zy_street-monochrome",
+   "glob": "**/*.cube",
+   "kind": "lut",
+   "category": "bw",
+   "license": "CC-BY-4.0",
+   "source": "https://github.com/sfi0zy/street-monochrome",
+   "author": "sfi0zy",
+   "tags": [
+    "black-and-white",
+    "street"
+   ],
+   "description": "{title}: a {category} look, apply it with lut3d"
+  },
+  {
+   "dir": "luts/abpy_FujifilmCameraProfiles",
+   "glob": "**/*.cube",
+   "kind": "lut",
+   "category": "fuji",
+   "license": "Unspecified",
+   "source": "https://github.com/abpy/FujifilmCameraProfiles",
+   "author": "abpy",
+   "tags": [
+    "fujifilm",
+    "film",
+    "camera-profile"
+   ],
+   "description": "{title}: a {category} look, apply it with lut3d"
+  }
  ]
 }

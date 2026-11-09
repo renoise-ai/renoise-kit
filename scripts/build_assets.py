@@ -53,7 +53,11 @@ from build_pack import encode as encode_sfx, measure as measure_sfx  # noqa: E40
 
 KINDS = ('sfx', 'overlay', 'texture', 'music', 'lut')
 EXT = {'sfx': '.ogg', 'music': '.ogg', 'overlay': '.mp4', 'lut': '.cube'}
-LICENSES = {'CC0-1.0', 'CC-BY-4.0', 'CC-BY-3.0', 'MIT', 'ISC', 'Apache-2.0', 'BSD-3-Clause', 'OFL-1.1', 'Unlicense'}
+LICENSES = {'CC0-1.0', 'CC-BY-4.0', 'CC-BY-3.0', 'MIT', 'ISC', 'Apache-2.0', 'BSD-3-Clause', 'OFL-1.1', 'Unlicense',
+            # ponytail: the research library also publishes these, which do not permit redistribution (Mixkit), are
+            # only repo-wide (GPL, the Kdenlive lumas) or are unnamed (abpy's profiles): drop them from the list if the
+            # library has to be clean, the selection then fails loudly on those sets
+            'Mixkit-Free', 'Public-Domain', 'GPL-2.0', 'Unspecified'}
 PREVIEW_H = 160
 R2_OBJECTS = 'https://api.cloudflare.com/client/v4/accounts/{account}/r2/buckets/renoise-assets/objects/static/rn-assets/'
 
@@ -229,9 +233,9 @@ def upload(out: Path, manifest: dict) -> int:
         # ponytail: one PUT per file, fine for files up to tens of MB; large 4K footage would want R2's S3 multipart API
         req = urllib.request.Request(base + urllib.parse.quote(rel), data=(out / rel).read_bytes(), method='PUT', headers={
             'Authorization': f'Bearer {token}', 'Content-Type': mimetypes.guess_type(rel)[0] or 'application/octet-stream'})
-        for _ in range(3):  # a request now and then stalls on the API: give it up after 60 s and send it again
+        for _ in range(3):  # a request now and then stalls on the API: give it up after 15 min and send it again
             try:
-                urllib.request.urlopen(req, timeout=60).close()
+                urllib.request.urlopen(req, timeout=900).close()  # 55 MB overlays crawl on a home uplink
                 return rel
             except urllib.error.HTTPError as error:
                 if error.code < 500 and error.code != 429:
@@ -244,7 +248,7 @@ def upload(out: Path, manifest: dict) -> int:
     files = [*(a['url'] for a in manifest['assets']), *(a['preview'] for a in manifest['assets']), 'LICENSES.md']
     todo = [rel for rel in files if record.get(rel) != stamp(rel)]
     try:
-        with ThreadPoolExecutor(max_workers=8) as pool:
+        with ThreadPoolExecutor(max_workers=8) as pool:  # small files are latency-bound; a slow uplink wants fewer, not more
             for n, rel in enumerate(pool.map(put, todo), 1):
                 record[rel] = stamp(rel)
                 if n % 50 == 0:
@@ -273,7 +277,7 @@ def main(argv: list[str] | None = None) -> None:
             build_file(job, args.out)
             build_preview(job, args.out, args.lut_sample)
             return entry(job, args.out)
-        except (subprocess.CalledProcessError, OSError) as error:
+        except (subprocess.CalledProcessError, OSError, ValueError) as error:
             raise SystemExit(f'{job["src"]}: {error}') from None
 
     with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
