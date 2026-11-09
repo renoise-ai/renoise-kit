@@ -25,6 +25,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from . import __version__
 from .ff import RnError
 
 DEFAULT_URL = 'https://assets.renoise.ai/static/rn-assets/manifest.json'
@@ -44,10 +45,13 @@ def _cache() -> Path:
 
 def _open(url: str):
     try:
-        return urllib.request.urlopen(url, timeout=30)
+        # Cloudflare in front of assets.renoise.ai refuses urllib's default User-Agent (Python-urllib/x.y) with a 403
+        return urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': f'rn/{__version__}'}), timeout=30)
     except urllib.error.HTTPError as error:
-        if error.code in (403, 404):
-            raise RnError(f'the asset library is not published at {url} yet ({error.code})') from None
+        if error.code == 404:
+            raise RnError(f'the asset library is not published at {url} yet (404)') from None
+        if error.code == 403:
+            raise RnError(f'{url}: refused (403)') from None
         raise RnError(f'{url}: HTTP {error.code}') from None
     except (urllib.error.URLError, OSError) as error:
         raise RnError(f'{url}: {getattr(error, "reason", error)}') from None
