@@ -52,7 +52,7 @@ def near(pixel, want, tol=30):
 def test_full_page_on_a_phone_with_the_banner_hidden(site, tmp_path):
     result = web_command(site, out=str(tmp_path), full=True, hide=['#cookie'])
     image = Image.open(result['full'])
-    assert image.width == 1080 and image.height == 3 * 2100  # 360 CSS px at 3x, three 700 px sections
+    assert image.width == 720 and image.height == 2 * 2100  # 360 CSS px at 2x, three 700 px sections
     assert near(colour(image, 20, 300), (224, 48, 48)) and near(colour(image, 20, image.height - 20), (48, 48, 224))
 
 
@@ -60,7 +60,7 @@ def test_sections_by_heading_and_the_ones_missing(site, tmp_path):
     result = web_command(site, out=str(tmp_path), sections=['pricing', 'Reviews', 'Careers'])
     assert [s['label'] for s in result['sections']] == ['pricing', 'Reviews'] and result['missing'] == ['Careers']
     shot = Image.open(result['sections'][0]['path'])
-    assert shot.size == (1080, 2100) and near(colour(shot, 20, 1000), (48, 160, 48))
+    assert shot.size == (720, 1400) and near(colour(shot, 20, 700), (48, 160, 48))
     assert 'full' not in result
 
 
@@ -68,20 +68,20 @@ def test_scroll_video_is_frame_exact_top_to_bottom(site, tmp_path):
     video = tmp_path / 'scroll.mp4'
     result = web_command(site, out=str(tmp_path), scroll_video=str(video), duration=1, fps=30, hide=['#cookie'])
     info = probe(str(video), exact=True)['video']
-    assert info['frames'] == 30 and (info['width'], info['height']) == (1080, 1920)
-    assert result['scroll_video']['scrolled_px'] == (2100 - 640) * 3
+    assert info['frames'] == 30 and (info['width'], info['height']) == (720, 1280)
+    assert result['scroll_video']['scrolled_px'] == (2100 - 640) * 2
     assert _scroll_at(0, 30, 100) == 0 and _scroll_at(29, 30, 100) == 100 and _scroll_at(15, 30, 100) == pytest.approx(50, abs=8)
     first, last = tmp_path / 'f.png', tmp_path / 'l.png'
     assert main(['frame', str(video), '--index', '0', '-o', str(first)]) == 0
     assert main(['frame', str(video), '--last', '-o', str(last)]) == 0
-    assert near(colour(Image.open(first), 540, 960), (224, 48, 48)) and near(colour(Image.open(last), 540, 960), (48, 48, 224))
+    assert near(colour(Image.open(first), 360, 640), (224, 48, 48)) and near(colour(Image.open(last), 360, 640), (48, 48, 224))
     shown = proof(SimpleNamespace(command='capture', page=site, out=str(tmp_path), no_proof=False), result)
     assert Path(shown).exists() and Path(shown).stat().st_size <= PROOF_KB * 1024
 
 
 def test_desktop_and_the_page_mode_still_needs_frames(site, tmp_path, capsys):
     assert main(['capture', site, '-o', str(tmp_path / 'd'), '--desktop']) == 0
-    assert Image.open(tmp_path / 'd' / 'full.png').width == 1920
+    assert Image.open(tmp_path / 'd' / 'full.png').width == 1280
     assert 'desktop 1280x720 CSS px' in capsys.readouterr().out
     page = tmp_path / 'p.html'
     page.write_text('<script>window.renderFrame = () => {}</script>')

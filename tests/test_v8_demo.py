@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+import rn.capture
 from rn.cli import main
 from rn.demo import glide_ms, load_demo
 from rn.ff import RnError, probe
@@ -132,7 +133,7 @@ def test_auto_and_manual_zoom_scale_the_target(app, tmp_path):
     video = frames(Path(result['video']['path']))
     steps = result['steps']
     base = width_of(video[0], magenta)
-    assert base == pytest.approx(48 * 1.5, abs=4)
+    assert base == pytest.approx(48 * rn.capture.WEB_SCALE["desktop"], abs=4)  # a 48 CSS px button at the desktop scale
     auto = width_of(video[steps[1]['end_frame'] - 1], magenta)  # the small button: zoomed in by itself
     assert auto == pytest.approx(base * 2, rel=0.08)
     assert width_of(video[steps[2]['end_frame'] - 1], magenta) == pytest.approx(base, abs=4)  # zoomed back out

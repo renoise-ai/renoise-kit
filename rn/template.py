@@ -41,7 +41,7 @@ def _params(text: str | None) -> dict:
     return params
 
 
-def template_command(action: str, name: str | None, *, out: str | None = None, width: int = 1080, height: int = 1920, fps: float = 30,
+def template_command(action: str, name: str | None, *, out: str | None = None, width: int = 720, height: int = 1280, fps: float = 30,
                      duration: float = 3.0, params: str | None = None, shards: int = 4) -> dict:
     if action == 'list':
         return {'templates': [{k: v for k, v in _spec(n).items() if k != 'path'} for n in _names()]}

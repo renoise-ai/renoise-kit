@@ -118,8 +118,10 @@ def summary_lines(result: dict) -> list[str]:
 # --- live web pages: rn capture URL -------------------------------------------------------------------------------
 # A real browser at a phone or desktop size, for app / SaaS ads: the full page, sections found by their heading text,
 # and a scroll-through video whose scroll position is a function of the frame index (frame-exact, any speed).
-WEB_SCALE = {'mobile': 3.0, 'desktop': 1.5}  # device pixels per CSS pixel: 1080x1920 -> a 360x640 phone viewport
-WEB_SIZE = {'mobile': (1080, 1920), 'desktop': (1920, 1080)}
+# The lowest useful size by default (more only when the user asks, with --size): device pixels per CSS pixel,
+# 720x1280 -> a 360x640 phone viewport, 1280x720 -> a 1280x720 desktop one
+WEB_SCALE = {'mobile': 2.0, 'desktop': 1.0}
+WEB_SIZE = {'mobile': (720, 1280), 'desktop': (1280, 720)}
 MOBILE_UA = ('Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) '
              'Version/17.5 Mobile/15E148 Safari/604.1')
 HOLD = 0.12  # share of the scroll video held still at the top and at the bottom

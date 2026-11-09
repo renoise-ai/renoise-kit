@@ -433,7 +433,8 @@ def estimate(args) -> tuple[float, str] | None:
         kind = 'compare_shots' if args.shots else 'compare_video'
     if command == 'assemble' and not (args.preview or args.range or args.dry_run):
         from .assemble import assemble_command
-        planned = assemble_command(args.edl, args.out, dry_run=True, keep=False, placeholders=args.placeholders)['output']
+        planned = assemble_command(args.edl, args.out, dry_run=True, keep=False, placeholders=args.placeholders,
+                                   full_size=getattr(args, 'full_size', False))['output']
         seconds = estimate_seconds('assemble', planned['duration'], planned['width'], planned['height'])
         return seconds, f'{planned["duration"]} s of {planned["width"]}x{planned["height"]} video'
     if not kind:
