@@ -39,7 +39,7 @@ def measure(path: Path) -> dict:
     x = decode(path)
     win = 480  # 10 ms
     n = len(x) // win
-    rms = np.sqrt(np.mean(x[:n * win].reshape(n, win) ** 2, axis=1) + 1e-12)
+    rms = np.sqrt(np.mean(x[:n * win].reshape(n, win) ** 2, axis=1) + 1e-12) if n else np.zeros(1)  # silent or < 10 ms
     peak_win = int(np.argmax(rms))
     peak_db = 20 * np.log10(float(np.max(np.abs(x))) + 1e-9)
     env = 20 * np.log10(np.abs(x) + 1e-9)
@@ -54,7 +54,8 @@ def encode(src: Path, dest: Path, max_seconds: float) -> None:
             'areverse,silenceremove=start_periods=1:start_threshold=-60dB:start_silence=0.02,areverse')
     gain = 0.0
     for _ in range(4):  # very short transients overshoot after Opus: lower the gain until the decoded peak is <= -1 dBFS
-        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(src), '-af', f'{trim},atrim=0:{max_seconds},afade=t=out:st={max_seconds - 0.05}:d=0.05,'
+        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(src), '-vn', '-af',  # -vn: some wavs carry cover art
+                        f'{trim},atrim=0:{max_seconds},afade=t=out:st={max_seconds - 0.05}:d=0.05,'
                         f'alimiter=limit=0.7:level=disabled,volume={gain}dB', '-ar', '48000', '-c:a', 'libopus', '-b:a', '96k', str(dest)], check=True)
         peak = 20 * np.log10(float(np.max(np.abs(decode(dest)))) + 1e-9)
         if peak <= -1:
