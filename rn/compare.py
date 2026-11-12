@@ -65,6 +65,38 @@ def _begins(span: dict) -> str:
     return f'{how} ({" ".join(extra)})' if extra else how
 
 
+# Where a paired shot's numbers disagree with its reference enough to look at. Only measures that do not depend on how
+# textured the picture is (a grey-box previz has almost none): directions and pan speed come from the rigid fit, the
+# speed ramp is a ratio inside each video.
+PAN_MIN = 0.03          # frame widths per second: below this the pan direction is noise
+OPPOSITE_DEG = 120.0    # pan directions further apart than this read as the picture moving the other way
+ZOOM_MIN = 0.02         # zoom per second (2%) on both sides before its sign counts
+PAN_RATIO = 1.8         # pan speed this many times faster or slower than the reference
+RAMP_MIN = 2.0          # the shot's fastest quarter changes this many times more than its slowest
+RAMP_OVER_REF = 1.3     # ... and this many times the reference's own ramp (compression alone gives ~1.5)
+# ponytail: thresholds set on synthetic pans and speed-ups, not real generations; tune them on flagged pairs from the field.
+
+
+def shot_flags(ma: dict, mb: dict, ramp_a: float | None = None, ramp_b: float | None = None) -> list[str]:
+    """Where shot A (a cut's) moves unlike shot B (its reference), from compare's camera numbers (_shot_motion) and
+    rn shots' speed ramps. Measurement words, not verdicts: the reader looks at the pair to decide."""
+    flags = []
+    pan_a, pan_b = ma['pan_widths_per_s'], mb['pan_widths_per_s']
+    if pan_a >= PAN_MIN and pan_b >= PAN_MIN:
+        apart = abs((ma['pan_dir_deg'] - mb['pan_dir_deg'] + 180.0) % 360.0 - 180.0)
+        if apart >= OPPOSITE_DEG:
+            flags.append(f'pan opposite: {ma["pan_dir_deg"]:.0f}° vs {mb["pan_dir_deg"]:.0f}° (reads as moving the other way or reversed)')
+        ratio = pan_a / pan_b
+        if ratio >= PAN_RATIO or ratio <= 1 / PAN_RATIO:
+            flags.append(f'pan {ratio:.1f}x the reference\'s speed ({pan_a * 100:.1f} vs {pan_b * 100:.1f}%w/s)')
+    za, zb = ma['zoom_per_s'], mb['zoom_per_s']
+    if abs(za) >= ZOOM_MIN and abs(zb) >= ZOOM_MIN and (za > 0) != (zb > 0):
+        flags.append(f'zoom opposite: {za * 100:+.1f}%/s vs {zb * 100:+.1f}%/s (pushes in where the reference pulls out, or back)')
+    if ramp_a is not None and ramp_a >= RAMP_MIN and ramp_a >= RAMP_OVER_REF * max(ramp_b or 1.0, 1.0):
+        flags.append(f'speeds up or slows inside the shot: ramp {ramp_a:.1f} vs {ramp_b if ramp_b is not None else 1.0:.1f} (sped-up or slowed motion)')
+    return flags
+
+
 def match_shots(a: dict, b: dict) -> dict:
     """rn shots results of A and B on one clock: each A shot with the B shot that overlaps it most. Per pair the
     transitions (with their measured frames), durations and the camera numbers (zoom per second, pan in frame widths per second so sizes may differ,
@@ -83,10 +115,13 @@ def match_shots(a: dict, b: dict) -> dict:
             used.add(best['shot'])
             pair['motion'] = {'a': _shot_motion(sa, a['size'][0]), 'b': _shot_motion(best, b['size'][0])}
             pair['identical_pairs'] = {'a': sa['still']['identical_pairs'], 'b': best['still']['identical_pairs']}
+            pair['flags'] = shot_flags(pair['motion']['a'], pair['motion']['b'],
+                                       (sa.get('speed') or {}).get('ramp'), (best.get('speed') or {}).get('ramp'))
         pairs.append(pair)
     return {'a': len(a['shots']), 'b': len(b['shots']), 'pairs': pairs,
             'only_b': [_span(s) for s in b['shots'] if s['shot'] not in used],
-            'transitions_differ': sum(1 for p in pairs if p['b'] and p['b']['transition_in'] != p['a']['transition_in'])}
+            'transitions_differ': sum(1 for p in pairs if p['b'] and p['b']['transition_in'] != p['a']['transition_in']),
+            'flagged': sum(1 for p in pairs if p.get('flags'))}
 
 
 def _video_graph(mode: str, a: dict) -> str:
@@ -189,7 +224,8 @@ def summary_lines(result: dict) -> list[str]:
     if 'shots' in result:
         sh = result['shots']
         lines.append(f'shots A {sh["a"]}, B {sh["b"]}; {sh["transitions_differ"]} begin differently'
-                     + (f'; {len(sh["only_b"])} B shot(s) match no A shot' if sh['only_b'] else ''))
+                     + (f'; {len(sh["only_b"])} B shot(s) match no A shot' if sh['only_b'] else '')
+                     + (f'; {sh["flagged"]} flagged: look at those pairs' if sh.get('flagged') else ''))
 
         def camera(m: dict) -> str:
             return f'zoom {m["zoom_per_s"] * 100:+.1f}%/s pan {m["pan_widths_per_s"] * 100:.1f}%w/s @{m["pan_dir_deg"]:.0f}° rigid {m["rigid_fit"]:.2f}'
@@ -200,7 +236,8 @@ def summary_lines(result: dict) -> list[str]:
                 lines.append(f'{head} -> no B shot')
                 continue
             lines.append(f'{head} -> B{b["shot"]} {b["start"]}-{b["end"]}s {_begins(b)} ({p["covered"]:.0%} covered)'
-                         f'\n      A {camera(p["motion"]["a"])}\n      B {camera(p["motion"]["b"])}')
+                         f'\n      A {camera(p["motion"]["a"])}\n      B {camera(p["motion"]["b"])}'
+                         + ''.join(f'\n      ! {flag}' for flag in p.get('flags', [])))
     if 'video' in result:
         lines.append(VIDEO_MODES[result.get('video_mode', 'side')].format(result['video']))
     return lines
