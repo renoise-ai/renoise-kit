@@ -158,9 +158,14 @@ def _stack(otio, edit: Edit, lost: list):
 
 
 def export_command(edl_path: str, out: str, *, srt: str | None) -> dict:
+    target = Path(out)
+    if target.suffix.lower() == '.mmkproj':
+        if srt:
+            raise RnError('--srt: not for .mmkproj (MMK projects carry no subtitles yet)')
+        from .mmk import export_mmk
+        return export_mmk(edl_path, out)
     import opentimelineio as otio
 
-    target = Path(out)
     adapter = ADAPTERS.get(target.suffix.lower())
     if not adapter:
         raise RnError(f'{out}: export to {", ".join(ADAPTERS)}')
@@ -190,8 +195,15 @@ def export_command(edl_path: str, out: str, *, srt: str | None) -> dict:
 
 
 def summary_lines(result: dict) -> list[str]:
-    lines = [f'{result["path"]} ({result["adapter"]})  {result["frames"]} frames at {result["fps"]} fps',
-             '  ' + ', '.join(f'{t["name"]} {t["items"]} items' for t in result['tracks'])]
+    lines = [f'{result["path"]} ({result["adapter"]})  {result["frames"]} frames at {result["fps"]} fps']
+    if result['adapter'] == 'mmk':
+        lines.append(f'  revision {result["revision"]}, {result["assets"]} assets, requires {", ".join(result["requires"]) or "nothing"}')
+        if result['dropped']:
+            lines.append('  not in MMK yet, left out (rn assemble still renders them): '
+                         + '; '.join(f'{d["item"]}: {", ".join(d["dropped"])}' for d in result['dropped'][:10]))
+        lines.append(f'  next: {result["next"]}')
+        return lines
+    lines.append('  ' + ', '.join(f'{t["name"]} {t["items"]} items' for t in result['tracks']))
     if result['lost']:
         lines.append(f'  not expressible in NLE files, kept as "rn" metadata: '
                      + '; '.join(f'{l["clip"]}: {", ".join(l["kept_as_metadata"])}' for l in result['lost'][:10]))

@@ -219,6 +219,7 @@ EOF
 | `rn finish FILE -o OUT [--height N]` | Brings any video to the delivery standard; `--height` makes a scaled copy |
 | `rn finish ... --max-mbps N\|auto` | A bitrate ceiling on the CRF encode (also EDL `output.max_mbps`): clean shots keep their quality, grain stops at the cap |
 | `rn export EDL -o cut.otio\|.fcpxml\|.xml [--srt]` | The edit as a project for Final Cut, Premiere, Resolve or any OTIO tool |
+| `rn export EDL -o cut.mmkproj` | The edit as a MultiMediaKit project (the Renoise app's format; needs `mmk`): what MMK cannot express yet is left out and listed |
 
 **This machine**
 
