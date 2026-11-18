@@ -66,8 +66,28 @@ def test_mmk_lists_what_it_leaves_out(media, tmp_path):
     assert dropped == {'a': ['vf'], 'b': ['transition wipeleft (a hard cut)', 'color clip (left empty)'],
                        'c': ['transition fade (a hard cut)'], 'subtitles': ['mmk.srt']}
     assert subprocess.run([mmk_binary(), 'validate', str(package)], capture_output=True).returncode == 0
-    # Written again in place: edit.json is the source, the project follows it
-    assert rn('export', edl, '-o', package) == 0
+    # Written again in place: edit.json is the source, the project follows it. A Renoise workspace's own files stay,
+    # and media that sat in the old assets/ (a clip the agent put there) still link in.
+    (package / '.renoise').mkdir()
+    (package / '.renoise' / 'state.json').write_text('{}', encoding='utf-8')
+    (package / 'BRIEF.md').write_text('notes', encoding='utf-8')
+    shutil.copyfile(media / 'card.png', package / 'assets' / 'mine.png')
+    edl2 = write_edl(media, {'output': {'width': 320, 'height': 240, 'fps': 24}, 'tracks': [
+        {'clips': [{'id': 'a', 'image': str(package / 'assets' / 'mine.png'), 'duration': 1}]}]}, 'mmk_again.json')
+    assert rn('export', edl2, '-o', package) == 0
+    assert (package / '.renoise' / 'state.json').exists() and (package / 'BRIEF.md').read_text(encoding='utf-8') == 'notes'
+    assert sorted(p.name for p in (package / 'assets').iterdir()) == ['mine.png']
+    assert not any(p.name.endswith('.rn-export') for p in tmp_path.iterdir())
+
+
+@needs_mmk
+def test_mmk_writes_into_a_fresh_workspace(media, tmp_path):
+    # What edit_project create leaves: a folder named edit-<id> holding only .renoise/state.json
+    workspace = tmp_path / 'edit-1'
+    (workspace / '.renoise').mkdir(parents=True)
+    (workspace / '.renoise' / 'state.json').write_text('{}', encoding='utf-8')
+    assert rn('export', write_edl(media, CUT, 'mmk_cut.json'), '-o', workspace) == 0
+    assert (workspace / 'project.json').exists() and (workspace / '.renoise' / 'state.json').exists()
 
 
 def test_mmk_will_not_replace_another_folder(media, tmp_path):

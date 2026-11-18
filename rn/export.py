@@ -159,7 +159,7 @@ def _stack(otio, edit: Edit, lost: list):
 
 def export_command(edl_path: str, out: str, *, srt: str | None) -> dict:
     target = Path(out)
-    if target.suffix.lower() == '.mmkproj':
+    if target.suffix.lower() == '.mmkproj' or target.is_dir():  # a Renoise workspace is a folder, ~/projects/edit-<id>
         if srt:
             raise RnError('--srt: not for .mmkproj (MMK projects carry no subtitles yet)')
         from .mmk import export_mmk

@@ -354,29 +354,56 @@ def _skeleton(edit: Edit, package: Path, video_tracks: int, audio_tracks: int) -
     (package / 'project.json').write_text(json.dumps(project, indent=2), encoding='utf-8')
 
 
+MMK_FILES = ('project.json', 'timeline.otio', 'timeline.otio.prev', 'history', 'assets', 'cache', 'scripts', 'generators')
+
+
+def _replace_project(package: Path, staging: Path) -> None:
+    """Swap MMK's own files for the new ones; anything else in the folder (a Renoise workspace's .renoise/, hand-off
+    notes, the edit itself) stays. The new assets are hard links, so media that sat in the old assets/ survive."""
+    package.mkdir(parents=True, exist_ok=True)
+    for name in MMK_FILES:
+        old = package / name
+        if old.is_dir() and not old.is_symlink():
+            shutil.rmtree(old)
+        elif old.exists() or old.is_symlink():
+            old.unlink()
+    for item in staging.iterdir():
+        item.rename(package / item.name)
+    staging.rmdir()
+
+
 def export_mmk(edl_path: str, out: str) -> dict:
     package = Path(out)
     if package.exists():
-        if not (package / 'project.json').exists() and any(package.iterdir()):
+        ours = (package / 'project.json').exists() or (package / '.renoise' / 'state.json').exists()
+        if not package.is_dir() or (not ours and any(package.iterdir())):
             raise RnError(f'{out}: exists and is not an MMK project; give a new path')
-        shutil.rmtree(package)
     edit = load(edl_path)
     overlay_lanes, audio_lanes = _overlay_lanes(edit.overlays), _audio_lanes(edit)
-    _skeleton(edit, package, 1 + len(overlay_lanes), 1 + len(audio_lanes))
-    convert = _Converter(edit, package)
-    convert.main()
-    convert.overlays(overlay_lanes)
-    convert.audio(audio_lanes)
-    if edit.subtitles:
-        convert.drop('subtitles', str(edit.subtitles.name))
-    if edit.duck_db:
-        convert.drop('mix', 'duck_db')
-    if edit.background.lower() not in BLACK:
-        convert.drop('output', 'background')
-    committed = _mmk('edit', str(package), '--request', '-', request={
-        'api_version': 'mmk-edit@1', 'base_revision': 0, 'idempotency_key': 'rn-export', 'mode': 'commit', 'actor': 'rn',
-        'operations': convert.ops})
-    checked = _mmk('validate', str(package))
+    # Built beside it, so sources inside the old project are still there to link from
+    staging = package.parent / f'.{package.name}.rn-export'
+    if staging.exists():
+        shutil.rmtree(staging)
+    try:
+        _skeleton(edit, staging, 1 + len(overlay_lanes), 1 + len(audio_lanes))
+        convert = _Converter(edit, staging)
+        convert.main()
+        convert.overlays(overlay_lanes)
+        convert.audio(audio_lanes)
+        if edit.subtitles:
+            convert.drop('subtitles', str(edit.subtitles.name))
+        if edit.duck_db:
+            convert.drop('mix', 'duck_db')
+        if edit.background.lower() not in BLACK:
+            convert.drop('output', 'background')
+        committed = _mmk('edit', str(staging), '--request', '-', request={
+            'api_version': 'mmk-edit@1', 'base_revision': 0, 'idempotency_key': 'rn-export', 'mode': 'commit', 'actor': 'rn',
+            'operations': convert.ops})
+        checked = _mmk('validate', str(staging))
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+    _replace_project(package, staging)
     return {'path': str(package), 'adapter': 'mmk', 'frames': edit.total_frames, 'fps': str(edit.fps),
             'revision': committed.get('revision', checked.get('revision')), 'requires': checked.get('requires', []),
             'assets': len(convert.assets), 'dropped': convert.dropped, 'warnings': checked.get('warnings', []),

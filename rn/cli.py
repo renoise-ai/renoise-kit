@@ -415,7 +415,7 @@ def _parser() -> argparse.ArgumentParser:
                  'fade / dissolve / fadeblack / fadewhite transitions, black solids, video and still overlays, keys, gain\n'
                  'and fades. Then mmk export x.mmkproj out.mp4 and rn finish for loudness.')
     export.add_argument('edl')
-    export.add_argument('-o', '--out', required=True, help='.mmkproj, .otio, .fcpxml or .xml')
+    export.add_argument('-o', '--out', required=True, help='.mmkproj or an MMK workspace folder, .otio, .fcpxml or .xml')
     export.add_argument('--srt', metavar='FILE', help='also write the subtitles as SRT')
 
     template = add('template', 'built-in motion templates (headline, lower third, callout, counter, bars, steps, text behind) to PNGs',
