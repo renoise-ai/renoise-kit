@@ -408,11 +408,14 @@ def _parser() -> argparse.ArgumentParser:
     grade.add_argument('--count', type=int, metavar='N', help='frames sampled per video (default 12)')
     grade.add_argument('--preview', metavar='PNG', help='SRC\'s first sample graded through the LUT by ffmpeg')
 
-    export = add('export', 'the EDL as an editable project: .otio, .fcpxml (Final Cut), .xml (Premiere, Resolve)',
+    export = add('export', 'the EDL as an editable project: .mmkproj (MMK, the Renoise app), .otio, .fcpxml (Final Cut), .xml (Premiere, Resolve)',
                  'Cuts, trims, speed, transitions, nested edits, overlay and audio timing carry over, media by absolute path.\n'
-                 'Position/size, keys, blend, masks, raw filters and gain curves are kept as "rn" metadata and listed.')
+                 'Position/size, keys, blend, masks, raw filters and gain curves are kept as "rn" metadata and listed.\n'
+                 '.mmkproj (needs mmk) converts only what MMK expresses today and lists the rest under "dropped": keep to\n'
+                 'fade / dissolve / fadeblack / fadewhite transitions, black solids, video and still overlays, keys, gain\n'
+                 'and fades. Then mmk export x.mmkproj out.mp4 and rn finish for loudness.')
     export.add_argument('edl')
-    export.add_argument('-o', '--out', required=True, help='.otio, .fcpxml or .xml')
+    export.add_argument('-o', '--out', required=True, help='.mmkproj or an MMK workspace folder, .otio, .fcpxml or .xml')
     export.add_argument('--srt', metavar='FILE', help='also write the subtitles as SRT')
 
     template = add('template', 'built-in motion templates (headline, lower third, callout, counter, bars, steps, text behind) to PNGs',

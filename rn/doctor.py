@@ -19,7 +19,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from . import __version__
-from .ff import LONG_FILTER
+from .ff import LONG_FILTER, RnError
 
 PYTHON_MIN = (3, 11)  # requires-python in pyproject.toml
 FFMPEG_MIN = 7  # README / SPEC §6; older builds lack "-/filter_complex FILE", which long filter graphs go through
@@ -253,6 +253,18 @@ def _tesseract_check(path: str | None, out: dict) -> dict:
                   commands, fix, version=words[1] if len(words) > 1 else None, path=path)
 
 
+def _mmk_check() -> dict:
+    from .mmk import mmk_binary
+    commands, fix = ['rn export -o .mmkproj'], 'the Renoise sandbox installs it; elsewhere build MultiMediaKit and set RN_MMK'
+    try:
+        path = mmk_binary()
+    except RnError:
+        return _check('mmk', 'system', 'missing', 'not found (RN_MMK, PATH or ~/.local/bin)', commands, fix)
+    result = _run([path])
+    runs = result is not None and 'mmk <command>' in result.stderr
+    return _check('mmk', 'system', 'ok' if runs else 'missing', 'runs' if runs else 'does not start', commands, fix, path=path)
+
+
 def _font_checks(path: str | None, out: dict) -> list[dict]:
     from .captions import FONTS, WINDOWS_FONTS
     families: set[str] = set()
@@ -340,7 +352,7 @@ def doctor_command() -> dict:
         futures = {key: pool.submit(_run, args) for key, args in calls.items()}
         python = _python_checks()  # while the tools run
         out = {key: future.result() for key, future in futures.items()}
-    checks = [*python[:2], *_ffmpeg_checks(paths, out), *python[2:], _playwright_check(), _tesseract_check(paths['tesseract'], out),
+    checks = [*python[:2], *_ffmpeg_checks(paths, out), *python[2:], _playwright_check(), _tesseract_check(paths['tesseract'], out), _mmk_check(),
               *_font_checks(paths['fc-list'], out), *_model_checks()]
     return {'ok': all(c['status'] != 'missing' for c in checks if c['core']), 'rn': __version__,
             'python': '.'.join(str(v) for v in sys.version_info[:3]), 'platform': sys.platform, 'checks': checks,

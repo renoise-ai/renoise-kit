@@ -205,6 +205,7 @@ EOF
 | `rn finish FILE -o OUT [--height N]` | 把任意视频处理成交付标准；`--height` 另出一个缩放版本 |
 | `rn finish ... --max-mbps N\|auto` | 给 CRF 编码加码率上限（EDL 里是 `output.max_mbps`）：干净的镜头画质不变，颗粒重的镜头压在上限 |
 | `rn export EDL -o cut.otio\|.fcpxml\|.xml [--srt]` | 导出成 Final Cut、Premiere、达芬奇或任何 OTIO 工具能打开的工程 |
+| `rn export EDL -o cut.mmkproj` | 导出成 MultiMediaKit 工程（Renoise App 用的格式，需要 `mmk`）：MMK 还表达不了的不转，逐项列出 |
 
 **本机**
 
