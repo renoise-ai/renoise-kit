@@ -161,7 +161,7 @@ def export_command(edl_path: str, out: str, *, srt: str | None) -> dict:
     target = Path(out)
     if target.suffix.lower() == '.mmkproj' or target.is_dir():  # a Renoise workspace is a folder, ~/projects/edit-<id>
         if srt:
-            raise RnError('--srt: not for .mmkproj (MMK projects carry no subtitles yet)')
+            raise RnError('--srt: not for .mmkproj (the project carries the subtitles as text clips)')
         from .mmk import export_mmk
         return export_mmk(edl_path, out)
     import opentimelineio as otio

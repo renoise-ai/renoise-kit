@@ -411,9 +411,10 @@ def _parser() -> argparse.ArgumentParser:
     export = add('export', 'the EDL as an editable project: .mmkproj (MMK, the Renoise app), .otio, .fcpxml (Final Cut), .xml (Premiere, Resolve)',
                  'Cuts, trims, speed, transitions, nested edits, overlay and audio timing carry over, media by absolute path.\n'
                  'Position/size, keys, blend, masks, raw filters and gain curves are kept as "rn" metadata and listed.\n'
-                 '.mmkproj (needs mmk) converts only what MMK expresses today and lists the rest under "dropped": keep to\n'
-                 'fade / dissolve / fadeblack / fadewhite transitions, black solids, video and still overlays, keys, gain\n'
-                 'and fades. Then mmk export x.mmkproj out.mp4 and rn finish for loudness.')
+                 '.mmkproj (needs mmk 0.2.0+) converts only what MMK expresses today and lists the rest under "dropped":\n'
+                 'fade / dissolve / fadeblack / fadewhite transitions, black solids, video, still and sequence clips, speed\n'
+                 'ramps, keys, screen / plus-lighter blends, masks, gain, fades, duck_db and subtitles. Then\n'
+                 'mmk export x.mmkproj out.mp4 --lufs N.')
     export.add_argument('edl')
     export.add_argument('-o', '--out', required=True, help='.mmkproj or an MMK workspace folder, .otio, .fcpxml or .xml')
     export.add_argument('--srt', metavar='FILE', help='also write the subtitles as SRT')
