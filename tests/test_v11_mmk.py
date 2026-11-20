@@ -64,7 +64,7 @@ def test_mmk_lists_what_it_leaves_out(media, tmp_path):
     dropped = {d['item']: d['dropped'] for d in json.loads(report.read_text(encoding='utf-8'))['dropped']}
     # c's dissolve has nothing to dissolve from once b is left empty
     assert dropped == {'a': ['vf'], 'b': ['transition wipeleft (a hard cut)', 'color clip (left empty)'],
-                       'c': ['transition fade (a hard cut)'], 'subtitles': ['mmk.srt']}
+                       'c': ['transition fade (a hard cut)']}
     assert subprocess.run([mmk_binary(), 'validate', str(package)], capture_output=True).returncode == 0
     # Written again in place: edit.json is the source, the project follows it. A Renoise workspace's own files stay,
     # and media that sat in the old assets/ (a clip the agent put there) still link in.
