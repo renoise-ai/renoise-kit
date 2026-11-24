@@ -53,9 +53,10 @@ def test_a_nested_edit_is_refused(media, tmp_path):
 @needs_mmk
 def test_export_writes_rn_beside_the_project_and_strict_refuses_what_mmk_leaves_out(media, tmp_path):
     edl = write_edl(media, {'output': OUT, 'tracks': [{'clips': [{'id': 'a', 'src': 'ramp.mp4', 'out': 1, 'vf': 'hue=s=0'}]}], 'mix': {'lufs': None}}, 'mmk_src.json')
-    package = tmp_path / 'edit-y'
+    package = tmp_path / 'edit-y'  # a Renoise workspace: a folder that exists (edit_video makes it)
+    package.mkdir()
     assert main(['export', str(edl), '-o', str(package), '--strict']) != 0, 'vf is dropped: --strict refuses'
-    assert not package.exists(), 'and changes nothing'
+    assert list(package.iterdir()) == [], 'and changes nothing'
     assert main(['export', str(edl), '-o', str(package)]) == 0
     assert json.loads((package / 'rn' / 'edit.json').read_text(encoding='utf-8'))['tracks'][0]['clips'][0]['src'] == 'files/ramp.mp4'
     assert main(['export', str(package / 'rn' / 'edit.json'), '-o', str(package)]) == 0, 'the source exports again from its new place'
