@@ -13,6 +13,16 @@ jobs:
       - uses: actions/checkout@v4
       - run: apt-get update && apt-get install -y --no-install-recommends ffmpeg fontconfig fonts-dejavu-core tesseract-ocr tesseract-ocr-eng && pip install uv
       - run: uv run playwright install --with-deps chromium
+      # mmk for the .mmkproj export tests: the build the Renoise sandbox installs (Worker SANDBOX_MMK), rendering on Mesa's
+      # software Vulkan. The URL needs a user agent (Cloudflare's browser check); the sha256 is the Worker's.
+      - name: mmk
+        run: |
+          apt-get install -y --no-install-recommends libvulkan1 mesa-vulkan-drivers libegl1 libgles2 libva2 libasound2t64
+          curl -fsSL -A renoise-kit-ci -o /tmp/mmk.tar.gz https://assets.renoise.ai/static/sandbox/mmk/mmk-native-0.2.0-linux-x64.tar.gz
+          echo "d74e99c78f0977bb871d44c8944b3ba7910da98bf934076e050c4049c0ff6692  /tmp/mmk.tar.gz" | sha256sum -c
+          mkdir -p /opt/mmk && tar -xzf /tmp/mmk.tar.gz -C /opt/mmk --strip-components=1
+          /opt/mmk/bin/mmk version --json
+          echo "RN_MMK=/opt/mmk/bin/mmk" >> "$GITHUB_ENV"
       - run: uv run pytest -q
 
   macos:
