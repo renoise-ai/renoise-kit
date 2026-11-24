@@ -59,8 +59,9 @@ def test_mmk_speed_ramp_uses_the_source_like_assemble(media, tmp_path):
     subprocess.run([mmk_binary(), 'export', str(package), str(exported)], check=True, capture_output=True)
     frames = probe(assembled)['video']['frames']
     assert probe(exported)['video']['frames'] == frames
-    # Through the ramp the source runs ahead; each checked frame shows the source frame assemble shows (to a frame)
-    for frame in (2, 9, 15, 20, 24):
+    # Through the ramp the source runs ahead; each checked frame shows the source frame assemble shows (to a frame). Not inside
+    # the dissolve (frames 14-19): a blended frame names no source frame, and MMK blends in linear light (see the next test)
+    for frame in (2, 9, 13, 20, 24):
         mmk_source = ramp_index(frame_png(exported, frame, tmp_path / f'm{frame}.png'))
         rn_source = ramp_index(frame_png(assembled, frame, tmp_path / f'r{frame}.png'))
         assert abs(mmk_source - rn_source) <= 1, (frame, mmk_source, rn_source)
@@ -151,3 +152,31 @@ def test_mmk_older_than_0_2_is_refused(media, tmp_path, monkeypatch):
     edl = write_edl(media, {'output': OUT, 'tracks': [{'clips': [{'src': 'ramp.mp4', 'out': 1}]}]}, 'mmk_old.json')
     assert rn('export', edl, '-o', tmp_path / 'old.mmkproj') != 0
     assert not (tmp_path / 'old.mmkproj').exists()
+
+
+@needs_mmk
+def test_mmk_transitions_take_the_same_frames_as_assemble(media, tmp_path):
+    """Where a transition starts and ends is the same frame in both; how it is drawn is not: MMK dissolves in linear light
+    (ffmpeg's xfade in the encoded values: mid-dissolve colours differ) and dips to a colour symmetrically (xfade's
+    fadeblack cuts the outgoing clip to black at once). The project is what the app plays and exports."""
+    for name, color in (('red', 'red'), ('blue', 'blue')):
+        ffmpeg('-f', 'lavfi', '-i', f'color=c={color}:s=320x240:r=24:d=2', '-c:v', 'libx264', '-qp', '0', '-pix_fmt', 'yuv444p', str(tmp_path / f'{name}.mp4'))
+    for kind in ('fade', 'fadeblack'):
+        edl = write_edl(tmp_path, {'output': OUT, 'tracks': [{'clips': [
+            {'src': 'red.mp4', 'out': 1}, {'src': 'blue.mp4', 'duration': 1, 'transition': {'type': kind, 'duration': 0.25}}]}],
+            'mix': {'lufs': None}}, f'{kind}.json')
+        package = tmp_path / f'{kind}.mmkproj'
+        export(edl, package, tmp_path)
+        assembled, exported = tmp_path / f'{kind}-rn.mp4', tmp_path / f'{kind}-mmk.mp4'
+        assert rn('assemble', edl, '-o', assembled) == 0
+        subprocess.run([mmk_binary(), 'export', str(package), str(exported)], check=True, capture_output=True)
+
+        def pure(video, frame, channel):
+            r, _, b = pixel(frame_png(video, frame, tmp_path / f'{video.stem}-{frame}.png'), 160, 120)
+            return (r, b)[channel] > 240 and (b, r)[channel] < 15
+
+        # Red, the 0.25 s transition (blended frames 19-23), then blue: the last pure red and the first pure blue agree
+        for video in (assembled, exported):
+            assert pure(video, 18, 0) and not pure(video, 19, 0), (kind, video.name)
+            assert pure(video, 24, 1) and not pure(video, 23, 1), (kind, video.name)
+

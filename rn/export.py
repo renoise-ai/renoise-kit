@@ -157,13 +157,15 @@ def _stack(otio, edit: Edit, lost: list):
     return stack
 
 
-def export_command(edl_path: str, out: str, *, srt: str | None) -> dict:
+def export_command(edl_path: str, out: str, *, srt: str | None, strict: bool = False) -> dict:
     target = Path(out)
+    if strict and not (target.suffix.lower() == '.mmkproj' or target.is_dir()):
+        raise RnError('--strict: only for .mmkproj')
     if target.suffix.lower() == '.mmkproj' or target.is_dir():  # a Renoise workspace is a folder, ~/projects/edit-<id>
         if srt:
             raise RnError('--srt: not for .mmkproj (the project carries the subtitles as text clips)')
         from .mmk import export_mmk
-        return export_mmk(edl_path, out)
+        return export_mmk(edl_path, out, strict=strict)
     import opentimelineio as otio
 
     adapter = ADAPTERS.get(target.suffix.lower())
@@ -201,6 +203,7 @@ def summary_lines(result: dict) -> list[str]:
         if result['dropped']:
             lines.append('  not in MMK yet, left out (rn assemble still renders them): '
                          + '; '.join(f'{d["item"]}: {", ".join(d["dropped"])}' for d in result['dropped'][:10]))
+        lines.append(f'  source: {result["source"]} (change this edit and export it again)')
         lines.append(f'  next: {result["next"]}')
         return lines
     lines.append('  ' + ', '.join(f'{t["name"]} {t["items"]} items' for t in result['tracks']))
