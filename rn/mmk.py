@@ -10,7 +10,12 @@ the sound of clips and audio items with gain and fades, mix.duck_db (`mmk duck`'
 and subtitles (`mmk subtitles`: the cues in MMK's own style). Sound rn does not play (an overlay's, "audio": false) is
 muted. Anything else (other transitions, solids other than black, nested edits, other blends, vf / af, cut fades, ASS
 styles) is left out and listed under "dropped"; rn assemble still renders the full edit. Loudness is an export setting:
-mmk export --lufs.
+mmk export --lufs. --strict refuses an export that would leave anything out. A nested edit is refused: render it to a
+clip first.
+
+Beside the project it writes rn/: the edit itself, every file it reads hard-linked under rn/files/ (one already in rn/
+stays where it is) and its paths rewritten relative to rn/, so the folder alone (copied, published, pulled into another
+sandbox) still holds the edit it was made from. Change rn/edit.json and export it again.
 """
 from __future__ import annotations
 
@@ -23,7 +28,7 @@ import subprocess
 from fractions import Fraction
 from pathlib import Path
 
-from .edl import _SEQ, AudioItem, Clip, Edit, curve_value, load, source_offsets
+from .edl import _FILTER_FILE, _SEQ, AudioItem, Clip, Edit, curve_value, load, source_offsets
 from .ff import RnError, probe
 
 TICKS = 120000  # MMK's timebase: ticks per second
@@ -494,13 +499,90 @@ def _skeleton(edit: Edit, package: Path, video_tracks: int, audio_tracks: int) -
 
 
 MMK_FILES = ('project.json', 'timeline.otio', 'timeline.otio.prev', 'history', 'assets', 'cache', 'scripts', 'generators')
+SOURCE = 'rn'  # the edit the project is exported from (write_source)
+PATH_KEYS = ('src', 'image', 'file', 'listen')  # keys whose string is a file the edit reads, relative to the edit
+FILTER_KEYS = ('vf', 'af')  # raw filter chains, whose file= options name files too
+
+
+def write_source(edl_path: str | Path, package: Path, target: Path) -> Path:
+    """The edit as `target`/edit.json with every file it reads under `target` (hard links): a file already in the
+    project's rn/ keeps its place, any other goes to files/ (named as it was, so assets/material-<id>.mp4 stays
+    material-<id>.mp4). Paths become relative to it. Returns the edit's path."""
+    edit_path = Path(edl_path).resolve()
+    edit_dir = edit_path.parent
+    raw = json.loads(edit_path.read_text(encoding='utf-8-sig'))
+    own = (package / SOURCE).resolve()
+    placed: dict[Path, str] = {}
+
+    def place(source: Path, folder: Path | None = None) -> str:
+        source = source.resolve()
+        if source in placed:
+            return placed[source]
+        if source.is_relative_to(own):
+            relative = source.relative_to(own)
+        else:
+            stem, suffix, n = source.stem, source.suffix, 1
+            relative = Path('files') / (folder or Path()) / source.name
+            while (target / relative).exists():
+                n += 1
+                relative = Path('files') / (folder or Path()) / f'{stem}-{n}{suffix}'
+        (target / relative).parent.mkdir(parents=True, exist_ok=True)
+        if not (target / relative).exists():
+            _link(source, target / relative)
+        placed[source] = relative.as_posix()
+        return placed[source]
+
+    def sequence(pattern: str) -> str:
+        """A numbered image sequence (frames/%04d.png): every file of its folder that fits the pattern, in a folder of its own."""
+        path = (edit_dir / pattern).expanduser()
+        match = _SEQ.search(path.name)
+        if not match or not path.parent.is_dir():
+            return pattern
+        fits = re.compile(re.escape(path.name[:match.start()]) + r'\d+' + re.escape(path.name[match.end():]) + '$')
+        frames = [f for f in sorted(path.parent.iterdir()) if fits.match(f.name)]
+        if not frames:
+            return pattern
+        folder = Path(path.parent.name or 'frames')
+        return str(Path(place(frames[0], folder)).parent / path.name).replace('\\', '/')
+
+    def filters(chain: str) -> str:
+        def relative(match: re.Match) -> str:
+            path = Path((match.group(2) if match.group(2) is not None else match.group(3)).replace('\\:', ':'))
+            path = path if path.is_absolute() else edit_dir / path
+            return f"{match.group(1)}='{place(path)}'" if path.is_file() else match.group(0)
+        return _FILTER_FILE.sub(relative, chain)
+
+    def walk(node):
+        if isinstance(node, list):
+            return [walk(item) for item in node]
+        if not isinstance(node, dict):
+            return node
+        out = {}
+        for key, value in node.items():
+            if key in PATH_KEYS and isinstance(value, str) and (path := (edit_dir / value).expanduser()).is_file():
+                if key == 'src' and path.suffix.lower() == '.json':
+                    raise RnError(f'{value}: a nested edit cannot go into an MMK project; render it to a clip first '
+                                  f'(rn assemble {value} -o clip.mp4) and cut that clip in')
+                out[key] = place(path)
+            elif key == 'frames' and isinstance(value, str):
+                out[key] = sequence(value)
+            elif key in FILTER_KEYS and isinstance(value, str):
+                out[key] = filters(value)
+            else:
+                out[key] = walk(value)
+        return out
+
+    rewritten = walk(raw)
+    target.mkdir(parents=True, exist_ok=True)
+    (target / 'edit.json').write_text(json.dumps(rewritten, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    return target / 'edit.json'
 
 
 def _replace_project(package: Path, staging: Path) -> None:
-    """Swap MMK's own files for the new ones; anything else in the folder (a Renoise workspace's .renoise/, hand-off
-    notes, the edit itself) stays. The new assets are hard links, so media that sat in the old assets/ survive."""
+    """Swap MMK's own files and rn/ for the new ones; anything else in the folder (a Renoise workspace's .renoise/,
+    hand-off notes) stays. The new files are hard links, so media that sat in the old ones survive."""
     package.mkdir(parents=True, exist_ok=True)
-    for name in MMK_FILES:
+    for name in (*MMK_FILES, SOURCE):
         old = package / name
         if old.is_dir() and not old.is_symlink():
             shutil.rmtree(old)
@@ -517,7 +599,7 @@ def _commit(staging: Path, revision: int, key: str, operations: list[dict]) -> d
         'operations': operations})
 
 
-def export_mmk(edl_path: str, out: str) -> dict:
+def export_mmk(edl_path: str, out: str, *, strict: bool = False) -> dict:
     package = Path(out)
     if package.exists():
         ours = (package / 'project.json').exists() or (package / '.renoise' / 'state.json').exists()
@@ -527,6 +609,10 @@ def export_mmk(edl_path: str, out: str) -> dict:
     if tuple(int(n) for n in re.findall(r'\d+', version)[:2]) < (0, 2):
         raise RnError(f'mmk {version}: rn export -o .mmkproj needs mmk 0.2.0 or later')
     edit = load(edl_path)
+    nested = next((clip for clip in (*edit.base, *edit.overlays) if clip.kind == 'edit'), None)
+    if nested is not None:
+        raise RnError(f'{nested.where}: a nested edit cannot go into an MMK project; render it to a clip first '
+                      f'(rn assemble {nested.source.name} -o clip.mp4) and cut that clip in')
     overlay_lanes, audio_lanes = _overlay_lanes(edit.overlays), _audio_lanes(edit)
     mattes = [clip.mask for clip in edit.overlays if clip.kind in PICTURES and clip.mask is not None and not _matte_problem(clip)]
     matte_lanes = _overlay_lanes(mattes)
@@ -556,6 +642,11 @@ def export_mmk(edl_path: str, out: str) -> dict:
         if extra:
             committed = _commit(staging, committed['revision'], 'rn-export-helpers', extra)
         checked = _mmk('validate', str(staging))
+        if strict and convert.dropped:
+            raise RnError('--strict: MMK would leave out ' + '; '.join(f'{d["item"]}: {", ".join(d["dropped"])}' for d in convert.dropped[:10])
+                          + ' (render those parts to clips and cut them in); the project was not changed')
+        # After validate, so MMK checks only its own files
+        write_source(edl_path, package, staging / SOURCE)
     except BaseException:
         shutil.rmtree(staging, ignore_errors=True)
         raise
@@ -564,4 +655,4 @@ def export_mmk(edl_path: str, out: str) -> dict:
     return {'path': str(package), 'adapter': 'mmk', 'frames': edit.total_frames, 'fps': str(edit.fps),
             'revision': committed.get('revision', checked.get('revision')), 'requires': checked.get('requires', []),
             'assets': len(convert.assets), 'dropped': convert.dropped, 'warnings': checked.get('warnings', []),
-            'next': f'mmk export {package} out.mp4{lufs}'}
+            'source': str(package / SOURCE / 'edit.json'), 'next': f'mmk export {package} out.mp4{lufs}'}

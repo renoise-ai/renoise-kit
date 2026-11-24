@@ -414,10 +414,12 @@ def _parser() -> argparse.ArgumentParser:
                  '.mmkproj (needs mmk 0.2.0+) converts only what MMK expresses today and lists the rest under "dropped":\n'
                  'fade / dissolve / fadeblack / fadewhite transitions, black solids, video, still and sequence clips, speed\n'
                  'ramps, keys, screen / plus-lighter blends, masks, gain, fades, duck_db and subtitles. Then\n'
-                 'mmk export x.mmkproj out.mp4 --lufs N.')
+                 'mmk export x.mmkproj out.mp4 --lufs N. Beside the project: rn/edit.json, the edit with every file it reads\n'
+                 'under rn/ (paths relative to it): change that one and export it again. Nested edits: render them to clips first.')
     export.add_argument('edl')
     export.add_argument('-o', '--out', required=True, help='.mmkproj or an MMK workspace folder, .otio, .fcpxml or .xml')
     export.add_argument('--srt', metavar='FILE', help='also write the subtitles as SRT')
+    export.add_argument('--strict', action='store_true', help='.mmkproj: fail instead of leaving anything out ("dropped")')
 
     template = add('template', 'built-in motion templates (headline, lower third, callout, counter, bars, steps, text behind) to PNGs',
                    'Parameterised HTML pages rendered with rn capture to an RGBA PNG sequence for an EDL overlay. Each page is\n'
@@ -1028,7 +1030,7 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
         return result, grade_summary_lines(result)
     elif command == 'export':
         from .export import export_command, summary_lines
-        result = export_command(args.edl, args.out, srt=args.srt)
+        result = export_command(args.edl, args.out, srt=args.srt, strict=args.strict)
     elif command == 'compare':
         from .compare import compare_command, summary_lines
         if args.mode and not args.video:
