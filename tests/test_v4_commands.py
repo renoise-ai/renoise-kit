@@ -1,6 +1,7 @@
 """v0.4.0: compare, assemble --preview, qa sound and frame-rate checks, and the install hint for a missing extra."""
 import builtins
 import json
+import re
 import subprocess
 
 from PIL import Image
@@ -66,7 +67,9 @@ def test_qa_flags_dead_air_and_level_jumps(tmp_path):
     report = tmp_path / 'qa.json'
     rn('qa', clip, '--json', report)
     status = {c['check']: c for c in json.loads(report.read_text(encoding='utf-8'))['checks']}
-    assert status['dead_air']['status'] == 'WARN' and '1.50-2.00s' in status['dead_air']['detail']
+    # The gap is 1.5-2.0 s; where silencedetect puts its start moves by a few ms between ffmpeg builds (Windows' latest: 1.53)
+    gap = re.search(r'(\d+\.\d+)-(\d+\.\d+)s', status['dead_air']['detail'])
+    assert status['dead_air']['status'] == 'WARN' and gap and abs(float(gap[1]) - 1.5) <= 0.05 and abs(float(gap[2]) - 2.0) <= 0.05
     assert status['level_jumps']['status'] == 'WARN'
     steady = tmp_path / 'steady.mp4'
     ffmpeg('-f', 'lavfi', '-i', 'testsrc2=s=320x240:r=24:d=2', '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=2',
