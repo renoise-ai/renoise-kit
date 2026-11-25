@@ -18,8 +18,8 @@ jobs:
       - name: mmk
         run: |
           apt-get install -y --no-install-recommends libvulkan1 mesa-vulkan-drivers libegl1 libgles2 libva2 libasound2t64
-          curl -fsSL -A renoise-kit-ci -o /tmp/mmk.tar.gz https://assets.renoise.ai/static/sandbox/mmk/mmk-native-0.2.0-linux-x64.tar.gz
-          echo "d74e99c78f0977bb871d44c8944b3ba7910da98bf934076e050c4049c0ff6692  /tmp/mmk.tar.gz" | sha256sum -c
+          curl -fsSL -A renoise-kit-ci -o /tmp/mmk.tar.gz https://assets.renoise.ai/static/sandbox/mmk/mmk-sdk-0.3.0-linux-x64.tar.gz
+          echo "6426527eade7768b1fa63c238380ab316a8f2252eea9231ff81296f8a75cce60  /tmp/mmk.tar.gz" | sha256sum -c
           mkdir -p /opt/mmk && tar -xzf /tmp/mmk.tar.gz -C /opt/mmk --strip-components=1
           /opt/mmk/bin/mmk version --json
           echo "RN_MMK=/opt/mmk/bin/mmk" >> "$GITHUB_ENV"
