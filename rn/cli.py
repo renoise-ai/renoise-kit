@@ -686,7 +686,8 @@ def _parser() -> argparse.ArgumentParser:
         'meta keeps each shot\'s times, transition, keyframe (rn shots --keyframes), camera and speed numbers.\n'
         '  rn shots ref.mp4 --keyframes kf --json shots.json && rn edit edit.json init --from-shots shots.json',
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    op_init.add_argument('--from-shots', required=True, metavar='SHOTS.json', help='rn shots REF --json SHOTS.json')
+    op_init.add_argument('--from-shots', metavar='SHOTS.json', help='rn shots REF --json SHOTS.json (on an MMK project folder: '
+                                                                    'without it, an empty project of --size and --fps)')
     op_init.add_argument('--size', metavar='WxH', help='output size (default: the reference\'s)')
     op_init.add_argument('--fps', metavar='R', help='output frame rate (default: the reference\'s)')
     op_init.add_argument('--src', metavar='REF', help='cut every clip from the reference itself (the file SHOTS.json measured)')
@@ -1057,10 +1058,20 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
         from . import editops
         path = Path(args.edl)
         from . import project as mmkproject
+        if args.op == 'init' and (path.suffix == '.mmkproj' or path.is_dir()) and not args.from_shots:
+            if not args.size:
+                raise RnError('rn edit DIR init: --size WxH (and --fps, default 30) for an empty project, or --from-shots SHOTS.json')
+            result = mmkproject.new_project(path, size=args.size, fps=args.fps or '30', force=args.force)
+            return result, mmkproject.summary_lines(mmkproject.Project(path), result)
+        if args.op == 'init' and not args.from_shots:
+            raise RnError('rn edit EDL init needs --from-shots SHOTS.json')
         if args.op == 'init' and (path.suffix == '.mmkproj' or path.is_dir()):
             result = mmkproject.init_project(path, args.from_shots, size=args.size, fps=args.fps, src=args.src, slots=args.slots,
                                              force=args.force)
             return result, mmkproject.summary_lines(mmkproject.Project(path), result)
+        if path.is_dir() and not mmkproject.is_project(path):
+            raise RnError(f'{args.edl}: no MMK project here yet; start one with rn edit {args.edl} init --size WxH [--fps N] '
+                          f'(or --from-shots SHOTS.json to follow a reference)')
         if mmkproject.is_project(path):
             target = mmkproject.Project(path)
             try:

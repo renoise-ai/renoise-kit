@@ -1,4 +1,4 @@
-# rn edit 直接改 MMK 工程（v0.14.0）
+# rn edit 直接改 MMK 工程（v0.14.0，0.14.1 补了空工程与轨道识别）
 
 > 2026-11-27。对照 mmk 0.3.0（Renoise 沙箱装的版本）。实现在 `rn/project.py`，测试在 `tests/test_project_edit.py`。
 
@@ -18,7 +18,7 @@
 
 - 时间：秒（或帧、镜头、锚点），换算成 tick（每秒 120000）并对齐到整帧。输出帧率必须整除 120000。
 - id：rn 的 id 就是 MMK 对象的 id。
-- 轨道：`track_V1` 主轨，`track_A1` 主轨片段自带的声音（与画面 link），`track_V2…` 叠加层，音频条目按 role 分轨：
+- 轨道：主轨是第一条视频轨（rn 建的叫 `track_V1`），主轨声音是主轨片段 link 的那条音频轨（`track_A1`，没有就加），`track_V2…` 叠加层，音频条目按 role 分轨：
   `track_voice`、`track_music`、`track_sfx`（重叠时开 `_2`、`_3`…），没有 role 的在 `track_A2`。`rn export` 出的工程音频条目在
   `track_A2…`，`duck` 没有 music 轨时把它们当音乐。
 - 主轨上的增删改都 ripple 主轨和它的声音，其他轨不动：
@@ -39,9 +39,10 @@
 | `hits SFX --at cuts\|beats\|T…` | 每个点一个音频条目，音效之间重叠就分 lane | 剪点、拍点是锚点，之后改剪辑会跟着走 |
 | `silences ID --listen J` | 头尾 `trim_clip`，中间每段停顿 `split_clip` ×2 + `ripple_delete` | 片段变成 `ID`、`ID-2`…，App 里能单独调 |
 | `snap --listen J [--to downbeats]` | 每个剪点一次 `roll` | 素材不够、附近没有拍点的剪点照旧列出原因 |
+| `init --size WxH [--fps N]` | 空工程：一条主轨和它的声音轨 | 新的 Renoise 剪辑工作区先这样建，再 insert；已有剪辑要 `--force` |
 | `init --from-shots S` | `rn edit init` 的结果经 `rn export` 写进工程（`placeholders`，不写 `rn/edit.json`） | 空槽位是占位卡，`set sNN src=…` 换成真素材；经黑 / 白场 → `dip_to_color`；工作区 `assets/` 里原有的素材保留 |
 | `batch` | 每步在工程副本（媒体硬链接）上做，全部通过后合成一个事务提交 | 历史里是一步 |
-| `show [--around T]` | `mmk render` 出帧拼成接触表 | 打印时间线并给 `proof:` |
+| `show [--around T]` | `mmk render` 出帧拼成接触表 | 打印时间线并给 `proof:`（默认在临时目录，不进工程） |
 | `undo [N]` | `mmk agent --tool undo` | 只撤 rn 自己的步骤 |
 | `marks --on ID --listen J [--kind beats\|downbeats\|words]` | `add_marker` 加在播放这段声音的片段上 | 标记跟着片段走，锚点写 `{"marker": "beat 8"}` |
 | `duck [--voice --music --depth]` | `mmk duck --dry-run` | 在副本上把音乐设成 0 dB 再测，加回各条目自己的增益和淡入淡出，跑两次也只压一次 |
