@@ -406,7 +406,7 @@ def test_inside_the_project_folder(project, monkeypatch, media):
     assert rn('edit', '.', 'insert', '--track', 'audio', '--clip', voice) == 0
     assert rn('edit', '.', 'duck') == 0
     assert rn('edit', '.', 'show') == 0
-    assert (project / 'sheets' / 'show-cut.jpg').exists()
+    assert not (project / 'sheets').exists()  # the proof sheet is not part of the edit
 
 
 @needs_mmk
@@ -478,3 +478,40 @@ def test_a_failed_insert_leaves_no_media_behind(project, media):
     clip = json.dumps({'id': 'o9', 'src': str(media / 'silent.mp4'), 'at': 0.5, 'duration': 0.5, 'style': {'mix-blend-mode': 'multiply'}})
     assert rn('edit', project, 'insert', '--track', '1', '--clip', clip) == 1
     assert set(os.listdir(project / 'assets')) == before
+
+
+# -- 0.14.1 --
+@needs_mmk
+def test_a_new_workspace_starts_with_init_size(media, tmp_path, monkeypatch, capsys):
+    workspace = tmp_path / 'edit-new'
+    (workspace / '.renoise').mkdir(parents=True)
+    (workspace / '.renoise' / 'state.json').write_text('{}')
+    (workspace / 'assets').mkdir()
+    shutil.copyfile(media / 'bars.mp4', workspace / 'assets' / 'material-9.mp4')
+    monkeypatch.chdir(workspace)
+    assert rn('edit', '.', 'insert', '--clip', '{"src": "assets/material-9.mp4", "out": 1}') == 1
+    assert 'rn edit . init --size WxH' in capsys.readouterr().err
+    assert rn('edit', '.', 'init', '--size', '1080x1920') == 0
+    assert rn('edit', '.', 'insert', '--clip', '{"id": "c1", "src": "assets/material-9.mp4", "out": 1}') == 0
+    info = _mmk('info', str(workspace))
+    assert (info['width'], info['height'], info['frame_rate']) == (1080, 1920, {'num': 30, 'den': 1})
+    t = timeline(workspace)
+    assert t['c1'][:3] == ('track_V1', 0, 1.0) and t['c1_audio'][0] == 'track_A1'
+    assert (workspace / '.renoise' / 'state.json').exists() and (workspace / 'assets' / 'material-9.mp4').exists()
+    assert rn('edit', '.', 'init', '--size', '720x1280') == 1  # it has a cut now
+    assert 'already has a cut' in capsys.readouterr().err
+
+
+@needs_mmk
+def test_a_project_whose_tracks_have_other_ids(media, tmp_path):
+    package = tmp_path / 'app.mmkproj'
+    assert rn('edit', package, 'init', '--size', '320x240', '--fps', '24') == 0
+    otio = package / 'timeline.otio'
+    otio.write_text(otio.read_text().replace('"track_V1"', '"video_main"').replace('"track_A1"', '"audio_main"'))
+    clip = json.dumps({'id': 'c1', 'src': str(media / 'bars.mp4'), 'out': 1})
+    assert rn('edit', package, 'insert', '--clip', clip) == 0
+    assert rn('edit', package, 'insert', '--clip', json.dumps({'id': 'c2', 'src': str(media / 'bars.mp4'), 'in': 1, 'out': 2})) == 0
+    assert rn('edit', package, 'set', 'c1', 'out=0.5') == 0
+    t = timeline(package)
+    assert t['c1'][:3] == ('video_main', 0, 0.5) and t['c2'][:3] == ('video_main', 0.5, 1.5)
+    assert t['c2_audio'][:3] == ('audio_main', 0.5, 1.5)

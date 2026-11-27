@@ -26,7 +26,7 @@ from .edl import load
 from .ff import RnError
 from .mmk import TICKS, TRANSITIONS, _Converter, _audio_lanes, _link, _mmk
 
-MAIN, SOUND = 'track_V1', 'track_A1'
+MAIN, SOUND = 'track_V1', 'track_A1'  # the converter's names for them; a project's own are Project.main / .sound
 STATE = 'rn/state.json'
 RN_STATE = ('specs', 'xfades', 'baked')  # rn's records of clips, put back by undo
 SPEC_FIELDS = {'fit', 'style', 'keys', 'opacity', 'fade_in', 'fade_out', 'gain_db', 'audio', 'blend', 'meta', 'note', 'role'}
@@ -90,6 +90,25 @@ class Project:
         return {key: json.loads(json.dumps(self.state.get(key, {}))) for key in RN_STATE}
 
     @property
+    def main(self) -> str:
+        """The main track: the first video track (track_V1 in what rn makes; a project made elsewhere may name it otherwise)."""
+        videos = [t['id'] for t in self.timeline['tracks'] if t['kind'] == 'video']
+        return videos[0] if videos else MAIN
+
+    @property
+    def sound(self) -> str:
+        """The main track's own sound: the audio track its clips' sound is linked on, else track_A1 or the first audio track."""
+        audio = {i['id']: t['id'] for t in self.timeline['tracks'] if t['kind'] == 'audio' for i in t['items']}
+        main_clips = {i['id'] for i in self.items(self.main)}
+        for group in self.doc.get('link_groups', []):
+            if main_clips & set(group):
+                found = next((audio[c] for c in group if c in audio), None)
+                if found:
+                    return found
+        tracks = [t['id'] for t in self.timeline['tracks'] if t['kind'] == 'audio']
+        return SOUND if SOUND in tracks or not tracks else next((t for t in tracks if not re.match(r'track_(voice|music|sfx)', t)), SOUND)
+
+    @property
     def revision(self) -> int:
         return self.timeline['revision']
 
@@ -105,7 +124,7 @@ class Project:
             for item in track['items']:
                 if item['id'] == ref:
                     return track, item
-        clips = [i['id'] for t in self.timeline['tracks'] if t['id'] != SOUND for i in t['items'] if i['kind'] == 'clip']
+        clips = [i['id'] for t in self.timeline['tracks'] if t['id'] != self.sound for i in t['items'] if i['kind'] == 'clip']
         raise RnError(f'no clip "{ref}" in {self.path.name} (clips: {", ".join(clips[:20])}{" ..." if len(clips) > 20 else ""})')
 
     def group(self, clip_id: str) -> list[str]:
@@ -113,7 +132,7 @@ class Project:
 
     def sound_of(self, clip_id: str) -> str | None:
         """The main-track clip's own sound: the clip on track_A1 linked to it."""
-        sounds = {i['id'] for i in self.items(SOUND)}
+        sounds = {i['id'] for i in self.items(self.sound)}
         return next((c for c in self.group(clip_id) if c in sounds), None)
 
     def speed(self, item: dict) -> Fraction:
@@ -150,7 +169,7 @@ class Project:
     # -- writing --
     def ripple_main(self, ops: list[dict]) -> list[dict]:
         """ops on the main track that ripple it and its sound only: every other unlocked track is locked around them."""
-        others = [t['id'] for t in self.timeline['tracks'] if t['id'] not in (MAIN, SOUND) and not t.get('locked')]
+        others = [t['id'] for t in self.timeline['tracks'] if t['id'] not in (self.main, self.sound) and not t.get('locked')]
         return ([{'op': 'set_track_locked', 'track': t, 'locked': True} for t in others] + ops
                 + [{'op': 'set_track_locked', 'track': t, 'locked': False} for t in others])
 
@@ -325,6 +344,7 @@ class _Placer(_Converter):
         super().insert(track, clip_id, asset, at, start, length, speed)
         op = self.ops[mark]
         op['at'] += self.origin
+        op['track'] = {MAIN: self.project.main, SOUND: self.project.sound}.get(track, track)
         if track == MAIN:
             op.update(ripple='all_unlocked_tracks', locked_tracks='skip', links='follow')
 
@@ -384,6 +404,8 @@ def _clip_ops(project: Project, spec: dict, place: str, at: int, track: str | No
         placer.audio(_audio_lanes(edit))
     if placer.dropped:
         raise RnError('MMK would leave out ' + '; '.join(f'{d["item"]}: {", ".join(d["dropped"])}' for d in placer.dropped))
+    if not project.track(project.sound) and any(op.get('track') == project.sound for op in placer.ops):
+        placer.ops.insert(0, {'op': 'add_track', 'kind': 'audio', 'id': project.sound, 'name': 'A1'})
     return placer.ops, spec['id']
 
 
@@ -409,7 +431,7 @@ def _solid_ops(project: Project, spec: dict, place: str, at: int, track: str | N
         x, y, w, h = clip.x, clip.y, clip.w or project.width, clip.h or project.height
     length = clip.frames * project.frame
     scene = project.fresh(f'scene_{spec["id"]}')
-    insert = {'op': 'insert_clip', 'track': MAIN if place == 'main' else track, 'id': spec['id'], 'at': at,
+    insert = {'op': 'insert_clip', 'track': project.main if place == 'main' else track, 'id': spec['id'], 'at': at,
               'generator': {'kind': 'mmk.scene', 'target': scene}, 'source_range': {'start': 0, 'end': length}}
     if place == 'main':
         insert.update(ripple='all_unlocked_tracks', locked_tracks='skip', links='follow')
@@ -492,7 +514,7 @@ def anchor_seconds(project: Project, value, where: str = 'at') -> float:
     def laid(item: dict) -> SimpleNamespace:
         return SimpleNamespace(timeline_start=item['range']['start'] // frame,
                                frames=(item['range']['end'] - item['range']['start']) // frame)
-    base = [laid(i) for i in project.items(MAIN)]
+    base = [laid(i) for i in project.items(project.main)]
     by_id = {i['id']: laid(i) for t in project.timeline['tracks'] if t['kind'] == 'video' for i in t['items'] if i['kind'] == 'clip'}
     timeline = Timeline(fps=project.fps, edit_dir=Path.cwd(), base=base, markers=markers(project), by_id=by_id)
     return _anchor(value, where, timeline)
@@ -504,7 +526,7 @@ def _at(project: Project, value) -> int:
 
 # -- the operations --
 def _main_index(project: Project, ref: str) -> int:
-    ids = [i['id'] for i in project.items(MAIN)]
+    ids = [i['id'] for i in project.items(project.main)]
     if ref not in ids:
         raise RnError(f'{ref} is not on the main track')
     return ids.index(ref)
@@ -526,11 +548,11 @@ def split_op(project: Project, ref: str, at: float, new_id: str | None) -> dict:
 
 def delete_op(project: Project, ref: str, lift: bool) -> dict:
     track, item = project.find(ref)
-    if track['id'] == SOUND:
+    if track['id'] == project.sound:
         picture = next((c for c in project.group(ref) if c != ref), None)
         raise RnError(f'{ref} is the sound of {picture}: rn edit set {picture} audio=false silences it'
                       if picture else f'{ref} is a main-track clip\'s own sound')
-    if track['id'] == MAIN and not lift:
+    if track['id'] == project.main and not lift:
         # Ripples the main track; each later clip's sound follows its picture (linked)
         ops = [{'op': 'ripple_delete', 'objects': [ref], 'links': 'follow', 'ripple': 'track'}]
     else:
@@ -590,18 +612,18 @@ def insert_op(project: Project, clip_json: str, before: str | None, after: str |
     spec = _spec(clip_json)
     ops: list[dict] = []
     neighbour = project.find(before or after)[0]['id'] if (before or after) else None
-    if track == 'audio' or (neighbour and project.track(neighbour)['kind'] == 'audio' and neighbour != SOUND):
+    if track == 'audio' or (neighbour and project.track(neighbour)['kind'] == 'audio' and neighbour != project.sound):
         place = 'audio'
-    elif track not in (None, '0') or (neighbour and neighbour != MAIN):
+    elif track not in (None, '0') or (neighbour and neighbour != project.main):
         place = 'overlay'
     else:
         place = 'main'
     prefix = {'main': 'c', 'overlay': 'o', 'audio': 'a'}[place]
-    spec['id'] = spec.get('id') or project.fresh(f'{prefix}{len(project.items(MAIN)) + 1}' if place == 'main' else f'{prefix}1')
+    spec['id'] = spec.get('id') or project.fresh(f'{prefix}{len(project.items(project.main)) + 1}' if place == 'main' else f'{prefix}1')
     if any(i['id'] == spec['id'] for t in project.timeline['tracks'] for i in t['items']):
         raise RnError(f'id "{spec["id"]}" is taken')
     if place == 'main':
-        clips = project.items(MAIN)
+        clips = project.items(project.main)
         if before:
             at = project.find(before)[1]['range']['start']
         elif after:
@@ -632,14 +654,14 @@ def insert_op(project: Project, clip_json: str, before: str | None, after: str |
 
 def move_op(project: Project, ref: str, before: str | None, after: str | None, track: str | None) -> dict:
     current, item = project.find(ref)
-    if current['id'] == MAIN and (before or after):
+    if current['id'] == project.main and (before or after):
         target = project.find(before or after)[1]
         to = target['range']['start'] if before else target['range']['end']  # measured before the clip leaves its place
         if to in (item['range']['start'], item['range']['end']):
             raise RnError(f'{ref} is already there')
-        ops = project.ripple_main([{'op': 'move_clip', 'clip_id': ref, 'to_track': MAIN, 'to': to, 'links': 'follow',
+        ops = project.ripple_main([{'op': 'move_clip', 'clip_id': ref, 'to_track': project.main, 'to': to, 'links': 'follow',
                                     'ripple': 'all_unlocked_tracks', 'locked_tracks': 'skip'}])
-    elif track is not None and current['kind'] == 'video' and current['id'] != MAIN:
+    elif track is not None and current['kind'] == 'video' and current['id'] != project.main:
         ops: list[dict] = []
         to_track = _overlay_track(project, int(track), ops)
         ops.append({'op': 'move_clip', 'clip_id': ref, 'to_track': to_track, 'to': item['range']['start'], 'ripple': 'none'})
@@ -685,16 +707,16 @@ def transition_op(project: Project, ref: str, transition) -> dict:
     if ref in xfades:
         ops, left, right = _unbake(project, ref, xfades[ref])
     else:
-        clips = project.items(MAIN)
+        clips = project.items(project.main)
         index = _main_index(project, ref)
         if index == 0:
             raise RnError(f'{ref} is the first clip: a transition goes into a clip that follows another')
         left, right = clips[index - 1], clips[index]
         if left['range']['end'] != right['range']['start']:
             raise RnError(f'{ref}: there is a gap before it, so no cut to put a transition on')
-    old = [t['id'] for t in project.items(MAIN, 'transition') if t.get('right') == ref]
+    old = [t['id'] for t in project.items(project.main, 'transition') if t.get('right') == ref]
     sound_left, sound_right = project.sound_of(left['id']), project.sound_of(ref)
-    old += [t['id'] for t in project.items(SOUND, 'transition') if sound_right and t.get('right') == sound_right]
+    old += [t['id'] for t in project.items(project.sound, 'transition') if sound_right and t.get('right') == sound_right]
     ops += [{'op': 'delete', 'objects': old}] if old else []
     if transition in (None, 'none', 'cut') or (isinstance(transition, dict) and transition.get('type') in (None, 'none', 'cut')):
         if not ops:
@@ -795,7 +817,7 @@ def _trim(project: Project, item: dict, edge: str, to: int, main: bool) -> list[
 def set_op(project: Project, ref: str, assignments: list[str], unset: list[str]) -> dict:
     from .editops import _assign
     track, item = project.find(ref)
-    main = track['id'] == MAIN
+    main = track['id'] == project.main
     changes: dict = {}
     for text in assignments:
         key, sep, value = text.partition('=')
@@ -894,7 +916,7 @@ def _properties(project: Project, ref: str, item: dict, spec: dict, fields: set[
         timing = {'image': str(source), 'duration': timing['duration']}
     timing['speed'] = float(project.speed(item))
     body = {**{k: v for k, v in spec.items() if k in SPEC_FIELDS - {'meta', 'note', 'role'}}, **timing, 'id': ref}
-    if track['id'] == MAIN:
+    if track['id'] == project.main:
         built, _ = _clip_ops(project, body, 'main', 0, None)
     elif track['kind'] == 'video':
         built, _ = _clip_ops(project, body, 'overlay', 0, track['id'])
@@ -926,7 +948,7 @@ def _rebake(project: Project, ref: str, changes: dict, unset: list[str], label: 
     """vf / af on a main-track clip: the rn clip (its source where it is now, or the one it was rendered from) with the
     change, rendered again; without vf and af any more it plays its own source again."""
     track, item = project.find(ref)
-    if track['id'] != MAIN:
+    if track['id'] != project.main:
         raise RnError('vf / af: on a main-track clip (an overlay or audio item: render it first and insert the file)')
     recipe = dict(project.state.get('baked', {}).get(ref) or {})
     if not recipe:
@@ -962,9 +984,9 @@ def _replace(project: Project, ref: str, changes: dict, label: str, spec: dict |
         spec.update({k: v for k, v in changes.items() if k in SPEC_FIELDS | {'src', 'image', 'frames', 'fps', 'in', 'speed'}})
     spec.setdefault('duration', project.seconds(item['range']['end'] - item['range']['start']))
     spec['id'] = ref
-    place = 'main' if track['id'] == MAIN else ('overlay' if track['kind'] == 'video' else 'audio')
+    place = 'main' if track['id'] == project.main else ('overlay' if track['kind'] == 'video' else 'audio')
     sound = project.sound_of(ref)
-    joins = [t for tid in (MAIN, SOUND) for t in project.items(tid, 'transition') if {t.get('left'), t.get('right')} & {ref, sound}]
+    joins = [t for tid in (project.main, project.sound) for t in project.items(tid, 'transition') if {t.get('left'), t.get('right')} & {ref, sound}]
     kept = json.loads((project.path / 'project.json').read_text(encoding='utf-8')).get('extensions', {}).get('transitions', {})
     if place == 'main':
         ops = [{'op': 'ripple_delete', 'objects': [ref], 'links': 'follow', 'ripple': 'track'}]
@@ -1029,7 +1051,7 @@ def hits_op(project: Project, sfx: str, at: str, *, listen: str | None = None, o
         raise RnError('--at beats goes with --listen LISTEN.json (a rn listen --json result)')
     end = project.timeline['duration'] / TICKS
     if at == 'cuts':
-        clips = project.items(MAIN)
+        clips = project.items(project.main)
         points = [(c['id'], {'clip': c['id']}, c['range']['start'] / TICKS) for c in clips[1:]]
         if not points:
             raise RnError('--at cuts: the main track has one clip, so no cuts')
@@ -1075,7 +1097,7 @@ def silences_op(project: Project, ref: str, listen: str, *, min_silence: float =
     if min_silence <= 0 or pad < 0 or keep_gap < 0:
         raise RnError('--min must be > 0; --pad and --keep-gap >= 0')
     track, item = project.find(ref)
-    if track['id'] != MAIN:
+    if track['id'] != project.main:
         raise RnError(f'{ref}: silences are cut on the main track')
     data = _listen_data(listen)
     if not isinstance(data.get('silences'), list):
@@ -1106,7 +1128,7 @@ def silences_op(project: Project, ref: str, listen: str, *, min_silence: float =
         raise RnError(f'{ref}: no silence of {min_silence}s or more inside the clip')
     before = (item['range']['end'] - start) / TICKS
     project.commit(ops, f'silences {ref}')
-    after = sum((i['range']['end'] - i['range']['start']) for i in project.items(MAIN) if i['id'] in names) / TICKS
+    after = sum((i['range']['end'] - i['range']['start']) for i in project.items(project.main) if i['id'] in names) / TICKS
     for name in names[1:]:
         if ref in project.state['specs']:
             project.state['specs'][name] = dict(project.state['specs'][ref])
@@ -1123,8 +1145,8 @@ def snap_op(project: Project, listen: str, *, to: str = 'beats', tolerance: floa
         raise RnError('--to beats or downbeats')
     beats = [b + offset for b in _beats(_listen_data(listen), listen, to)]
     wanted = set(only.split(',')) if only else None
-    clips = project.items(MAIN)
-    transitions = {t['right']: t for t in project.items(MAIN, 'transition')}
+    clips = project.items(project.main)
+    transitions = {t['right']: t for t in project.items(project.main, 'transition')}
     ops, snapped, kept = [], [], []
     for left, right in zip(clips, clips[1:]):
         if wanted is not None and right['id'] not in wanted:
@@ -1193,6 +1215,42 @@ def marks_op(project: Project, on: str, listen: str, *, kind: str = 'beats', eve
     return {'op': 'marks', 'clip': on, 'kind': kind, 'added': len(ops)}
 
 
+def new_project(path: Path, *, size: str, fps: str = '30', force: bool = False) -> dict:
+    """rn edit DIR init --size WxH: an empty MMK project (a main track and its sound) to insert clips into. In a Renoise
+    workspace the rest of the folder (.renoise/, the materials in assets/) stays."""
+    from .mmk import _skeleton
+    path = Path(path).resolve()
+    try:
+        width, height = (int(v) for v in size.lower().split('x'))
+        rate = Fraction(str(fps))
+    except (ValueError, ZeroDivisionError):
+        raise RnError('--size WxH (e.g. 1080x1920), --fps a number or "30000/1001"') from None
+    if width < 2 or height < 2 or width % 2 or height % 2:
+        raise RnError(f'--size {size}: even width and height')
+    if (Fraction(TICKS) / rate).denominator != 1:
+        raise RnError(f'--fps {fps}: MMK needs a whole number of 1/{TICKS} s per frame (24, 25, 30, 50, 60 ...)')
+    if is_project(path):
+        if Project(path).timeline['duration'] and not force:
+            raise RnError(f'{path} already has a cut; --force starts it again (empty)')
+    elif path.exists() and not path.is_dir():
+        raise RnError(f'{path}: not a folder')
+    staging = path.with_name(f'.{path.name}.rn-new')
+    shutil.rmtree(staging, ignore_errors=True)
+    try:
+        _skeleton(SimpleNamespace(path=Path(path.name), width=width, height=height, fps=rate), staging, 1, 1)
+        path.mkdir(parents=True, exist_ok=True)
+        for name in ('history', 'timeline.otio.prev'):
+            target = path / name
+            shutil.rmtree(target) if target.is_dir() else target.unlink(missing_ok=True)
+        for item in staging.iterdir():
+            os.replace(item, path / item.name)
+        (path / STATE).unlink(missing_ok=True)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    _mmk('validate', str(path))
+    return {'op': 'new', 'path': str(path), 'size': f'{width}x{height}', 'fps': str(rate)}
+
+
 def init_project(path: Path, from_shots: str, *, size: str | None = None, fps: str | None = None, src: str | None = None,
                  slots: str = 'gen', force: bool = False) -> dict:
     """A new project whose main track is a reference's shots (rn edit init, made as an MMK project): slots not made yet
@@ -1254,7 +1312,7 @@ def duck_op(project: Project, *, voice: str | None = None, music: str | None = N
     def on(prefix: str) -> list[str]:
         return [i['id'] for t in project.timeline['tracks'] if t['id'] == prefix or t['id'].startswith(prefix + '_')
                 for i in t['items'] if i['kind'] == 'clip']
-    voices = voice.split(',') if voice else (on('track_voice') or [i['id'] for i in project.items(SOUND)])
+    voices = voice.split(',') if voice else (on('track_voice') or [i['id'] for i in project.items(project.sound)])
     # Music: the music tracks; a project rn export made has its audio items on track_A2..: those, then
     musics = music.split(',') if music else (on('track_music') or [
         i['id'] for t in project.timeline['tracks'] if t['kind'] == 'audio' and re.fullmatch(r'track_A([2-9]|\d\d+)', t['id'])
@@ -1348,20 +1406,20 @@ def as_edit(path: str) -> SimpleNamespace:
     """The project as much of an rn Edit as rn qa reads: size, rate, frames, loudness targets and the main track's
     clips (for cuts_in_speech, and the stills and colours that are meant to hold)."""
     project = Project(path)
-    sounds = {project.sound_of(i['id']) for i in project.items(MAIN)}
+    sounds = {project.sound_of(i['id']) for i in project.items(project.main)}
     base = []
-    for n, item in enumerate(project.items(MAIN)):
+    for n, item in enumerate(project.items(project.main)):
         asset = project.doc['assets'].get(item.get('asset') or '', {})
         sound = project.sound_of(item['id'])
-        enabled = next((i.get('enabled', True) for i in project.items(SOUND) if i['id'] == sound), False)
+        enabled = next((i.get('enabled', True) for i in project.items(project.sound) if i['id'] == sound), False)
         start, _ = project.source_seconds(item)
         base.append(SimpleNamespace(
             kind='color' if not item.get('asset') else asset.get('kind', 'video'), id=item['id'], where=f'tracks[0].clips[{n}]',
             source=project.path / asset['uri'].split('#')[0] if asset else None, start_s=start, speed=float(project.speed(item)),
             frames=(item['range']['end'] - item['range']['start']) // project.frame, timeline_start=item['range']['start'] // project.frame,
             audio=bool(sound) and enabled, has_audio=bool((asset.get('streams') or {}).get('audio')),
-            transition_frames=1 if any(t.get('right') == item['id'] for t in project.items(MAIN, 'transition')) else 0))
-    others = [i for t in project.timeline['tracks'] if t['kind'] == 'audio' and t['id'] != SOUND for i in t['items'] if i['kind'] == 'clip']
+            transition_frames=1 if any(t.get('right') == item['id'] for t in project.items(project.main, 'transition')) else 0))
+    others = [i for t in project.timeline['tracks'] if t['kind'] == 'audio' and t['id'] != project.sound for i in t['items'] if i['kind'] == 'clip']
     return SimpleNamespace(width=project.width, height=project.height, fps=project.fps, base=base, audio=others,
                            total_frames=project.timeline['duration'] // project.frame, lufs=DELIVERY['lufs'],
                            true_peak=DELIVERY['true_peak'], accept=[], sounds=sounds)
@@ -1399,7 +1457,7 @@ def show_op(project: Project, *, around: float | None = None, out: str | None = 
     from PIL import Image
 
     from .frames import _compose, _save_under
-    clips = project.items(MAIN)
+    clips = project.items(project.main)
     if around is not None:
         tick = project.at_frame(around)
         times = [(f'{around - 0.5:g}s', tick - project.at_frame(0.5)), (f'{around:g}s', tick), (f'{around + 0.5:g}s', tick + project.at_frame(0.5))]
@@ -1419,7 +1477,9 @@ def show_op(project: Project, *, around: float | None = None, out: str | None = 
             images.append(image.resize((width, max(2, round(image.height * width / image.width)))))
         sheet = _compose([(0, Path())] * len(images), project.fps, min(4, len(images)),
                          f'{project.path.name} rev {project.revision}', images=images, labels=[label for label, _ in times])
-        proof = Path(out) if out else Path.cwd() / 'sheets' / f'show-{project.path.stem}.jpg'
+        # Outside the project folder by default: it is not part of the edit (and is not published with it)
+        import tempfile
+        proof = Path(out) if out else Path(tempfile.gettempdir()) / 'rn-show' / f'show-{project.path.name}.jpg'
         proof.parent.mkdir(parents=True, exist_ok=True)
         _save_under(sheet, proof, 160)
         shutil.rmtree(work, ignore_errors=True)
@@ -1539,6 +1599,7 @@ def summary_head(result: dict) -> str:
             'duck': lambda r: f'music {", ".join(r["music"])} lowered {r["depth"]:g} dB under {", ".join(r["voice"][:6])}',
             'subtitles': lambda r: f'{r["cues"]} subtitles from {Path(r["file"]).name} as text clips',
             'marks': lambda r: f'{r["added"]} {r["kind"]} markers on {r["clip"]} (anchor with {{"marker": "{r["kind"][:-1]} N"}})',
+            'new': lambda r: f'created {r["path"]}: an empty {r["size"]} {r["fps"]}fps project; insert clips into it',
             'init': lambda r: f'created {r["path"]}: {len(r["clips"])} clips from the reference\'s shots, sources {r["source"]}'
                               + (f'; made as cuts: {", ".join(r["dropped"])}' if r['dropped'] else '')}[result['op']](result)
 
@@ -1557,7 +1618,7 @@ def summary_lines(project: Project, result: dict) -> list[str]:
                 kind = {'mmk.transition.cross_dissolve': 'fade', 'mmk.transition.dip_to_color': 'dip'}.get(item['definition'], item['definition'])
                 entries.append(f'[{kind} {project.seconds(item["in_offset"] + item["out_offset"]):g}s]')
                 continue
-            if track['id'] == SOUND:
+            if track['id'] == project.sound:
                 continue
             asset = project.doc['assets'].get(item.get('asset'), {})
             name = Path(asset.get('uri', '?').split('#')[0]).name

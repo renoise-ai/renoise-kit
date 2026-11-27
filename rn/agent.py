@@ -287,6 +287,8 @@ def next_steps(args, result: dict) -> list[str]:
         soft = [s['start'] for s in result.get('shots', []) if s.get('transition_in') in ('dissolve', 'fade', 'wipe', 'flash')]
         if soft:
             out.append(f'rn sheet {_q(args.file)} --around {",".join(f"{t:g}" for t in soft[:6])} --span 4   # check the soft boundaries')
+    elif command == 'edit' and result.get('op') == 'new':
+        out.append(f'rn edit {_q(args.edl)} insert --clip \'{{"id": "c1", "src": "<file>", "in": 0, "out": 2}}\'')
     elif command == 'edit' and _is_project(args) and result.get('op') not in ('show', 'init'):
         # An MMK project: look at the change, then (when the cut is done) render and check it
         out.append(f'rn edit {_q(args.edl)} show' + (f' --around {result["snapped"][0]["beat"]:g}' if result.get('snapped') else ''))

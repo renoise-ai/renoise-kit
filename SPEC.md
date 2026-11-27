@@ -1,6 +1,10 @@
 # renoise-kit：剪辑底层 CLI `rn`
 
-> 状态：v0.14.0（未发版）：`rn edit` 直接改 MMK 工程。X 是工程文件夹（`.mmkproj` 或 Renoise 剪辑工作区）时，每条命令是一次
+> 状态：v0.14.1：新的 Renoise 剪辑工作区还没有工程，`rn edit . init --size WxH [--fps N]` 建一个空工程再 insert；不是工程的文件夹
+> 给出这句提示（以前报 IsADirectoryError）。主轨按位置认（第一条视频轨，声音是主轨片段 link 的音频轨），不再写死 track_V1 /
+> track_A1；没有声音轨时自动加。`rn edit X show` 的接触表默认写到临时目录，不进工程文件夹。
+>
+> v0.14.0（2026-11-27）：`rn edit` 直接改 MMK 工程。X 是工程文件夹（`.mmkproj` 或 Renoise 剪辑工作区）时，每条命令是一次
 > `mmk edit` 事务，进工程历史，App 看得到、能撤销，App 里的修改保留；命令、字段、秒为单位的时间都和 edit.json 上一样，另加
 > `show`（时间线与接触表）、`undo`（只撤 rn 的步骤）、`marks`（拍点 / 字成为片段上的标记）、`duck`、`subtitles`。锚在片段、
 > 标记、拍点上的叠加层与音频跟着后续修改走，被人挪过就不再跟。MMK 做不了的（主轨片段的 `vf` / `af`、内置以外的 xfade 转场）
