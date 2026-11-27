@@ -97,6 +97,12 @@ class _Converter:
         self.held: dict[str, list] = {}  # music items to duck: their level in dB [(t, dB, ease)], written after mmk duck
 
     # -- helpers --
+    def overlay_track(self, lane: int) -> str:
+        return f'track_V{lane + 2}'
+
+    def audio_track(self, lane: int) -> str:
+        return f'track_A{lane + 2}'
+
     def ticks(self, frames: int) -> int:
         return frames * self.frame_ticks
 
@@ -358,7 +364,7 @@ class _Converter:
 
     def overlays(self, lanes: list[list[tuple[int, Clip]]]) -> None:
         for lane_no, lane in enumerate(lanes):
-            track = f'track_V{lane_no + 2}'
+            track = self.overlay_track(lane_no)
             for index, clip in lane:
                 clip_id = clip.id or f'o{index + 1}'
                 dropped = [name for name in ('vf', 'af') if getattr(clip, name)]
@@ -430,7 +436,7 @@ class _Converter:
                 self.roles[item.role].append(item_id)
         ducking = bool(self.edit.duck_db and self.roles['voice'] and self.roles['music'])
         for lane_no, lane in enumerate(lanes):
-            track = f'track_A{lane_no + 2}'
+            track = self.audio_track(lane_no)
             for index, item, seconds in lane:
                 item_id = item.id or f'a{index + 1}'
                 asset = self.asset(item.source, 'audio')
@@ -599,7 +605,9 @@ def _commit(staging: Path, revision: int, key: str, operations: list[dict]) -> d
         'operations': operations})
 
 
-def export_mmk(edl_path: str, out: str, *, strict: bool = False) -> dict:
+def export_mmk(edl_path: str, out: str, *, strict: bool = False, placeholders: bool = False, source: bool = True) -> dict:
+    """placeholders: sources not made yet are rn's placeholder cards (rn edit init on a project); source=False writes no
+    rn/edit.json beside the project (a project rn edit changes itself)."""
     package = Path(out)
     if package.exists():
         ours = (package / 'project.json').exists() or (package / '.renoise' / 'state.json').exists()
@@ -608,7 +616,7 @@ def export_mmk(edl_path: str, out: str, *, strict: bool = False) -> dict:
     version = _mmk('version', '--json').get('version', '0')
     if tuple(int(n) for n in re.findall(r'\d+', version)[:2]) < (0, 2):
         raise RnError(f'mmk {version}: rn export -o .mmkproj needs mmk 0.2.0 or later')
-    edit = load(edl_path)
+    edit = load(edl_path, placeholders=placeholders)
     nested = next((clip for clip in (*edit.base, *edit.overlays) if clip.kind == 'edit'), None)
     if nested is not None:
         raise RnError(f'{nested.where}: a nested edit cannot go into an MMK project; render it to a clip first '
@@ -646,7 +654,8 @@ def export_mmk(edl_path: str, out: str, *, strict: bool = False) -> dict:
             raise RnError('--strict: MMK would leave out ' + '; '.join(f'{d["item"]}: {", ".join(d["dropped"])}' for d in convert.dropped[:10])
                           + ' (render those parts to clips and cut them in); the project was not changed')
         # After validate, so MMK checks only its own files
-        write_source(edl_path, package, staging / SOURCE)
+        if source:
+            write_source(edl_path, package, staging / SOURCE)
     except BaseException:
         shutil.rmtree(staging, ignore_errors=True)
         raise
@@ -655,4 +664,4 @@ def export_mmk(edl_path: str, out: str, *, strict: bool = False) -> dict:
     return {'path': str(package), 'adapter': 'mmk', 'frames': edit.total_frames, 'fps': str(edit.fps),
             'revision': committed.get('revision', checked.get('revision')), 'requires': checked.get('requires', []),
             'assets': len(convert.assets), 'dropped': convert.dropped, 'warnings': checked.get('warnings', []),
-            'source': str(package / SOURCE / 'edit.json'), 'next': f'mmk export {package} out.mp4{lufs}'}
+            'source': str(package / SOURCE / 'edit.json') if source else None, 'next': f'mmk export {package} out.mp4{lufs}'}

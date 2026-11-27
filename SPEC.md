@@ -1,5 +1,12 @@
 # renoise-kit：剪辑底层 CLI `rn`
 
+> 状态：v0.14.0（未发版）：`rn edit` 直接改 MMK 工程。X 是工程文件夹（`.mmkproj` 或 Renoise 剪辑工作区）时，每条命令是一次
+> `mmk edit` 事务，进工程历史，App 看得到、能撤销，App 里的修改保留；命令、字段、秒为单位的时间都和 edit.json 上一样，另加
+> `show`（时间线与接触表）、`undo`（只撤 rn 的步骤）、`marks`（拍点 / 字成为片段上的标记）、`duck`、`subtitles`。锚在片段、
+> 标记、拍点上的叠加层与音频跟着后续修改走，被人挪过就不再跟。MMK 做不了的（主轨片段的 `vf` / `af`、内置以外的 xfade 转场）
+> 由 rn 渲染成片段放进工程；`rn/edit.json` 只读。`rn assemble X` 用 `mmk export` 出片，`rn qa --edl X` 按工程检查。
+> 设计与限制见 [docs/edit-on-mmk.md](docs/edit-on-mmk.md)。
+>
 > 状态：v0.13.0（未发版）：`rn export -o x.mmkproj` 在工程旁边写 `rn/`：edit 本身（`rn/edit.json`），它读的每个文件硬链接进 `rn/files/`（已在工程 `rn/` 里的留在原处，`assets/material-<id>.mp4` 这类按原名放），路径改写成相对 `rn/`，文件夹单独拷走、发布、拉进别的沙箱都还能从它再导出；嵌套 edit 直接报错（先渲染成片段）；`--strict`：有 `dropped` 就报错，工程不动。
 >
 > v0.12.0：`rn export -o x.mmkproj` 需要 mmk 0.2.0 或更新（更旧的直接报错），用上 MMK 0.2.0 新增的能力：变速曲线（keys.speed，按 rn 自己的积分切成每 2 帧一段的匀速片段，转场前的最后一段至少与转场等长）、图像序列（素材 uri 带 `#fps=…&start=…`）、`screen` 与 `plus-lighter` 混合（`/blend_mode`）、mask（遮罩片段放在单独的轨道上，`matte/clip`、`matte/mode`、`matte/invert`；遮罩须覆盖叠加层全程，因为 MMK 在遮罩之外不画叠加层，rn 则不加遮罩）、mix.duck_db（`mmk duck` 给出的压低量叠加到音乐条目自己的增益与淡入淡出上）、subtitles（`mmk subtitles` 把字幕变成文字片段，用 MMK 自己的样式，ASS 样式与 force_style 列在 `dropped`）；响度改成 `mmk export --lufs`。修正 v0.11 的两处：rn 不出声的画面（`"audio": false`、叠加层）在 MMK 里会出声，现在静音；keys.gain_db 叠加在 gain_db 上（与 rn assemble 一致），v0.11 漏了 gain_db。
