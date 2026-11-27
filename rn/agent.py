@@ -287,13 +287,19 @@ def next_steps(args, result: dict) -> list[str]:
         soft = [s['start'] for s in result.get('shots', []) if s.get('transition_in') in ('dissolve', 'fade', 'wipe', 'flash')]
         if soft:
             out.append(f'rn sheet {_q(args.file)} --around {",".join(f"{t:g}" for t in soft[:6])} --span 4   # check the soft boundaries')
+    elif command == 'edit' and _is_project(args) and result.get('op') not in ('show', 'init'):
+        # An MMK project: look at the change, then (when the cut is done) render and check it
+        out.append(f'rn edit {_q(args.edl)} show' + (f' --around {result["snapped"][0]["beat"]:g}' if result.get('snapped') else ''))
+    elif command == 'edit' and _is_project(args) and result.get('op') == 'show':
+        out.append(f'rn assemble {_q(args.edl)} -o cut.mp4   # when the cut is done; then rn qa cut.mp4 --edl {_q(args.edl)}')
     elif command == 'edit' and result.get('op') == 'init':
         first = result['clips'][0] if result['clips'] else 's01'
         if not str(result.get('source', '')).startswith(('gen', '<')) and '<id>' not in str(result.get('source', '')):
             out.append(f'rn assemble {_q(result["path"])} -o rebuild.mp4 --preview')
         else:
             out.append(f'rn edit {_q(result["path"])} set {first} src={result["source"].replace("<id>", first)}')
-            out.append(f'rn assemble {_q(result["path"])} -o draft.mp4 --placeholders --preview')
+            out.append(f'rn edit {_q(result["path"])} show' if (Path(result['path']) / 'project.json').exists() else
+                       f'rn assemble {_q(result["path"])} -o draft.mp4 --placeholders --preview')
     elif command == 'assemble' and result.get('path'):
         out.append(f'rn qa {_q(result["path"])} --edl {_q(args.edl)}' + (' --placeholders' if args.placeholders else ''))
         out.append(f'rn sheet {_q(result["path"])} --count 12')
@@ -341,6 +347,11 @@ def next_steps(args, result: dict) -> list[str]:
         if sfx:
             out.append(f'rn edit edit.json hits {sfx[0]} --at cuts')
     return out[:2]
+
+
+def _is_project(args) -> bool:
+    from .project import is_project
+    return is_project(getattr(args, 'edl', '') or '')
 
 
 def _qa_fixes(args, result: dict) -> list[str]:

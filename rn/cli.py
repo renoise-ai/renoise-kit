@@ -55,6 +55,24 @@ def _edit_ops(ops) -> None:
         op.add_argument('--before', metavar='ID')
         op.add_argument('--after', metavar='ID')
         op.add_argument('--track', metavar='N|audio', help='append to track N (one past the last adds a track) or to audio')
+    op_show = ops.add_parser('show', help='an MMK project: the timeline and a proof sheet (a frame of every main-track clip)')
+    op_show.add_argument('--around', type=float, metavar='T', help='frames at T and half a second either side, instead')
+    op_show.add_argument('-o', '--out', help='proof sheet .jpg (default sheets/show-<project>.jpg)')
+    op_marks = ops.add_parser('marks', help='an MMK project: rn listen\'s beats or words as markers on the clip that plays them')
+    op_marks.add_argument('--on', required=True, metavar='CLIP', help='the clip or audio item whose source rn listen measured')
+    op_marks.add_argument('--listen', required=True, metavar='LISTEN.json')
+    op_marks.add_argument('--kind', choices=['beats', 'downbeats', 'words'], default='beats')
+    op_marks.add_argument('--every', type=int, default=1, metavar='N')
+    op_duck = ops.add_parser('duck', help='an MMK project: lower the music wherever the voice has sound')
+    op_duck.add_argument('--voice', metavar='ID,..', help='default: the voice tracks, else the main track\'s own sound')
+    op_duck.add_argument('--music', metavar='ID,..', help='default: the music tracks')
+    op_duck.add_argument('--depth', type=float, default=10.0, metavar='DB')
+    op_subs = ops.add_parser('subtitles', help='an MMK project: an .srt / .ass file as text clips')
+    op_subs.add_argument('file')
+    op_subs.add_argument('--size', type=float, metavar='PX')
+    op_subs.add_argument('--offset', type=float, default=0.0, metavar='S', help='seconds added to every cue')
+    op_undo = ops.add_parser('undo', help='an MMK project: undo rn\'s last step(s), not the app\'s')
+    op_undo.add_argument('steps', type=int, nargs='?', default=1)
     hits_text = 'one sound effect at many points: every cut, every (Nth) beat, or given seconds (audio items, role sfx)'
     op_hits = ops.add_parser(
         'hits', help=hits_text, description=f'{hits_text[0].upper()}{hits_text[1:]}.\n'
@@ -614,8 +632,19 @@ def _parser() -> argparse.ArgumentParser:
     clean.add_argument('--language', help='clarity check: e.g. zh, ja, en (default: detect)')
     clean.add_argument('--model', default='small', help='clarity check: faster-whisper model (default small)')
 
-    edit = add('edit', 'change an EDL by operations on clip ids (checked before writing)',
-               'Each operation lays the whole edit out again and writes the file only if it is valid. Clips are addressed\n'
+    edit = add('edit', 'change an EDL or an MMK project by operations on clip ids (checked before writing)',
+               'EDL is an edit.json, or an MMK project folder (a .mmkproj, or a Renoise edit workspace such as .): on a\n'
+               'project every operation is one MMK edit transaction, so it is in the project\'s history, the Renoise app\n'
+               'shows it, and changes made in the app stay. The same operations and fields, times in seconds; a project\n'
+               'adds show (the timeline and a proof sheet), undo (rn\'s own steps), marks, duck and subtitles:\n'
+               '  rn edit . show                                   # look before and after changes\n'
+               '  rn edit . set c2 transition.type=fade transition.duration=0.5   # centred on the cut\n'
+               '  rn edit . set c3 vf=hue=s=0                      # MMK has no ffmpeg filters: rendered into the clip\n'
+               '  rn edit . marks --on a1 --listen song.json        # beats as markers: {"at": {"marker": "beat 8"}}\n'
+               '  rn edit . duck --depth 10 && rn edit . subtitles captions.srt\n'
+               '  rn edit . undo\n'
+               '  rn assemble . -o cut.mp4 && rn qa cut.mp4 --edl .   # rendered by mmk export, as the app does\n'
+               'On an edit.json, each operation lays the whole edit out again and writes the file only if it is valid. Clips are addressed\n'
                'by "id" (rn edit e.json ids gives every clip one) or by position "track:index" / "audio:index".\n'
                'The main track plays back to back: deleting or trimming there ripples what follows; overlays and audio\n'
                'anchored with {"clip": "<id>"} follow, ones at fixed seconds stay. Examples:\n'
@@ -847,8 +876,43 @@ class _StepParser(argparse.ArgumentParser):
         raise RnError(message)
 
 
+def _project_step(project, args) -> dict:
+    from . import project as mmkproject
+    if args.op == 'set':
+        return mmkproject.set_op(project, args.ref, args.assignments, args.unset)
+    if args.op == 'split':
+        return mmkproject.split_op(project, args.ref, args.at, args.id)
+    if args.op == 'delete':
+        return mmkproject.delete_op(project, args.ref, args.lift)
+    if args.op == 'insert':
+        return mmkproject.insert_op(project, args.clip, args.before, args.after, args.track)
+    if args.op == 'move':
+        return mmkproject.move_op(project, args.ref, args.before, args.after, args.track)
+    if args.op == 'undo':
+        return mmkproject.undo_op(project, args.steps)
+    if args.op == 'show':
+        return mmkproject.show_op(project, around=args.around, out=args.out)
+    if args.op == 'hits':
+        return mmkproject.hits_op(project, args.sfx, args.at, listen=args.listen, offset=args.offset, pivot=args.pivot, gain=args.gain,
+                                  every=args.every, prefix=args.id_prefix)
+    if args.op == 'silences':
+        return mmkproject.silences_op(project, args.ref, args.listen, min_silence=args.min, pad=args.pad, keep_gap=args.keep_gap)
+    if args.op == 'snap':
+        return mmkproject.snap_op(project, args.listen, to=args.to, tolerance=args.tolerance, only=args.only, offset=args.offset)
+    if args.op == 'marks':
+        return mmkproject.marks_op(project, args.on, args.listen, kind=args.kind, every=args.every)
+    if args.op == 'duck':
+        return mmkproject.duck_op(project, voice=args.voice, music=args.music, depth=args.depth)
+    if args.op == 'subtitles':
+        return mmkproject.subtitles_op(project, args.file, size=args.size, offset=args.offset)
+    raise RnError(f'rn edit {args.op} on an MMK project comes in a later rn; ids are MMK\'s own'
+                  if args.op not in ('ids', 'upgrade') else f'rn edit {args.op}: not needed on an MMK project (every clip has an id)')
+
+
 def _edit_step(path: Path, args) -> dict:
     from . import editops
+    if args.op in ('show', 'undo', 'marks', 'duck', 'subtitles'):
+        raise RnError(f'rn edit {args.op} is for an MMK project (a .mmkproj folder)')
     if args.op == 'ids':
         return editops.ids_op(path)
     if args.op == 'upgrade':
@@ -888,8 +952,9 @@ def _edit_step_runner():
     parser = _StepParser(prog='rn edit EDL batch', add_help=False)
     _edit_ops(parser.add_subparsers(dest='op', required=True, metavar='op'))
 
-    def run(path: Path, line: str) -> dict:
-        return _edit_step(path, parser.parse_args(_step_words(line)))
+    def run(path, line: str) -> dict:
+        args = parser.parse_args(_step_words(line))
+        return _edit_step(path, args) if isinstance(path, Path) else _project_step(path, args)
     return run
 
 
@@ -991,6 +1056,21 @@ def _run_summarized(args) -> tuple[dict, list[str]]:
     elif command == 'edit':
         from . import editops
         path = Path(args.edl)
+        from . import project as mmkproject
+        if args.op == 'init' and (path.suffix == '.mmkproj' or path.is_dir()):
+            result = mmkproject.init_project(path, args.from_shots, size=args.size, fps=args.fps, src=args.src, slots=args.slots,
+                                             force=args.force)
+            return result, mmkproject.summary_lines(mmkproject.Project(path), result)
+        if mmkproject.is_project(path):
+            target = mmkproject.Project(path)
+            try:
+                if args.op == 'batch':
+                    result = mmkproject.batch_op(target, _batch_lines(args.steps), _edit_step_runner())
+                else:
+                    result = _project_step(target, args)
+            finally:
+                target.unlink_new()  # media a failed step linked into assets/
+            return result, mmkproject.summary_lines(target, result)
         if args.op == 'batch':
             result = editops.batch_op(path, _batch_lines(args.steps), _edit_step_runner())
         elif args.op == 'init':
@@ -1105,6 +1185,11 @@ def main(argv: list[str] | None = None) -> int:
                                    around=args.around, span=args.span, diff=args.diff, crop=args.crop)
         elif args.command in SUMMARIZED:
             result, lines = _run_summarized(args)
+        elif args.command == 'assemble' and __import__('rn.project', fromlist=['is_project']).is_project(args.edl):
+            from .project import assemble_project
+            if args.dry_run:
+                raise RnError('rn assemble --dry-run: an MMK project is checked on every rn edit (mmk validate checks it too)')
+            result = assemble_project(args.edl, args.out, preview=args.preview, time_range=args.range)
         elif args.command == 'assemble':
             from .assemble import assemble_command
             result = assemble_command(args.edl, args.out, dry_run=args.dry_run, keep=args.keep, preview=args.preview,

@@ -497,6 +497,33 @@ def init_op(path: Path, from_shots: str, *, size: str | None = None, fps: str | 
             'source': ref or f'{slots}/<id>.mp4', 'timeline': summary}
 
 
+def kept_spans(spans: list[tuple[float, float]], silences: list[dict], fps: Fraction, *, min_silence: float, pad: float,
+               keep_gap: float) -> list[tuple[float, float]]:
+    """The spans of a source (seconds) that stay once rn listen's silences are cut out (see silences_op)."""
+    half = max(pad, keep_gap / 2)
+    cuts = []
+    for silence in silences:
+        start, end = float(silence['start']), float(silence['end'])
+        head, foot = start <= spans[0][0] + 1e-6, end >= spans[-1][1] - 1e-6
+        if end - start < min_silence and not (head or foot):  # dead air before the first word or after the last always goes
+            continue
+        lead, tail = start + half, end - half
+        if head:  # only the pad stays before the first word
+            lead, tail = spans[0][0], end - pad
+        if foot:
+            lead, tail = start + pad, spans[-1][1]
+        if tail > lead:
+            cuts.append((lead, tail))
+    frame = float(1 / fps)
+    kept = []
+    for a, b in spans:
+        pieces = [(a, b)]
+        for lead, tail in cuts:
+            pieces = [part for x, y in pieces for part in ((x, min(y, lead)), (max(x, tail), y)) if part[1] - part[0] > 0]
+        kept += [(x, y) for x, y in pieces if y - x >= frame]  # under a frame would play nothing
+    return kept
+
+
 def silences_op(path: Path, ref: str, listen: str, *, min_silence: float = 0.5, pad: float = 0.1, keep_gap: float = 0.0) -> dict:
     """Cuts a main-track clip's long silences out by writing its "ranges": the spans of its source between the silences
     of `listen` (rn listen SOURCE --json, or rn listen SOURCE --speech --json) that last at least `min_silence` (silence
@@ -532,27 +559,7 @@ def silences_op(path: Path, ref: str, listen: str, *, min_silence: float = 0.5, 
         spans = [(clip.start_s, clip.start_s + float(clip.frames / fps) * clip.speed)]
         if original.get('src') and isinstance(data.get('path'), str) and Path(data['path']).name != Path(original['src']).name:
             warnings.append(f'{Path(listen).name} measured {Path(data["path"]).name}, the clip plays {Path(original["src"]).name}')
-    half = max(pad, keep_gap / 2)
-    cuts = []
-    for silence in silences:
-        start, end = float(silence['start']), float(silence['end'])
-        head, foot = start <= spans[0][0] + 1e-6, end >= spans[-1][1] - 1e-6
-        if end - start < min_silence and not (head or foot):  # dead air before the first word or after the last always goes
-            continue
-        lead, tail = start + half, end - half
-        if head:  # only the pad stays before the first word
-            lead, tail = spans[0][0], end - pad
-        if foot:
-            lead, tail = start + pad, spans[-1][1]
-        if tail > lead:
-            cuts.append((lead, tail))
-    frame = float(1 / fps)
-    kept = []
-    for a, b in spans:
-        pieces = [(a, b)]
-        for lead, tail in cuts:
-            pieces = [part for x, y in pieces for part in ((x, min(y, lead)), (max(x, tail), y)) if part[1] - part[0] > 0]
-        kept += [(x, y) for x, y in pieces if y - x >= frame]  # under a frame would play nothing
+    kept = kept_spans(spans, silences, fps, min_silence=min_silence, pad=pad, keep_gap=keep_gap)
     if not kept:
         raise RnError(f'{ref}: every second of the clip is in a silence of {Path(listen).name}; nothing left to play')
     before, after = sum(b - a for a, b in spans), sum(b - a for a, b in kept)
